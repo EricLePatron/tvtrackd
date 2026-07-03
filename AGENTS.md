@@ -20,3 +20,9 @@ et n'implémente qu'après validation explicite de ce plan par l'utilisateur.
 Les décisions produit (benchmark concurrentiel, priorisation, personas) relèvent
 de l'agent `.claude/agents/entertainment-product-expert.md`.
 
+Avant tout merge dans `main`, le code implémenté doit être relu par l'agent
+`.claude/agents/tvtrackd-qa-reviewer.md`, chargé de détecter bugs, failles et
+surtout régressions sur des fonctionnalités existantes. Cet agent ne corrige
+jamais le code : il rend un rapport avec un verdict (BLOQUANT / OK AVEC
+RÉSERVES / OK), et les points bloquants repassent par `tvtrackd-developer`.
+
