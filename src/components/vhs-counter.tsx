@@ -43,7 +43,7 @@ export function VhsCounter({
           S{pad(seasonNumber)} E{pad(lastEpisode)}
         </span>
         <span
-          className={`text-foreground transition-transform ${bump ? "scale-110 text-secondary" : ""}`}
+          className={`transition-transform ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
         >
           {pad(display)}/{pad(total)}
         </span>
