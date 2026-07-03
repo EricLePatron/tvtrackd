@@ -279,3 +279,17 @@ export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): 
   if (!item.isLate || item.lateDays === 0) return "Ce soir";
   return `En retard · ${item.lateDays}j`;
 }
+
+/** "Demain" or a short "Lun. 14 juil" style label, computed in UTC to match `today`. */
+export function formatUpcomingDayLabel(dateStr: string, today: string): string {
+  if (dateStr === addDaysToDateString(today, 1)) return "Demain";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+  const label = date.toLocaleDateString("fr-FR", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
