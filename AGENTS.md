@@ -26,3 +26,8 @@ surtout régressions sur des fonctionnalités existantes. Cet agent ne corrige
 jamais le code : il rend un rapport avec un verdict (BLOQUANT / OK AVEC
 RÉSERVES / OK), et les points bloquants repassent par `tvtrackd-developer`.
 
+Le benchmark design et les revues de design system (cohérence UI, accessibilité,
+patterns UX propres aux apps de tracking de contenu) relèvent de l'agent
+`.claude/agents/entertainment-design-expert.md`. Il n'implémente jamais le code
+lui-même : ses recommandations retenues sont transmises à `tvtrackd-developer`.
+
