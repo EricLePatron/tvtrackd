@@ -11,12 +11,19 @@ Deno.serve(async (req) => {
       return Response.json({ results: [] }, { headers: corsHeaders });
     }
     const url = new URL("https://api.themoviedb.org/3/search/multi");
-    url.searchParams.set("api_key", TMDB_API_KEY);
     url.searchParams.set("query", q);
     url.searchParams.set("language", "fr-FR");
     url.searchParams.set("include_adult", "false");
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`TMDb ${res.status}`);
+    const isV4 = TMDB_API_KEY.startsWith("eyJ");
+    if (!isV4) url.searchParams.set("api_key", TMDB_API_KEY);
+    const res = await fetch(url, {
+      headers: isV4 ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("[search-media] TMDb", res.status, body);
+      throw new Error(`TMDb ${res.status}`);
+    }
     const data = await res.json();
 
     const results = (data.results ?? [])
