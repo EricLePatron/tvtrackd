@@ -292,7 +292,7 @@ function HeroTicket({ item }: { item: ReadyItem }) {
           </h2>
           <p className="mt-1 text-xs text-muted-foreground truncate">{nextEpisode.title ?? "—"}</p>
           <div className="mt-3 flex items-center justify-between rounded-md bg-surface-elevated px-3 py-1.5">
-            <span className="font-counter text-sm tracking-widest text-secondary">
+            <span className="font-counter text-sm tracking-widest text-cyan-accent">
               S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
             </span>
             <Play className="h-4 w-4 text-primary" />

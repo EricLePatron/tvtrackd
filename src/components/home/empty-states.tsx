@@ -45,7 +45,7 @@ export function AllCaughtUpBanner({ discovery }: { discovery?: ReactNode }) {
             À jour
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Rien à voir pour l'instant — tout est marqué vu.
+            Rien de neuf pour l'instant — tout est marqué vu.
           </p>
         </div>
       </div>
