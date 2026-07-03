@@ -366,7 +366,7 @@ function parseCSV(text: string): ImportItem[] {
     headers.forEach((h, idx) => (row[h] = cells[idx] ?? ""));
     rows.push(row);
   }
-  return rows.map(normalizeRow).filter((r): r is ImportItem => !!r?.title);
+  return rows.map((r) => normalizeRow(r)).filter((r): r is ImportItem => !!r?.title);
 }
 
 function splitCsvLine(line: string): string[] {
