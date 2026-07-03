@@ -3,13 +3,21 @@ const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY")!;
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const CACHE_MS = 48 * 60 * 60 * 1000;
 
+const IS_V4 = TMDB_API_KEY.startsWith("eyJ");
+
 export async function tmdb(path: string, params: Record<string, string> = {}) {
   const url = new URL(`https://api.themoviedb.org/3${path}`);
-  url.searchParams.set("api_key", TMDB_API_KEY);
   url.searchParams.set("language", "fr-FR");
+  if (!IS_V4) url.searchParams.set("api_key", TMDB_API_KEY);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`TMDb ${r.status} for ${path}`);
+  const r = await fetch(url, {
+    headers: IS_V4 ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {},
+  });
+  if (!r.ok) {
+    const body = await r.text();
+    console.error("[tmdb]", r.status, path, body);
+    throw new Error(`TMDb ${r.status} for ${path}`);
+  }
   return r.json();
 }
 

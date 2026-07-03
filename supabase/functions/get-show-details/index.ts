@@ -10,12 +10,20 @@ const admin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
+const IS_V4 = TMDB_API_KEY.startsWith("eyJ");
+
 async function tmdb(path: string) {
   const url = new URL(`https://api.themoviedb.org/3${path}`);
-  url.searchParams.set("api_key", TMDB_API_KEY);
   url.searchParams.set("language", "fr-FR");
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`TMDb ${r.status} for ${path}`);
+  if (!IS_V4) url.searchParams.set("api_key", TMDB_API_KEY);
+  const r = await fetch(url, {
+    headers: IS_V4 ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {},
+  });
+  if (!r.ok) {
+    const body = await r.text();
+    console.error("[tmdb]", r.status, path, body);
+    throw new Error(`TMDb ${r.status} for ${path}`);
+  }
   return r.json();
 }
 
