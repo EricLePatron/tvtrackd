@@ -15,6 +15,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
+import { Route as AuthenticatedShowMediaTypeTmdbIdRouteImport } from './routes/_authenticated/show.$mediaType.$tmdbId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -45,6 +46,12 @@ const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
   path: '/library',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedShowMediaTypeTmdbIdRoute =
+  AuthenticatedShowMediaTypeTmdbIdRouteImport.update({
+    id: '/show/$mediaType/$tmdbId',
+    path: '/show/$mediaType/$tmdbId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -52,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/search': typeof AuthenticatedSearchRoute
+  '/show/$mediaType/$tmdbId': typeof AuthenticatedShowMediaTypeTmdbIdRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -59,6 +67,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/search': typeof AuthenticatedSearchRoute
   '/': typeof AuthenticatedIndexRoute
+  '/show/$mediaType/$tmdbId': typeof AuthenticatedShowMediaTypeTmdbIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +77,25 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/search': typeof AuthenticatedSearchRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/show/$mediaType/$tmdbId': typeof AuthenticatedShowMediaTypeTmdbIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/library' | '/profile' | '/search'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/library'
+    | '/profile'
+    | '/search'
+    | '/show/$mediaType/$tmdbId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/auth' | '/library' | '/profile' | '/search' | '/'
+  to:
+    | '/auth'
+    | '/library'
+    | '/profile'
+    | '/search'
+    | '/'
+    | '/show/$mediaType/$tmdbId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -82,6 +104,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/search'
     | '/_authenticated/'
+    | '/_authenticated/show/$mediaType/$tmdbId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -133,6 +156,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLibraryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/show/$mediaType/$tmdbId': {
+      id: '/_authenticated/show/$mediaType/$tmdbId'
+      path: '/show/$mediaType/$tmdbId'
+      fullPath: '/show/$mediaType/$tmdbId'
+      preLoaderRoute: typeof AuthenticatedShowMediaTypeTmdbIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -141,6 +171,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedShowMediaTypeTmdbIdRoute: typeof AuthenticatedShowMediaTypeTmdbIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -148,6 +179,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedSearchRoute: AuthenticatedSearchRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedShowMediaTypeTmdbIdRoute: AuthenticatedShowMediaTypeTmdbIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
