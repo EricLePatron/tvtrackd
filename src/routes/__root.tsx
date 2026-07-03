@@ -94,6 +94,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Nightframe — Suivi de séries & films" },
+      { name: "description", content: "Track TV shows and movies with a unique, dark-themed mobile app." },
+      { property: "og:description", content: "Track TV shows and movies with a unique, dark-themed mobile app." },
+      { name: "twitter:description", content: "Track TV shows and movies with a unique, dark-themed mobile app." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/6473745c-f70d-46ce-b5af-0dd868d9ec08/id-preview-bde10abd--eab26df6-7dec-4fdb-a86a-11ab4bedafd5.lovable.app-1783073053629.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/6473745c-f70d-46ce-b5af-0dd868d9ec08/id-preview-bde10abd--eab26df6-7dec-4fdb-a86a-11ab4bedafd5.lovable.app-1783073053629.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
