@@ -351,8 +351,8 @@ function ResolutionRow({
 
 function parseJSON(text: string): ImportItem[] {
   const raw = JSON.parse(text);
-  const arr = Array.isArray(raw) ? raw : raw.items ?? raw.episodes ?? raw.data ?? [];
-  return arr.map(normalizeRow).filter((r): r is ImportItem => !!r?.title);
+  const arr: unknown[] = Array.isArray(raw) ? raw : raw.items ?? raw.episodes ?? raw.data ?? [];
+  return arr.map((r) => normalizeRow(r)).filter((r): r is ImportItem => !!r?.title);
 }
 
 function parseCSV(text: string): ImportItem[] {
