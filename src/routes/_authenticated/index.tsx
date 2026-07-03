@@ -21,6 +21,7 @@ import {
 } from "@/lib/schedule";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
+import { DiscoverySection } from "@/components/home/discovery-section";
 import {
   NoShowsPanel,
   AllCaughtUpBanner,
@@ -150,11 +151,11 @@ function HomeContent({ data }: { data: HomeData }) {
   });
 
   if (state === "no_shows") {
-    return <NoShowsPanel />;
+    return <NoShowsPanel discovery={<DiscoverySection variant="grid" />} />;
   }
 
   if (state === "all_caught_up") {
-    return <AllCaughtUpBanner />;
+    return <AllCaughtUpBanner discovery={<DiscoverySection variant="compact" />} />;
   }
 
   const buckets = bucketUpcoming(data.dayGroups, data.today);
