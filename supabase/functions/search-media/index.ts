@@ -1,6 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 
-const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY")!;
+const TMDB_API_KEY = (Deno.env.get("TMDB_API_KEY") ?? "").trim();
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 
 Deno.serve(async (req) => {
