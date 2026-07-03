@@ -15,6 +15,7 @@ Deno.serve(async (req) => {
     url.searchParams.set("language", "fr-FR");
     url.searchParams.set("include_adult", "false");
     const isV4 = TMDB_API_KEY.startsWith("eyJ");
+    console.log("[search-media] key len:", TMDB_API_KEY.length, "prefix:", TMDB_API_KEY.slice(0, 6), "v4:", isV4);
     if (!isV4) url.searchParams.set("api_key", TMDB_API_KEY);
     const res = await fetch(url, {
       headers: isV4 ? { Authorization: `Bearer ${TMDB_API_KEY}` } : {},
