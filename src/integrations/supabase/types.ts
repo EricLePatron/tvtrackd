@@ -14,7 +14,194 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      episodes: {
+        Row: {
+          air_date: string | null
+          episode_number: number
+          id: number
+          overview: string | null
+          season_number: number
+          show_id: number
+          title: string | null
+        }
+        Insert: {
+          air_date?: string | null
+          episode_number: number
+          id?: number
+          overview?: string | null
+          season_number: number
+          show_id: number
+          title?: string | null
+        }
+        Update: {
+          air_date?: string | null
+          episode_number?: number
+          id?: number
+          overview?: string | null
+          season_number?: number
+          show_id?: number
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "episodes_show_id_fkey"
+            columns: ["show_id"]
+            isOneToOne: false
+            referencedRelation: "shows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      seasons: {
+        Row: {
+          episode_count: number | null
+          id: number
+          season_number: number
+          show_id: number
+        }
+        Insert: {
+          episode_count?: number | null
+          id?: number
+          season_number: number
+          show_id: number
+        }
+        Update: {
+          episode_count?: number | null
+          id?: number
+          season_number?: number
+          show_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seasons_show_id_fkey"
+            columns: ["show_id"]
+            isOneToOne: false
+            referencedRelation: "shows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shows: {
+        Row: {
+          cached_at: string
+          first_air_date: string | null
+          id: number
+          media_type: string
+          overview: string | null
+          poster_path: string | null
+          status: string | null
+          title: string
+          tmdb_id: number
+        }
+        Insert: {
+          cached_at?: string
+          first_air_date?: string | null
+          id?: number
+          media_type: string
+          overview?: string | null
+          poster_path?: string | null
+          status?: string | null
+          title: string
+          tmdb_id: number
+        }
+        Update: {
+          cached_at?: string
+          first_air_date?: string | null
+          id?: number
+          media_type?: string
+          overview?: string | null
+          poster_path?: string | null
+          status?: string | null
+          title?: string
+          tmdb_id?: number
+        }
+        Relationships: []
+      }
+      user_shows: {
+        Row: {
+          created_at: string
+          id: number
+          show_id: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          show_id: number
+          status: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          show_id?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_shows_show_id_fkey"
+            columns: ["show_id"]
+            isOneToOne: false
+            referencedRelation: "shows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watch_status: {
+        Row: {
+          episode_id: number
+          id: number
+          user_id: string
+          watch_count: number
+          watched_at: string
+        }
+        Insert: {
+          episode_id: number
+          id?: number
+          user_id: string
+          watch_count?: number
+          watched_at?: string
+        }
+        Update: {
+          episode_id?: number
+          id?: number
+          user_id?: string
+          watch_count?: number
+          watched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_status_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
