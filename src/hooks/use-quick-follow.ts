@@ -9,7 +9,15 @@ import type { TrendingItem } from "@/components/home/discovery-grid";
  * through `get-show-details` (same edge function the show page uses to
  * populate its cache) to obtain the internal `show.id`, then upsert
  * `user_shows` client-side, which RLS does allow for the current user.
- * Mirrors the `follow` mutation in the show detail route.
+ *
+ * If a `user_shows` row already exists for this show (any status —
+ * en_cours, termine, abandonne, archive…), its status is preserved: we only
+ * default to "a_voir" for a genuinely new follow, mirroring the `follow`
+ * mutation in the show detail route (`status: userShow?.status ?? "a_voir"`).
+ * The discovery grids also pre-mark already-followed items via
+ * `useFollowedKeys` so the "+" shouldn't normally be clickable in that case
+ * at all — this is a defense-in-depth check against overwriting real
+ * progress on a race/stale-cache click.
  */
 export function useQuickFollow(userId: string | undefined) {
   const qc = useQueryClient();
@@ -23,10 +31,17 @@ export function useQuickFollow(userId: string | undefined) {
       if (error) throw error;
       const show = (data as { show: { id: number } }).show;
 
+      const { data: existing } = await supabase
+        .from("user_shows")
+        .select("status")
+        .eq("user_id", userId)
+        .eq("show_id", show.id)
+        .maybeSingle();
+
       const { error: upsertError } = await supabase
         .from("user_shows")
         .upsert(
-          { user_id: userId, show_id: show.id, status: "a_voir" },
+          { user_id: userId, show_id: show.id, status: existing?.status ?? "a_voir" },
           { onConflict: "user_id,show_id" },
         );
       if (upsertError) throw upsertError;
@@ -37,6 +52,7 @@ export function useQuickFollow(userId: string | undefined) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["home-schedule", userId] });
+      qc.invalidateQueries({ queryKey: ["followed-keys", userId] });
     },
   });
 }

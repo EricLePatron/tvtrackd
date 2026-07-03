@@ -11,6 +11,14 @@ export type TrendingItem = {
 };
 
 /**
+ * TMDb tv/movie ids are independent namespaces — a composite key avoids
+ * collisions between e.g. a tv show and a movie sharing the same tmdb_id.
+ */
+export function trendingKey(item: { media_type: string; tmdb_id: number }): string {
+  return `${item.media_type}:${item.tmdb_id}`;
+}
+
+/**
  * "Le rayon du moment" — trending TMDb picks with a one-tap quick-follow "+"
  * button (optimistic). Presentational only: the trending data source and the
  * follow mutation are supplied by the caller.
@@ -20,16 +28,16 @@ export function DiscoveryGrid({
   items,
   isLoading,
   variant = "grid",
-  followedIds,
-  pendingId,
+  followedKeys,
+  pendingKey,
   onFollow,
 }: {
   title?: string;
   items: TrendingItem[];
   isLoading?: boolean;
   variant?: "grid" | "compact";
-  followedIds: ReadonlySet<number>;
-  pendingId?: number | null;
+  followedKeys: ReadonlySet<string>;
+  pendingKey?: string | null;
   onFollow: (item: TrendingItem) => void;
 }) {
   if (!isLoading && items.length === 0) return null;
@@ -61,11 +69,12 @@ export function DiscoveryGrid({
           }
         >
           {items.map((item) => {
-            const followed = followedIds.has(item.tmdb_id);
-            const pending = pendingId === item.tmdb_id;
+            const key = trendingKey(item);
+            const followed = followedKeys.has(key);
+            const pending = pendingKey === key;
             return (
               <div
-                key={`${item.media_type}-${item.tmdb_id}`}
+                key={key}
                 className={variant === "compact" ? "w-24 shrink-0 snap-start" : undefined}
               >
                 <div className="relative">

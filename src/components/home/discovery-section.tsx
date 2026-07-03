@@ -1,27 +1,37 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTrending } from "@/hooks/use-trending";
 import { useQuickFollow } from "@/hooks/use-quick-follow";
-import { DiscoveryGrid, type TrendingItem } from "@/components/home/discovery-grid";
+import { useFollowedKeys } from "@/hooks/use-followed-keys";
+import { DiscoveryGrid, trendingKey, type TrendingItem } from "@/components/home/discovery-grid";
 
 /**
  * Container wiring "Le rayon du moment" to live TMDb trending data and the
  * one-tap quick-follow mutation, with local optimistic state for the "+"
- * button (instant check, rollback on error).
+ * button (instant check, rollback on error) layered on top of the shows the
+ * user already follows (any status) so a trending item matching an existing
+ * follow never shows as "not followed".
  */
 export function DiscoverySection({ variant }: { variant: "grid" | "compact" }) {
   const { user } = useAuth();
   const { data: items = [], isLoading } = useTrending(!!user);
-  const [followedIds, setFollowedIds] = useState<Set<number>>(new Set());
+  const { data: alreadyFollowedKeys = new Set<string>() } = useFollowedKeys(user?.id);
+  const [optimisticKeys, setOptimisticKeys] = useState<Set<string>>(new Set());
   const followMutation = useQuickFollow(user?.id);
 
+  const followedKeys = useMemo(
+    () => new Set([...alreadyFollowedKeys, ...optimisticKeys]),
+    [alreadyFollowedKeys, optimisticKeys],
+  );
+
   const handleFollow = (item: TrendingItem) => {
-    setFollowedIds((prev) => new Set(prev).add(item.tmdb_id));
+    const key = trendingKey(item);
+    setOptimisticKeys((prev) => new Set(prev).add(key));
     followMutation.mutate(item, {
       onError: () => {
-        setFollowedIds((prev) => {
+        setOptimisticKeys((prev) => {
           const next = new Set(prev);
-          next.delete(item.tmdb_id);
+          next.delete(key);
           return next;
         });
       },
@@ -33,8 +43,12 @@ export function DiscoverySection({ variant }: { variant: "grid" | "compact" }) {
       items={items}
       isLoading={isLoading}
       variant={variant}
-      followedIds={followedIds}
-      pendingId={followMutation.isPending ? (followMutation.variables?.tmdb_id ?? null) : null}
+      followedKeys={followedKeys}
+      pendingKey={
+        followMutation.isPending && followMutation.variables
+          ? trendingKey(followMutation.variables)
+          : null
+      }
       onFollow={handleFollow}
     />
   );
