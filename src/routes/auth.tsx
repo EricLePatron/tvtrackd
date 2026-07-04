@@ -1,13 +1,26 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
+const authSearchSchema = z.object({
+  redirect: z.string().optional(),
+});
+
+function safeRedirect(path: string | undefined): string {
+  if (!path) return "/";
+  // Only allow same-origin absolute paths.
+  if (!path.startsWith("/") || path.startsWith("//")) return "/";
+  return path;
+}
+
 export const Route = createFileRoute("/auth")({
   ssr: false,
+  validateSearch: authSearchSchema,
   head: () => ({
     meta: [
       { title: "Connexion — Nightframe" },
@@ -19,6 +32,8 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const target = safeRedirect(search.redirect);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,9 +42,9 @@ function AuthPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/" });
+      if (data.session) navigate({ to: target });
     });
-  }, [navigate]);
+  }, [navigate, target]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +64,7 @@ function AuthPage() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate({ to: "/" });
+        navigate({ to: target });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
