@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.0",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://npuoaefzdrmjafbpamri.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "tvtrackd-mcp",
+      "version": "0.1.0",
+      "title": "tvtrackd"
+    },
+    "tools": [
+      {
+        "name": "search_media",
+        "title": "Rechercher séries et films",
+        "description": "Recherche TMDb (séries et films) par titre. Retourne titre, année, type, id TMDb et résumé.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 2,
+              "description": "Titre à rechercher (minimum 2 caractères)."
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_my_shows",
+        "title": "Lister mes séries et films",
+        "description": "Liste les séries et films suivis par l'utilisateur connecté, filtrables par statut (a_voir, en_cours, termine, abandonne, archive).",
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "a_voir",
+                "en_cours",
+                "termine",
+                "abandonne",
+                "archive"
+              ],
+              "description": "Statut à filtrer. Omettre pour tout retourner."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "follow_show",
+        "title": "Suivre une série ou un film",
+        "description": "Ajoute (ou met à jour) une série/film dans la bibliothèque de l'utilisateur avec un statut donné. La série doit déjà exister dans le cache shows (identifiée par tmdb_id + media_type).",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tmdb_id": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Identifiant TMDb."
+            },
+            "media_type": {
+              "type": "string",
+              "enum": [
+                "tv",
+                "movie"
+              ],
+              "description": "Type de média."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "a_voir",
+                "en_cours",
+                "termine",
+                "abandonne",
+                "archive"
+              ],
+              "description": "Statut à appliquer."
+            }
+          },
+          "required": [
+            "tmdb_id",
+            "media_type",
+            "status"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
