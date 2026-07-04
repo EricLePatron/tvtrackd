@@ -190,7 +190,9 @@ function ShowDetail() {
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl leading-tight text-foreground">{show.title}</h1>
           <button
-            onClick={() => follow.mutate()}
+            onClick={() =>
+              requireAuth(() => follow.mutate(), { reason: "suivre cette série" })
+            }
             disabled={follow.isPending}
             className={`mt-3 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
               userShow
@@ -241,7 +243,10 @@ function ShowDetail() {
                       >
                         <button
                           onClick={() =>
-                            markWatched.mutate({ episodeId: e.id, currentCount: count })
+                            requireAuth(
+                              () => markWatched.mutate({ episodeId: e.id, currentCount: count }),
+                              { reason: "marquer cet épisode" },
+                            )
                           }
                           aria-label={isWatched ? "Marquer comme revu" : "Marquer vu"}
                           className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors ${
