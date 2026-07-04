@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatUpcomingDayLabel,
@@ -156,12 +157,35 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     );
   }
 
+  // All three states below concern the *past* boundary (backward pagination:
+  // in flight / failed / exhausted) — they must anchor to the TOP of the
+  // scrollable area, not appear after the virtualized rows (which is the
+  // bottom of the DOM flow, i.e. the future/J+90 end). Same overlay technique
+  // for all three (absolute, pinned to the viewport top, outside the scroll
+  // flow) so the retry affordance is always reachable without scrolling all
+  // the way down to the future horizon first.
+  const showTopOverlay = isFetchingPreviousPage || isError || !hasPreviousPage;
+
   return (
     <div className="relative">
-      {/* Overlay, not part of the scroll flow — never affects scrollHeight/anchoring math. */}
-      {isFetchingPreviousPage && (
+      {showTopOverlay && (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
-          <Skeleton className="h-6 w-32 rounded-full" />
+          {isFetchingPreviousPage ? (
+            <Skeleton className="h-6 w-32 rounded-full" />
+          ) : isError ? (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-3 pr-1.5">
+              <p className="font-counter text-[10px] uppercase tracking-widest text-destructive">
+                Erreur de chargement
+              </p>
+              <Button variant="outline" size="sm" onClick={fetchPreviousPage}>
+                Réessayer
+              </Button>
+            </div>
+          ) : (
+            <p className="rounded-full border border-border bg-card px-3 py-1 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+              Début de l'historique
+            </p>
+          )}
         </div>
       )}
       <div ref={scrollElementRef} className="h-[70vh] overflow-y-auto px-5">
@@ -185,26 +209,6 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
             );
           })}
         </div>
-        {isError ? (
-          <div className="flex flex-col items-center gap-2 py-4">
-            <p className="font-counter text-[10px] uppercase tracking-widest text-destructive">
-              Erreur de chargement de l'historique
-            </p>
-            <button
-              type="button"
-              onClick={fetchPreviousPage}
-              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground"
-            >
-              Réessayer
-            </button>
-          </div>
-        ) : (
-          !hasPreviousPage && (
-            <p className="py-4 text-center font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              Début de l'historique
-            </p>
-          )
-        )}
       </div>
     </div>
   );
