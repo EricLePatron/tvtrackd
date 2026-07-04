@@ -2,11 +2,22 @@
 
 Dossier produit + design : analyse de l'existant, benchmark concurrentiel, feuille de route priorisée. Produit à partir d'une analyse croisée du code réel (pas seulement des noms de fichiers), du benchmark TV Time / Betaseries / Trakt / Simkl / Serializd, et de CLAUDE.md.
 
-Dernière mise à jour : 2026-07-03 (soir), après merge de la PR #7.
+Dernière mise à jour : 2026-07-04, fiabilisation de l'import (formats réels + statut déduit).
 
 ---
 
 ## Livré depuis ce dossier
+
+### Fiabilisation de l'import d'historique (formats réels + statut déduit) *(en attente de commit/push)*
+
+Couvre les items **#2** et **#3** ci-dessous (marqués ✅).
+
+Le parseur d'import devinait des noms de colonnes génériques sans jamais avoir été confronté à un format réel documenté, et marquait systématiquement toute série importée en "en cours" — deux angles morts sur la fonctionnalité de confiance n°1 du produit. Recherche menée sur les formats réels TV Time (export GDPR, historiquement CSV `followed_tv_show.csv`/`seen_episode.csv`, aujourd'hui souvent un zip contenant uniquement des JSON) et Betaseries (export CSV agrégé par série `id,title,archive,episode,remaining,status,tags`, sans date par épisode).
+
+- Nouveau module `src/lib/import-parsers.ts` : détection explicite de format (Betaseries agrégé / granulaire type TV Time / JSON imbriqué aplati sur deux niveaux / non reconnu — jamais deviné silencieusement), support direct du `.zip` GDPR TV Time via dézippage client (`fflate`, chargé en import dynamique, absent du bundle principal), un fichier zip peut mélanger CSV et JSON en son sein.
+- `profile.tsx` affiche désormais le format détecté et des avertissements avant de lancer l'import, au lieu d'un import silencieux à l'aveugle.
+- `import-history` (edge function) déduit le statut au lieu de coder `"en_cours"` en dur : `"terminé"` seulement si l'historique couvre toutes les saisons/épisodes connus de TMDb **et** que la série n'est plus en diffusion (`Ended`/`Canceled`) — une série en diffusion entièrement rattrapée reste "en_cours" (cas ambigu identifié explicitement). Pour l'agrégat Betaseries (pas de date par épisode, seulement un dernier épisode vu + un statut d'archive), reconstruction du préfixe d'épisodes vus en ordre de diffusion, avec une nouvelle colonne `watch_status.watched_at_approximate` pour ne jamais présenter une date fabriquée comme fiable. Priorité de statut : `archive` Betaseries toujours gagnant, sinon "rien de vu" → `a_voir`, sinon déduction TMDb. Ne réécrit jamais un statut déjà choisi manuellement (sauf s'il est encore `a_voir`).
+- Risque assumé et non vérifiable en l'état : aucun échantillon réel (zip TV Time authentique, export Betaseries téléchargé) n'a pu être inspecté de première main — toutes les colonnes/valeurs viennent de sources tierces concordantes (README GitHub, forums), pas de la documentation officielle. À confirmer avec un vrai fichier dès que possible.
 
 ### [PR #7](https://github.com/EricLePatron/tvtrackd/pull/7) — Refonte accueil : séparer "à voir maintenant" de "programme à venir" *(mergée)*
 
@@ -34,7 +45,7 @@ Trouvé indépendamment par l'agent produit et l'agent design lors de l'analyse 
 Auth, recherche TMDb, fiche série avec cache, tracking épisode par épisode en optimistic UI, bibliothèque par statut, import/export CSV·JSON. Les tokens couleur et la typographie (Archivo/Inter/Plex Mono) sont fidèles au design system. Le hero "Ce soir" façon talon de billet est la meilleure exécution du concept dans tout le repo. Depuis PR #7 : l'écran d'accueil (Zone A/B) et l'écran calendrier dédié sont également solides.
 
 ### Ce qui manque ou est cassé
-Le tracking de film n'existe pas réellement (seul le statut change, sans date ni rewatch). Le rewatch n'historise pas chaque visionnage malgré ce qu'annonce CLAUDE.md. L'import marque tout en "en cours" par défaut. Le compteur VHS garde une barre de progression générique en dessous du tween de chiffres. *(L'onboarding vide et le hero d'accueil ambigu, listés ici initialement, sont corrigés depuis PR #7.)*
+Le tracking de film n'existe pas réellement (seul le statut change, sans date ni rewatch). Le rewatch n'historise pas chaque visionnage malgré ce qu'annonce CLAUDE.md. Le compteur VHS garde une barre de progression générique en dessous du tween de chiffres. *(L'onboarding vide et le hero d'accueil ambigu, listés ici initialement, sont corrigés depuis PR #7. Le format d'import non vérifié et le statut "en cours" par défaut, également listés ici initialement, sont corrigés depuis la fiabilisation de l'import ci-dessus.)*
 
 ---
 
@@ -62,8 +73,8 @@ Priorisation : impact sur la crédibilité de "remplaçant fiable de TV Time", p
 | # | Statut | Quoi | Pourquoi | Tags | Effort | Impact |
 |---|---|---|---|---|---|---|
 | 1 | ⬜ | Sortir "Nightframe" du code → constante `APP_NAME` | Bloquant avant tout lancement public — voir alerte transversale | Design | S | Moyen (bloquant) |
-| 2 | ⬜ | Vérifier le format réel d'export TV Time / Betaseries et fiabiliser le parseur | Le parseur devine des noms de colonnes génériques sans confirmation du format réel — fonctionnalité de confiance n°1 | Produit | S | Très élevé |
-| 3 | ⬜ | Corriger le statut par défaut à l'import (pas tout en "en cours") | Déduire "terminé" si l'historique couvre toutes les saisons connues | Produit | S | Élevé |
+| 2 | ✅ | ~~Vérifier le format réel d'export TV Time / Betaseries et fiabiliser le parseur~~ | **Livré** : détection explicite de format (Betaseries agrégé / granulaire TV Time / JSON imbriqué / non reconnu), support `.zip` GDPR TV Time. Effort réel plus proche de M que du S initial — voir section "Livré depuis ce dossier" | Produit | S | Très élevé |
+| 3 | ✅ | ~~Corriger le statut par défaut à l'import (pas tout en "en cours")~~ | **Livré** : statut déduit (`termine`/`en_cours`/`a_voir`/`archive`) à partir de TMDb + de l'agrégat Betaseries, sans jamais écraser un statut choisi manuellement | Produit | S | Élevé |
 | 4 | ✅ | ~~Onboarding post-signup orienté import~~ | **Livré via PR #7** : l'état vide "aucune série suivie" affiche directement les CTA import/recherche + une grille de découverte tendance | Produit, Design | M | Très élevé |
 | 5 | ⬜ | Implémenter le tracking des films (date, rewatch) | Promesse "séries et films" non tenue — aucune donnée créée dans `watch_status` pour un film | Produit | M | Élevé |
 | 6 | ⬜ | Refaire les pages 404 / erreur en français, dans le design system | Actuellement en anglais, police système, sans le vocabulaire visuel | Design | S | Moyen |
