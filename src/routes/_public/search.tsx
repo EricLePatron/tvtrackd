@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search as SearchIcon, Loader2 } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { supabase } from "@/integrations/supabase/client";
+import { DiscoverySection } from "@/components/home/discovery-section";
 
 export const Route = createFileRoute("/_public/search")({
   component: SearchScreen,
@@ -77,9 +78,7 @@ function SearchScreen() {
           )}
         </div>
 
-        {error && (
-          <p className="mt-4 text-sm text-destructive">{error}</p>
-        )}
+        {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
         {results.length > 0 ? (
           <div className="mt-5 grid grid-cols-3 gap-3">
@@ -112,11 +111,19 @@ function SearchScreen() {
             ))}
           </div>
         ) : (
-          !loading && debounced.length >= 2 && !error && (
+          !loading &&
+          debounced.length >= 2 &&
+          !error && (
             <p className="mt-8 text-center font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
               Aucun résultat
             </p>
           )
+        )}
+
+        {debounced.length < 2 && (
+          <div className="mt-8">
+            <DiscoverySection variant="grid" />
+          </div>
         )}
       </div>
     </>

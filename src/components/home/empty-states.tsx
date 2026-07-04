@@ -1,10 +1,9 @@
-import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import type { ShowLite, ScheduleEpisode } from "@/lib/schedule";
 
-/** Cas 1 — aucune série suivie : import / recherche + découverte en dessous. */
-export function NoShowsPanel({ discovery }: { discovery?: ReactNode }) {
+/** Cas 1 — aucune série suivie : import / recherche. */
+export function NoShowsPanel() {
   return (
     <div className="mx-5">
       <div className="rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
@@ -29,13 +28,12 @@ export function NoShowsPanel({ discovery }: { discovery?: ReactNode }) {
           </Link>
         </div>
       </div>
-      {discovery}
     </div>
   );
 }
 
-/** Cas 2 — tout vu, rien de programmé : bannière de confirmation + rail discret. */
-export function AllCaughtUpBanner({ discovery }: { discovery?: ReactNode }) {
+/** Cas 2 — tout vu, rien de programmé : bannière de confirmation. */
+export function AllCaughtUpBanner() {
   return (
     <div className="mx-5">
       <div className="flex items-center gap-3 rounded-xl border border-cyan-accent/40 bg-cyan-accent/10 px-4 py-3.5">
@@ -49,7 +47,6 @@ export function AllCaughtUpBanner({ discovery }: { discovery?: ReactNode }) {
           </p>
         </div>
       </div>
-      {discovery}
     </div>
   );
 }
