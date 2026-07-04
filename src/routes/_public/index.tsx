@@ -141,31 +141,32 @@ function HomeScreen() {
       ) : (
         <HomeContent data={data} />
       )}
+
+      {/* Découverte — un seul encart, à un emplacement fixe, quel que soit
+          l'état de la Home. */}
+      <div className="mx-5 mt-8">
+        <DiscoverySection variant="compact" />
+      </div>
     </>
   );
 }
 
 function AnonymousHome() {
   return (
-    <>
-      <div className="mx-5 rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
-        <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-          Mode découverte
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Créez un compte pour suivre vos séries et voir votre programme personnalisé.
-        </p>
-        <Link
-          to="/auth"
-          className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
-        >
-          Se connecter / Créer un compte
-        </Link>
-      </div>
-      <div className="mx-5">
-        <DiscoverySection variant="grid" />
-      </div>
-    </>
+    <div className="mx-5 rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
+      <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+        Mode découverte
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Créez un compte pour suivre vos séries et voir votre programme personnalisé.
+      </p>
+      <Link
+        to="/auth"
+        className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+      >
+        Se connecter / Créer un compte
+      </Link>
+    </div>
   );
 }
 
@@ -177,11 +178,11 @@ function HomeContent({ data }: { data: HomeData }) {
   });
 
   if (state === "no_shows") {
-    return <NoShowsPanel discovery={<DiscoverySection variant="grid" />} />;
+    return <NoShowsPanel />;
   }
 
   if (state === "all_caught_up") {
-    return <AllCaughtUpBanner discovery={<DiscoverySection variant="compact" />} />;
+    return <AllCaughtUpBanner />;
   }
 
   const buckets = bucketUpcoming(data.dayGroups, data.today);
