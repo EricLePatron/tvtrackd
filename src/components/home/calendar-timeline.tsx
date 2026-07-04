@@ -90,32 +90,44 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     overscan: 6,
   });
 
-  // Anchor on "today" once the initial window has loaded. A *layout* effect
-  // so this runs synchronously before the browser paints — the user must
-  // never see the pre-anchor (today-14j) scroll position, even for a single
-  // frame.
-  useLayoutEffect(() => {
-    if (hasScrolledToToday.current || !flatRows.length) return;
-    const todayIndex = flatRows.findIndex((r) => r.kind === "day-header" && r.isToday);
-    if (todayIndex === -1) return;
-    rowVirtualizer.scrollToIndex(todayIndex, { align: "start" });
-    hasScrolledToToday.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRows]);
-
-  // Preserve scroll position when older pages are prepended at the top: the
-  // virtualizer's total size grows by exactly the height of the new rows,
-  // so nudging scrollTop by that same delta keeps the viewport pinned on
-  // whatever the user was already looking at (no visual jump).
+  // Single layout effect handling both "anchor on today" (first load) and
+  // "preserve scroll position on prepend" (subsequent backward pages) —
+  // deliberately merged rather than split across two effects. Splitting them
+  // caused a regression: on the very first commit where `flatRows` goes from
+  // empty to the full initial window, both effects used to fire in the same
+  // pass. The anchor effect would call `scrollToIndex` (synchronous
+  // `scrollTop` write) and flip `hasScrolledToToday.current` to `true`; the
+  // second effect would then see that ref already `true` with
+  // `previousTotalSize.current` still at its initial `0`, and add the *entire*
+  // newly-loaded content height on top of the position `scrollToIndex` had
+  // just set — overshooting past the scrollable max, which the browser
+  // clamps to the bottom of the list. Merging into one effect makes the two
+  // cases mutually exclusive within a single run: the first-load branch
+  // anchors *and* establishes the `previousTotalSize` baseline together, so
+  // it can never also be treated as a prepend to compensate for.
   useLayoutEffect(() => {
     const newTotalSize = rowVirtualizer.getTotalSize();
+
+    if (!hasScrolledToToday.current) {
+      if (!flatRows.length) return;
+      const todayIndex = flatRows.findIndex((r) => r.kind === "day-header" && r.isToday);
+      if (todayIndex === -1) return; // defensive: buildTimelineDayGroups always includes "today"
+      rowVirtualizer.scrollToIndex(todayIndex, { align: "start" });
+      hasScrolledToToday.current = true;
+      previousTotalSize.current = newTotalSize;
+      return;
+    }
+
+    // Already anchored: any growth in total size comes from an older page
+    // prepended above the current viewport — nudge scrollTop by that exact
+    // delta so whatever the user was looking at doesn't visually move.
     const diff = newTotalSize - previousTotalSize.current;
-    if (hasScrolledToToday.current && diff > 0 && scrollElementRef.current) {
+    if (diff > 0 && scrollElementRef.current) {
       scrollElementRef.current.scrollTop += diff;
     }
     previousTotalSize.current = newTotalSize;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRows.length]);
+  }, [flatRows]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const firstRenderedIndex = virtualItems[0]?.index ?? 0;
