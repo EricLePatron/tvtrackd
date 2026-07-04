@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useAuthGate } from "@/hooks/use-auth-gate";
 import { useTrending } from "@/hooks/use-trending";
 import { useQuickFollow } from "@/hooks/use-quick-follow";
 import { useFollowedKeys } from "@/hooks/use-followed-keys";
@@ -14,10 +15,11 @@ import { DiscoveryGrid, trendingKey, type TrendingItem } from "@/components/home
  */
 export function DiscoverySection({ variant }: { variant: "grid" | "compact" }) {
   const { user } = useAuth();
-  const { data: items = [], isLoading } = useTrending(!!user);
+  const { data: items = [], isLoading } = useTrending(true);
   const { data: alreadyFollowedKeys = new Set<string>() } = useFollowedKeys(user?.id);
   const [optimisticKeys, setOptimisticKeys] = useState<Set<string>>(new Set());
   const followMutation = useQuickFollow(user?.id);
+  const { requireAuth } = useAuthGate();
 
   const followedKeys = useMemo(
     () => new Set([...alreadyFollowedKeys, ...optimisticKeys]),
@@ -25,17 +27,22 @@ export function DiscoverySection({ variant }: { variant: "grid" | "compact" }) {
   );
 
   const handleFollow = (item: TrendingItem) => {
-    const key = trendingKey(item);
-    setOptimisticKeys((prev) => new Set(prev).add(key));
-    followMutation.mutate(item, {
-      onError: () => {
-        setOptimisticKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(key);
-          return next;
+    requireAuth(
+      () => {
+        const key = trendingKey(item);
+        setOptimisticKeys((prev) => new Set(prev).add(key));
+        followMutation.mutate(item, {
+          onError: () => {
+            setOptimisticKeys((prev) => {
+              const next = new Set(prev);
+              next.delete(key);
+              return next;
+            });
+          },
         });
       },
-    });
+      { reason: "suivre cette série" },
+    );
   };
 
   return (

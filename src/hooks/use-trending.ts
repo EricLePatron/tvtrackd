@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { TrendingItem } from "@/components/home/discovery-grid";
 
 /** "Le rayon du moment" — TMDb weekly trending, used by the discovery grids. */
-export function useTrending(enabled: boolean) {
+export function useTrending(enabled: boolean = true) {
   return useQuery({
     queryKey: ["trending-media"],
     enabled,
