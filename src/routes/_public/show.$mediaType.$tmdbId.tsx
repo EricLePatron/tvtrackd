@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { VhsCounter } from "@/components/vhs-counter";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_authenticated/show/$mediaType/$tmdbId")({
+export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   component: ShowDetail,
   errorComponent: ({ error }) => (
     <div className="p-6 text-sm text-destructive">Erreur : {error.message}</div>

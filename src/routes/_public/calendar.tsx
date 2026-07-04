@@ -11,7 +11,7 @@ import {
 } from "@/lib/schedule";
 import { UpcomingBucketRails, PlusTardSummary } from "@/components/home/upcoming-section";
 
-export const Route = createFileRoute("/_authenticated/calendar")({
+export const Route = createFileRoute("/_public/calendar")({
   component: CalendarScreen,
 });
 

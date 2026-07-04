@@ -29,7 +29,7 @@ import {
   NothingScheduledNotice,
 } from "@/components/home/empty-states";
 
-export const Route = createFileRoute("/_authenticated/")({
+export const Route = createFileRoute("/_public/")({
   component: HomeScreen,
 });
 
