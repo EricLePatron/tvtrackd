@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Upload, Search as SearchIcon, LogOut } from "lucide-react";
+import { Download, Upload, Search as SearchIcon, LogOut, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { ScreenHeader } from "@/components/screen-header";
@@ -14,6 +14,7 @@ export const Route = createFileRoute("/_authenticated/profile")({
 });
 
 const AVG_EPISODE_MIN = 42;
+const MAX_VISIBLE_WARNINGS = 5;
 
 type Unmatched = { key: string; title: string; year: number | null; occurrences: number };
 
@@ -193,8 +194,10 @@ function ImportPanel() {
         return;
       }
       await runImport(items, {});
-    } catch (err) {
-      toast.error((err as Error).message);
+    } catch {
+      toast.error(
+        "Impossible de lire ce fichier — vérifiez qu'il s'agit bien d'un export TV Time ou Betaseries.",
+      );
     } finally {
       setBusy(false);
     }
@@ -262,16 +265,25 @@ function ImportPanel() {
         />
       </label>
 
-      {(detectedFormats.length > 0 || warnings.length > 0) && (
-        <div className="mt-3 space-y-1 rounded-md border border-border bg-surface-elevated/50 p-3 text-xs">
-          {detectedFormats.length > 0 && (
-            <p className="text-foreground">Format détecté : {detectedFormats.join(", ")}</p>
-          )}
-          {warnings.map((w, i) => (
-            <p key={i} className="text-muted-foreground">
-              {w}
-            </p>
-          ))}
+      {detectedFormats.length > 0 && (
+        <div className="mt-3 rounded-md border border-border bg-surface-elevated/50 p-3 text-xs">
+          <p className="text-foreground">Format détecté : {detectedFormats.join(", ")}</p>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
+          <div className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />À savoir sur cet import
+          </div>
+          <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto">
+            {warnings.slice(0, MAX_VISIBLE_WARNINGS).map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+            {warnings.length > MAX_VISIBLE_WARNINGS && (
+              <p className="font-medium">et {warnings.length - MAX_VISIBLE_WARNINGS} autre(s)…</p>
+            )}
+          </div>
         </div>
       )}
 

@@ -119,12 +119,16 @@ function parseCsvSource(text: string): SourceResult | null {
   }
 
   if (isBetaseriesShowsHeader(headers)) {
-    const warnings: string[] = [];
+    const unrecognizedEpisodeTitles: string[] = [];
     const items = rows
-      .map((row) => parseBetaseriesRow(row, warnings))
+      .map((row) => parseBetaseriesRow(row, unrecognizedEpisodeTitles))
       .filter((r): r is AggregateImportItem => !!r);
     if (!items.length) return null;
-    return { format: "betaseries", items, warnings };
+    return {
+      format: "betaseries",
+      items,
+      warnings: summarizeUnrecognizedEpisodeWarnings(unrecognizedEpisodeTitles),
+    };
   }
 
   const items = rows.map(normalizeGranularRow).filter((r): r is GranularImportItem => !!r);
@@ -156,18 +160,28 @@ function isBetaseriesShowsHeader(headers: string[]): boolean {
   );
 }
 
+// Regroupe les avertissements par motif plutôt qu'un par ligne : un export avec
+// beaucoup de lignes au format non standard ne doit jamais produire une liste de
+// warnings non bornée (voir profile.tsx pour le plafond d'affichage côté UI).
+function summarizeUnrecognizedEpisodeWarnings(titles: string[]): string[] {
+  if (!titles.length) return [];
+  const preview = titles.slice(0, 3).join(", ");
+  const ellipsis = titles.length > 3 ? ", …" : "";
+  return [
+    `Format d'épisode non reconnu pour ${titles.length} entrée(s) Betaseries (ex. ${preview}${ellipsis}) — elles seront suivies sans épisode marqué vu.`,
+  ];
+}
+
 function parseBetaseriesRow(
   row: Record<string, string>,
-  warnings: string[],
+  unrecognizedEpisodeTitles: string[],
 ): AggregateImportItem | null {
   const title = row["title"]?.trim();
   if (!title) return null;
   const episodeRaw = (row["episode"] ?? "").trim();
   const epMatch = /^s(\d+)e(\d+)$/i.exec(episodeRaw);
   if (!epMatch) {
-    warnings.push(
-      `Betaseries : format d'épisode non reconnu pour "${title}" (valeur "${episodeRaw}") — la série sera suivie sans épisode marqué vu.`,
-    );
+    unrecognizedEpisodeTitles.push(title);
   }
   const lastSeason = epMatch ? Number(epMatch[1]) : 0;
   const lastEpisode = epMatch ? Number(epMatch[2]) : 0;
