@@ -21,6 +21,7 @@ import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticate
 import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } from './routes/[.well-known]/oauth-protected-resource'
 import { Route as Char91DotmcpChar93ListToolsRouteImport } from './routes/[.mcp]/list-tools'
 import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
+import { Route as DotlovableOauthConsentRouteImport } from './routes/[.]lovable.oauth.consent'
 import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/show.$mediaType.$tmdbId'
 
 const McpRoute = McpRouteImport.update({
@@ -84,6 +85,11 @@ const Char91DotmcpChar93InvokeToolToolRoute =
     path: '/.mcp/invoke-tool/$tool',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DotlovableOauthConsentRoute = DotlovableOauthConsentRouteImport.update({
+  id: '/.lovable/oauth/consent',
+  path: '/.lovable/oauth/consent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PublicShowMediaTypeTmdbIdRoute =
   PublicShowMediaTypeTmdbIdRouteImport.update({
     id: '/show/$mediaType/$tmdbId',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/calendar': typeof PublicCalendarRoute
   '/search': typeof PublicSearchRoute
+  '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/calendar': typeof PublicCalendarRoute
   '/search': typeof PublicSearchRoute
+  '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/_public/calendar': typeof PublicCalendarRoute
   '/_public/search': typeof PublicSearchRoute
   '/_public/': typeof PublicIndexRoute
+  '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/_public/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/calendar'
     | '/search'
+    | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
     | '/show/$mediaType/$tmdbId'
   fileRoutesByTo: FileRoutesByTo
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/calendar'
     | '/search'
+    | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
     | '/show/$mediaType/$tmdbId'
   id:
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/_public/calendar'
     | '/_public/search'
     | '/_public/'
+    | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
     | '/_public/show/$mediaType/$tmdbId'
   fileRoutesById: FileRoutesById
@@ -184,6 +196,7 @@ export interface RootRouteChildren {
   McpRoute: typeof McpRoute
   Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
   Char91DotwellKnownChar93OauthProtectedResourceRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
+  DotlovableOauthConsentRoute: typeof DotlovableOauthConsentRoute
   Char91DotmcpChar93InvokeToolToolRoute: typeof Char91DotmcpChar93InvokeToolToolRoute
 }
 
@@ -273,6 +286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char91DotmcpChar93InvokeToolToolRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/.lovable/oauth/consent': {
+      id: '/.lovable/oauth/consent'
+      path: '/.lovable/oauth/consent'
+      fullPath: '/.lovable/oauth/consent'
+      preLoaderRoute: typeof DotlovableOauthConsentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_public/show/$mediaType/$tmdbId': {
       id: '/_public/show/$mediaType/$tmdbId'
       path: '/show/$mediaType/$tmdbId'
@@ -321,6 +341,7 @@ const rootRouteChildren: RootRouteChildren = {
   Char91DotmcpChar93ListToolsRoute: Char91DotmcpChar93ListToolsRoute,
   Char91DotwellKnownChar93OauthProtectedResourceRoute:
     Char91DotwellKnownChar93OauthProtectedResourceRoute,
+  DotlovableOauthConsentRoute: DotlovableOauthConsentRoute,
   Char91DotmcpChar93InvokeToolToolRoute: Char91DotmcpChar93InvokeToolToolRoute,
 }
 export const routeTree = rootRouteImport
