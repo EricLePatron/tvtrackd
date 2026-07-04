@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useCalendarTimeline } from "@/hooks/use-calendar-timeline";
 import { CalendarTimelineList } from "@/components/home/calendar-timeline";
+import { NoShowsPanel } from "@/components/home/empty-states";
 
 export const Route = createFileRoute("/_public/calendar")({
   component: CalendarScreen,
@@ -45,6 +46,8 @@ function CalendarScreen() {
               Se connecter / Créer un compte
             </Link>
           </div>
+        ) : !timeline.isLoading && !timeline.hasFollowedShows ? (
+          <NoShowsPanel />
         ) : (
           <CalendarTimelineList timeline={timeline} />
         )}

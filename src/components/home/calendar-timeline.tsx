@@ -19,7 +19,12 @@ type FlatRow =
   | { kind: "empty-today"; key: string }
   | { kind: "episode"; key: string; saturated: boolean; episode: TimelineEpisode };
 
-/** Fixed row heights (no `measureElement`) so scroll-position math on prepend stays exact. */
+/**
+ * Fixed row heights (no `measureElement`) so scroll-position math on prepend
+ * stays exact. `episode` is the single source of truth for the episode row
+ * slot — `EpisodeRow` fills it via `h-full` + bottom padding rather than a
+ * second hardcoded height, so the two can never drift apart.
+ */
 const ROW_HEIGHT = { header: 36, episode: 76, empty: 56 } as const;
 
 function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
@@ -68,6 +73,7 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     dayGroups,
     isLoading,
     isFetchingPreviousPage,
+    isError,
     hasPreviousPage,
     fetchPreviousPage,
   } = timeline;
@@ -84,15 +90,18 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     overscan: 6,
   });
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const firstRenderedIndex = virtualItems[0]?.index ?? 0;
-
-  // Trigger backward pagination once the rendered window nears the top.
-  useEffect(() => {
-    if (firstRenderedIndex <= 4 && hasPreviousPage && !isFetchingPreviousPage) {
-      fetchPreviousPage();
-    }
-  }, [firstRenderedIndex, hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage]);
+  // Anchor on "today" once the initial window has loaded. A *layout* effect
+  // so this runs synchronously before the browser paints — the user must
+  // never see the pre-anchor (today-14j) scroll position, even for a single
+  // frame.
+  useLayoutEffect(() => {
+    if (hasScrolledToToday.current || !flatRows.length) return;
+    const todayIndex = flatRows.findIndex((r) => r.kind === "day-header" && r.isToday);
+    if (todayIndex === -1) return;
+    rowVirtualizer.scrollToIndex(todayIndex, { align: "start" });
+    hasScrolledToToday.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatRows]);
 
   // Preserve scroll position when older pages are prepended at the top: the
   // virtualizer's total size grows by exactly the height of the new rows,
@@ -108,15 +117,20 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatRows.length]);
 
-  // Anchor on "today" once the initial window has loaded (runs once).
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const firstRenderedIndex = virtualItems[0]?.index ?? 0;
+
+  // Trigger backward pagination once the rendered window nears the top —
+  // gated on the initial "today" anchor having already happened, so we
+  // never fire an unrequested fetch while the list is still sitting at its
+  // pre-anchor scroll position (which would otherwise look like index ~0,
+  // i.e. "near the top", on the very first paint).
   useEffect(() => {
-    if (hasScrolledToToday.current || !flatRows.length) return;
-    const todayIndex = flatRows.findIndex((r) => r.kind === "day-header" && r.isToday);
-    if (todayIndex === -1) return;
-    rowVirtualizer.scrollToIndex(todayIndex, { align: "start" });
-    hasScrolledToToday.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatRows]);
+    if (!hasScrolledToToday.current) return;
+    if (firstRenderedIndex <= 4 && hasPreviousPage && !isFetchingPreviousPage && !isError) {
+      fetchPreviousPage();
+    }
+  }, [firstRenderedIndex, hasPreviousPage, isFetchingPreviousPage, isError, fetchPreviousPage]);
 
   if (isLoading) {
     return (
@@ -159,10 +173,25 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
             );
           })}
         </div>
-        {!hasPreviousPage && (
-          <p className="py-4 text-center font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-            Début de l'historique
-          </p>
+        {isError ? (
+          <div className="flex flex-col items-center gap-2 py-4">
+            <p className="font-counter text-[10px] uppercase tracking-widest text-destructive">
+              Erreur de chargement de l'historique
+            </p>
+            <button
+              type="button"
+              onClick={fetchPreviousPage}
+              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground"
+            >
+              Réessayer
+            </button>
+          </div>
+        ) : (
+          !hasPreviousPage && (
+            <p className="py-4 text-center font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+              Début de l'historique
+            </p>
+          )
         )}
       </div>
     </div>
@@ -196,44 +225,51 @@ function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
   return <EpisodeRow episode={row.episode} saturated={row.saturated} />;
 }
 
-/** One row per episode — reuses the same `saturated` treatment as the Home rails' `EntryCard`. */
+/**
+ * One row per episode — reuses the same `saturated` treatment as the Home
+ * rails' `EntryCard`. Fills its slot via `h-full` + bottom padding rather
+ * than a second hardcoded pixel height, so it can never drift out of sync
+ * with `ROW_HEIGHT.episode` (the virtualizer's `estimateSize`).
+ */
 function EpisodeRow({ episode, saturated }: { episode: TimelineEpisode; saturated: boolean }) {
   const { show } = episode;
   return (
-    <Link
-      to="/show/$mediaType/$tmdbId"
-      params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-      className="flex h-[68px] items-center gap-3 rounded-lg border border-border bg-card px-3 py-2"
-    >
-      <div
-        className={`h-14 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated ${
-          saturated ? "" : "opacity-60"
-        }`}
+    <div className="h-full pb-2">
+      <Link
+        to="/show/$mediaType/$tmdbId"
+        params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
+        className="flex h-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2"
       >
-        {show.poster_path && (
-          <img
-            src={show.poster_path}
-            alt={show.title}
-            loading="lazy"
-            className={`h-full w-full object-cover ${saturated ? "" : "grayscale-[35%]"}`}
-          />
+        <div
+          className={`h-14 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated ${
+            saturated ? "" : "opacity-60"
+          }`}
+        >
+          {show.poster_path && (
+            <img
+              src={show.poster_path}
+              alt={show.title}
+              loading="lazy"
+              className={`h-full w-full object-cover ${saturated ? "" : "grayscale-[35%]"}`}
+            />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-sm text-foreground">{show.title}</h4>
+          <p className="truncate text-xs text-muted-foreground">{episode.title ?? "—"}</p>
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            S{pad(episode.season_number)} E{pad(episode.episode_number)}
+          </p>
+        </div>
+        {/* Vu/à-voir badge: only for aired entries, watched-only signal (cyan-accent, same as
+            elsewhere in the app) — absence of the badge implies "pas encore vu". */}
+        {saturated && episode.watched && (
+          <span className="flex shrink-0 items-center gap-1 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
+            <Check className="h-3 w-3" />
+            Vu
+          </span>
         )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <h4 className="truncate text-sm text-foreground">{show.title}</h4>
-        <p className="truncate text-xs text-muted-foreground">{episode.title ?? "—"}</p>
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          S{pad(episode.season_number)} E{pad(episode.episode_number)}
-        </p>
-      </div>
-      {/* Vu/à-voir badge: only for aired entries, watched-only signal (cyan-accent, same as
-          elsewhere in the app) — absence of the badge implies "pas encore vu". */}
-      {saturated && episode.watched && (
-        <span className="flex shrink-0 items-center gap-1 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
-          <Check className="h-3 w-3" />
-          Vu
-        </span>
-      )}
-    </Link>
+      </Link>
+    </div>
   );
 }

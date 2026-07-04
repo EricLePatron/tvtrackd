@@ -28,11 +28,12 @@ type EpisodePage = {
 
 async function fetchWatchedIds(userId: string, episodeIds: number[]): Promise<number[]> {
   if (!episodeIds.length) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("watch_status")
     .select("episode_id")
     .eq("user_id", userId)
     .in("episode_id", episodeIds);
+  if (error) throw error;
   return (data ?? []).map((w) => w.episode_id);
 }
 
@@ -44,7 +45,7 @@ async function fetchEpisodePage(
 ): Promise<EpisodePage> {
   if (!showIds.length) return { start, end, episodes: [], watchedEpisodeIds: [] };
 
-  const { data: eps } = await supabase
+  const { data: eps, error } = await supabase
     .from("episodes")
     .select(
       "id, season_number, episode_number, title, air_date, show:shows!inner(id, tmdb_id, media_type, title, poster_path)",
@@ -54,6 +55,7 @@ async function fetchEpisodePage(
     .gte("air_date", start)
     .lte("air_date", end)
     .order("air_date", { ascending: true });
+  if (error) throw error;
 
   const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
   const pastEpisodeIds = episodes.filter((e) => e.air_date! <= today).map((e) => e.id);
@@ -69,8 +71,12 @@ export type CalendarTimeline = {
   isLoading: boolean;
   /** True while an older backward page is being fetched (top-of-list spinner). */
   isFetchingPreviousPage: boolean;
+  /** A page fetch (followed shows or an episode window) failed — distinct from "no more history". */
+  isError: boolean;
   hasPreviousPage: boolean;
   fetchPreviousPage: () => void;
+  /** False once `followed` has resolved and the user follows zero a_voir/en_cours shows. */
+  hasFollowedShows: boolean;
 };
 
 /**
@@ -90,16 +96,23 @@ export function useCalendarTimeline(): CalendarTimeline {
     queryKey: ["calendar-timeline-followed", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_shows")
         .select("show_id")
         .eq("user_id", user!.id)
-        .in("status", ["a_voir", "en_cours"]);
+        .in("status", ["a_voir", "en_cours"])
+        // Postgres does not guarantee row order without ORDER BY. This feeds
+        // `queryKey` below (via the sorted showIds), so a stable order here
+        // matters: without it, an unrelated row-order change between two
+        // identical requests (e.g. on window refocus) would change the key
+        // and blow away the whole loaded backward-pagination history.
+        .order("show_id", { ascending: true });
+      if (error) throw error;
       const showIds = (data ?? []).map((r) => r.show_id);
 
       let earliestDate: string | null = null;
       if (showIds.length) {
-        const { data: earliest } = await supabase
+        const { data: earliest, error: earliestError } = await supabase
           .from("episodes")
           .select("air_date")
           .in("show_id", showIds)
@@ -107,6 +120,7 @@ export function useCalendarTimeline(): CalendarTimeline {
           .order("air_date", { ascending: true })
           .limit(1)
           .maybeSingle();
+        if (earliestError) throw earliestError;
         earliestDate = earliest?.air_date ?? null;
       }
 
@@ -114,7 +128,13 @@ export function useCalendarTimeline(): CalendarTimeline {
     },
   });
 
-  const showIds = useMemo(() => followed.data?.showIds ?? [], [followed.data]);
+  // Sorted defensively (belt-and-suspenders on top of the `ORDER BY` above)
+  // so the derived queryKey below never changes unless the *set* of followed
+  // shows actually changes.
+  const showIds = useMemo(
+    () => [...(followed.data?.showIds ?? [])].sort((a, b) => a - b),
+    [followed.data],
+  );
   const earliestDate = followed.data?.earliestDate ?? null;
 
   const initialStart = addDaysToDateString(today, -INITIAL_PAST_DAYS);
@@ -136,7 +156,7 @@ export function useCalendarTimeline(): CalendarTimeline {
     },
   });
 
-  const { data, isLoading, isFetchingPreviousPage, hasPreviousPage, fetchPreviousPage } =
+  const { data, isLoading, isError, isFetchingPreviousPage, hasPreviousPage, fetchPreviousPage } =
     episodesQuery;
 
   const dayGroups = useMemo(() => {
@@ -155,7 +175,12 @@ export function useCalendarTimeline(): CalendarTimeline {
     dayGroups,
     isLoading: !!user && (followed.isLoading || (isLoading && !data)),
     isFetchingPreviousPage,
+    // A failed page fetch throws instead of silently resolving to an empty
+    // page (see fetchEpisodePage/fetchWatchedIds) — surfaced here so the UI
+    // can tell a real "end of history" apart from a transient error.
+    isError: isError || followed.isError,
     hasPreviousPage: hasPreviousPage ?? false,
     fetchPreviousPage: () => void fetchPreviousPage(),
+    hasFollowedShows: followed.data ? followed.data.showIds.length > 0 : true,
   };
 }
