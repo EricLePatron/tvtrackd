@@ -177,7 +177,6 @@ export type Database = {
           user_id: string
           watch_count: number
           watched_at: string
-          watched_at_approximate: boolean
         }
         Insert: {
           episode_id: number
@@ -185,7 +184,6 @@ export type Database = {
           user_id: string
           watch_count?: number
           watched_at?: string
-          watched_at_approximate?: boolean
         }
         Update: {
           episode_id?: number
@@ -193,7 +191,6 @@ export type Database = {
           user_id?: string
           watch_count?: number
           watched_at?: string
-          watched_at_approximate?: boolean
         }
         Relationships: [
           {
