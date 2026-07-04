@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowLeft, Check, Plus, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useAuthGate } from "@/hooks/use-auth-gate";
 import { VhsCounter } from "@/components/vhs-counter";
 import { toast } from "sonner";
 
@@ -48,6 +49,7 @@ const STATUS_LABELS: Record<string, string> = {
 function ShowDetail() {
   const { mediaType, tmdbId } = Route.useParams();
   const { user } = useAuth();
+  const { requireAuth } = useAuthGate();
   const qc = useQueryClient();
 
   const detailsKey = ["show-details", mediaType, tmdbId];
