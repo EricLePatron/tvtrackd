@@ -29,7 +29,7 @@ import {
   NothingScheduledNotice,
 } from "@/components/home/empty-states";
 
-export const Route = createFileRoute("/_authenticated/")({
+export const Route = createFileRoute("/_public/")({
   component: HomeScreen,
 });
 
@@ -134,11 +134,37 @@ function HomeScreen() {
         Vos prochaines diffusions, en un coup d'œil.
       </ScreenHeader>
 
-      {isLoading || !data ? (
+      {!user ? (
+        <AnonymousHome />
+      ) : isLoading || !data ? (
         <div className="mx-5 h-40 animate-pulse rounded-xl bg-card" />
       ) : (
         <HomeContent data={data} />
       )}
+    </>
+  );
+}
+
+function AnonymousHome() {
+  return (
+    <>
+      <div className="mx-5 rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
+        <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+          Mode découverte
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Créez un compte pour suivre vos séries et voir votre programme personnalisé.
+        </p>
+        <Link
+          to="/auth"
+          className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+        >
+          Se connecter / Créer un compte
+        </Link>
+      </div>
+      <div className="mx-5">
+        <DiscoverySection variant="grid" />
+      </div>
     </>
   );
 }

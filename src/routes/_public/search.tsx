@@ -4,7 +4,7 @@ import { Search as SearchIcon, Loader2 } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { supabase } from "@/integrations/supabase/client";
 
-export const Route = createFileRoute("/_authenticated/search")({
+export const Route = createFileRoute("/_public/search")({
   component: SearchScreen,
 });
 

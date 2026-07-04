@@ -11,7 +11,7 @@ import {
 } from "@/lib/schedule";
 import { UpcomingBucketRails, PlusTardSummary } from "@/components/home/upcoming-section";
 
-export const Route = createFileRoute("/_authenticated/calendar")({
+export const Route = createFileRoute("/_public/calendar")({
   component: CalendarScreen,
 });
 
@@ -75,7 +75,22 @@ function CalendarScreen() {
       </div>
 
       <div className="mt-6 space-y-8 px-5 pb-10">
-        {isLoading || !data || !buckets ? (
+        {!user ? (
+          <div className="rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
+            <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+              Connexion requise
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Créez un compte pour construire votre calendrier à partir des séries que vous suivez.
+            </p>
+            <Link
+              to="/auth"
+              className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+            >
+              Se connecter / Créer un compte
+            </Link>
+          </div>
+        ) : isLoading || !data || !buckets ? (
           <div className="h-40 animate-pulse rounded-xl bg-card" />
         ) : buckets.demain.length === 0 &&
           buckets.cetteSemaine.length === 0 &&
