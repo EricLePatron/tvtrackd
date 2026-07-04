@@ -1,28 +1,29 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Upload, Search as SearchIcon, LogOut } from "lucide-react";
+import { Download, Upload, Search as SearchIcon, LogOut, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { ScreenHeader } from "@/components/screen-header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { parseImportFile, FORMAT_LABELS, type ImportItem } from "@/lib/import-parsers";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfileScreen,
 });
 
 const AVG_EPISODE_MIN = 42;
-
-type ImportItem = {
-  title: string;
-  year?: number | null;
-  season?: number | null;
-  episode?: number | null;
-  watched_at?: string | null;
-};
+const MAX_VISIBLE_WARNINGS = 5;
 
 type Unmatched = { key: string; title: string; year: number | null; occurrences: number };
+
+// Doit répliquer exactement la clé de groupement `(title, year)` utilisée côté
+// edge function (`import-history/index.ts`) pour pouvoir isoler les items d'un
+// groupe précis lors d'une résolution manuelle.
+function itemKey(item: ImportItem): string {
+  return `${item.title.trim().toLowerCase()}|${item.year ?? ""}`;
+}
 
 function ProfileScreen() {
   const navigate = useNavigate();
@@ -104,9 +105,7 @@ function ProfileScreen() {
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-display text-lg text-foreground truncate">
-                {username ?? "—"}
-              </p>
+              <p className="font-display text-lg text-foreground truncate">{username ?? "—"}</p>
               <p className="text-xs text-muted-foreground truncate">{email ?? "…"}</p>
             </div>
           </div>
@@ -156,26 +155,14 @@ function ProfileScreen() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  suffix,
-}: {
-  label: string;
-  value: number;
-  suffix?: string;
-}) {
+function StatCard({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="font-counter text-2xl text-foreground tabular-nums">
         {value.toString().padStart(2, "0")}
       </p>
-      {suffix && (
-        <p className="font-counter text-[10px] text-secondary">≈ {suffix}</p>
-      )}
-      <p className="mt-1 text-[10px] uppercase tracking-widest text-muted-foreground">
-        {label}
-      </p>
+      {suffix && <p className="font-counter text-[10px] text-secondary">≈ {suffix}</p>}
+      <p className="mt-1 text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
     </div>
   );
 }
@@ -187,19 +174,30 @@ function ImportPanel() {
   const [unmatched, setUnmatched] = useState<Unmatched[]>([]);
   const [pendingItems, setPendingItems] = useState<ImportItem[]>([]);
   const [resolutions, setResolutions] = useState<Record<string, number>>({});
+  const [detectedFormats, setDetectedFormats] = useState<string[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   async function handleFile(file: File) {
     setBusy(true);
+    setDetectedFormats([]);
+    setWarnings([]);
     try {
-      const text = await file.text();
-      const items = file.name.endsWith(".json") ? parseJSON(text) : parseCSV(text);
+      const {
+        items,
+        detectedFormats: formats,
+        warnings: parseWarnings,
+      } = await parseImportFile(file);
+      setDetectedFormats(formats.map((f) => FORMAT_LABELS[f]));
+      setWarnings(parseWarnings);
       if (!items.length) {
-        toast.error("Aucune ligne détectée dans le fichier");
+        toast.error("Aucune ligne exploitable détectée dans le fichier");
         return;
       }
       await runImport(items, {});
-    } catch (err) {
-      toast.error((err as Error).message);
+    } catch {
+      toast.error(
+        "Impossible de lire ce fichier — vérifiez qu'il s'agit bien d'un export TV Time ou Betaseries.",
+      );
     } finally {
       setBusy(false);
     }
@@ -214,16 +212,35 @@ function ImportPanel() {
       return;
     }
     const result = data as { imported: number; followed: number; unmatched: Unmatched[] };
-    toast.success(
-      `${result.imported} épisodes importés · ${result.followed} nouvelles séries`,
-    );
+    toast.success(`${result.imported} épisodes importés · ${result.followed} nouvelles séries`);
     setPendingItems(items);
     setUnmatched(result.unmatched ?? []);
   }
 
+  // Ne renvoie que les groupes que l'utilisateur vient de résoudre manuellement,
+  // pas tout `pendingItems` : les séries déjà importées avec succès dans le même
+  // lot ne doivent pas être retraitées à chaque clic sur "Relancer l'import".
   async function resolveAndRetry() {
+    const keysToRetry = new Set(Object.keys(resolutions));
+    if (!keysToRetry.size) return;
     setBusy(true);
-    await runImport(pendingItems, resolutions);
+    const itemsToRetry = pendingItems.filter((it) => keysToRetry.has(itemKey(it)));
+    const { data, error } = await supabase.functions.invoke("import-history", {
+      body: { items: itemsToRetry, resolutions },
+    });
+    if (error) {
+      toast.error(error.message);
+    } else {
+      const result = data as { imported: number; followed: number; unmatched: Unmatched[] };
+      toast.success(`${result.imported} épisodes importés · ${result.followed} nouvelles séries`);
+      // Retire du panneau les groupes qu'on vient de résoudre, garde les autres
+      // toujours en attente, et rajoute ce que le serveur signalerait encore
+      // comme non résolu (ne devrait pas arriver avec une résolution explicite).
+      setUnmatched((prev) => [
+        ...prev.filter((u) => !keysToRetry.has(u.key)),
+        ...(result.unmatched ?? []),
+      ]);
+    }
     setResolutions({});
     setBusy(false);
   }
@@ -232,10 +249,12 @@ function ImportPanel() {
     <>
       <label className="flex h-11 w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-elevated px-4 text-sm text-foreground hover:bg-surface-elevated/70">
         <Upload className="h-4 w-4" />
-        {busy ? "Import en cours…" : "Importer un fichier CSV ou JSON"}
+        {busy
+          ? "Import en cours…"
+          : "Importer un fichier CSV, JSON ou .zip (export TV Time/Betaseries)"}
         <input
           type="file"
-          accept=".csv,.json,text/csv,application/json"
+          accept=".csv,.json,.zip,text/csv,application/json,application/zip"
           disabled={busy}
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -245,6 +264,28 @@ function ImportPanel() {
           className="hidden"
         />
       </label>
+
+      {detectedFormats.length > 0 && (
+        <div className="mt-3 rounded-md border border-border bg-surface-elevated/50 p-3 text-xs">
+          <p className="text-foreground">Format détecté : {detectedFormats.join(", ")}</p>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
+          <div className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />À savoir sur cet import
+          </div>
+          <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto">
+            {warnings.slice(0, MAX_VISIBLE_WARNINGS).map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+            {warnings.length > MAX_VISIBLE_WARNINGS && (
+              <p className="font-medium">et {warnings.length - MAX_VISIBLE_WARNINGS} autre(s)…</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {unmatched.length > 0 && (
         <div className="mt-4 space-y-3 rounded-md border border-dashed border-border p-3">
@@ -345,91 +386,4 @@ function ResolutionRow({
       )}
     </div>
   );
-}
-
-// ------- Parsers -------
-
-function parseJSON(text: string): ImportItem[] {
-  const raw = JSON.parse(text);
-  const arr: unknown[] = Array.isArray(raw) ? raw : raw.items ?? raw.episodes ?? raw.data ?? [];
-  return arr.map((r) => normalizeRow(r)).filter((r): r is ImportItem => !!r?.title);
-}
-
-function parseCSV(text: string): ImportItem[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const rows: Record<string, string>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = splitCsvLine(lines[i]);
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => (row[h] = cells[idx] ?? ""));
-    rows.push(row);
-  }
-  return rows.map((r) => normalizeRow(r)).filter((r): r is ImportItem => !!r?.title);
-}
-
-function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (inQ) {
-      if (c === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (c === '"') inQ = false;
-      else cur += c;
-    } else {
-      if (c === '"') inQ = true;
-      else if (c === "," || c === ";") {
-        out.push(cur);
-        cur = "";
-      } else cur += c;
-    }
-  }
-  out.push(cur);
-  return out;
-}
-
-function pick(row: Record<string, unknown>, keys: string[]): string | null {
-  for (const k of keys) {
-    const v = row[k];
-    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
-  }
-  return null;
-}
-
-function normalizeRow(raw: any): ImportItem | null {
-  if (!raw || typeof raw !== "object") return null;
-  const lower: Record<string, unknown> = {};
-  for (const k of Object.keys(raw)) lower[k.toLowerCase()] = raw[k];
-
-  const title = pick(lower, [
-    "title",
-    "tv_show_name",
-    "show",
-    "show_name",
-    "series",
-    "name",
-  ]);
-  if (!title) return null;
-  const season = pick(lower, ["season", "season_number", "s"]);
-  const episode = pick(lower, ["episode", "episode_number", "e"]);
-  const year = pick(lower, ["year", "first_air_year", "release_year"]);
-  const watched = pick(lower, [
-    "watched_at",
-    "updated_at",
-    "date",
-    "seen_at",
-    "created_at",
-  ]);
-  return {
-    title,
-    year: year ? Number(year) : null,
-    season: season ? Number(season) : null,
-    episode: episode ? Number(episode) : null,
-    watched_at: watched ?? null,
-  };
 }
