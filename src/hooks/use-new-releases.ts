@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { TrendingItem } from "@/components/home/discovery-grid";
 
-/** "Nouveautés" — TMDb tv shows sorted by most recent first-air date, used by the discovery grids. */
+/** "Nouvelles sorties" — TMDb tv shows sorted by most recent first-air date, used by the discovery grids. */
 export function useNewReleases(enabled: boolean = true) {
   return useQuery({
     queryKey: ["new-releases-media"],

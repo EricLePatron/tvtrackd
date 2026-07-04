@@ -110,6 +110,12 @@ function SearchScreen() {
               </Link>
             ))}
           </div>
+        ) : loading && debounced.length >= 2 ? (
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="aspect-[2/3] animate-pulse rounded-md bg-surface-elevated" />
+            ))}
+          </div>
         ) : (
           !loading &&
           debounced.length >= 2 &&
