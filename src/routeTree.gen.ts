@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as PublicIndexRouteImport } from './routes/_public/index'
 import { Route as PublicSearchRouteImport } from './routes/_public/search'
@@ -23,24 +24,28 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PublicRoute = PublicRouteImport.update({
+  id: '/_public',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PublicIndexRoute = PublicIndexRouteImport.update({
-  id: '/_public/',
+  id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => PublicRoute,
 } as any)
 const PublicSearchRoute = PublicSearchRouteImport.update({
-  id: '/_public/search',
+  id: '/search',
   path: '/search',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => PublicRoute,
 } as any)
 const PublicCalendarRoute = PublicCalendarRouteImport.update({
-  id: '/_public/calendar',
+  id: '/calendar',
   path: '/calendar',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => PublicRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
@@ -54,9 +59,9 @@ const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
 } as any)
 const PublicShowMediaTypeTmdbIdRoute =
   PublicShowMediaTypeTmdbIdRouteImport.update({
-    id: '/_public/show/$mediaType/$tmdbId',
+    id: '/show/$mediaType/$tmdbId',
     path: '/show/$mediaType/$tmdbId',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => PublicRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -80,6 +85,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/_public': typeof PublicRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
@@ -110,6 +116,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/_public'
     | '/auth'
     | '/_authenticated/library'
     | '/_authenticated/profile'
@@ -121,11 +128,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  PublicRoute: typeof PublicRouteWithChildren
   AuthRoute: typeof AuthRoute
-  PublicCalendarRoute: typeof PublicCalendarRoute
-  PublicSearchRoute: typeof PublicSearchRoute
-  PublicIndexRoute: typeof PublicIndexRoute
-  PublicShowMediaTypeTmdbIdRoute: typeof PublicShowMediaTypeTmdbIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -135,6 +139,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_public': {
+      id: '/_public'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof PublicRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -149,21 +160,21 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof PublicIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof PublicRoute
     }
     '/_public/search': {
       id: '/_public/search'
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof PublicSearchRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof PublicRoute
     }
     '/_public/calendar': {
       id: '/_public/calendar'
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof PublicCalendarRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof PublicRoute
     }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
@@ -184,7 +195,7 @@ declare module '@tanstack/react-router' {
       path: '/show/$mediaType/$tmdbId'
       fullPath: '/show/$mediaType/$tmdbId'
       preLoaderRoute: typeof PublicShowMediaTypeTmdbIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof PublicRoute
     }
   }
 }
@@ -202,13 +213,27 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
-const rootRouteChildren: RootRouteChildren = {
-  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
-  AuthRoute: AuthRoute,
+interface PublicRouteChildren {
+  PublicCalendarRoute: typeof PublicCalendarRoute
+  PublicSearchRoute: typeof PublicSearchRoute
+  PublicIndexRoute: typeof PublicIndexRoute
+  PublicShowMediaTypeTmdbIdRoute: typeof PublicShowMediaTypeTmdbIdRoute
+}
+
+const PublicRouteChildren: PublicRouteChildren = {
   PublicCalendarRoute: PublicCalendarRoute,
   PublicSearchRoute: PublicSearchRoute,
   PublicIndexRoute: PublicIndexRoute,
   PublicShowMediaTypeTmdbIdRoute: PublicShowMediaTypeTmdbIdRoute,
+}
+
+const PublicRouteWithChildren =
+  PublicRoute._addFileChildren(PublicRouteChildren)
+
+const rootRouteChildren: RootRouteChildren = {
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  PublicRoute: PublicRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
