@@ -280,8 +280,9 @@ export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): 
   return `En retard · ${item.lateDays}j`;
 }
 
-/** "Demain" or a short "Lun. 14 juil" style label, computed in UTC to match `today`. */
+/** "Aujourd'hui" / "Demain" or a short "Lun. 14 juil" style label, computed in UTC to match `today`. */
 export function formatUpcomingDayLabel(dateStr: string, today: string): string {
+  if (dateStr === today) return "Aujourd'hui";
   if (dateStr === addDaysToDateString(today, 1)) return "Demain";
   const [y, m, d] = dateStr.split("-").map(Number);
   const date = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
@@ -292,4 +293,67 @@ export function formatUpcomingDayLabel(dateStr: string, today: string): string {
     month: "short",
   });
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/**
+ * --- Full bidirectional timeline (dedicated /calendar screen) ---
+ *
+ * Unlike `groupUpcomingByDay` (Home teaser: future-only, "drop" aggregation),
+ * the timeline shows one row per episode, spans past + future, and never
+ * aggregates same-day/same-season episodes into a summary — every episode of
+ * followed shows stays individually visible while scrolling back in time.
+ */
+
+export type TimelineEpisode = ScheduleEpisode & { watched: boolean };
+
+export type TimelineDayGroup = {
+  date: string;
+  /** `date === today` — used to force-render this group even when empty. */
+  isToday: boolean;
+  /** `date <= today` — drives the `saturated` visual treatment + watched badge eligibility. */
+  isPastOrToday: boolean;
+  episodes: TimelineEpisode[];
+};
+
+function byShowTitleThenEpisodeOrder(a: ScheduleEpisode, b: ScheduleEpisode) {
+  const titleCmp = a.show.title.localeCompare(b.show.title);
+  if (titleCmp !== 0) return titleCmp;
+  return byEpisodeOrder(a, b);
+}
+
+/**
+ * Groups episodes by exact calendar day across an arbitrary [today - past,
+ * today + future] range, one row per episode (no "drop" aggregation). Days
+ * without any episode are omitted, except `today` itself which is always
+ * included (possibly empty) so the timeline has a stable anchor point to
+ * scroll to on mount.
+ */
+export function buildTimelineDayGroups(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  today: string,
+): TimelineDayGroup[] {
+  const byDate = new Map<string, ScheduleEpisode[]>();
+
+  for (const ep of episodes) {
+    if (!ep.air_date) continue;
+    const arr = byDate.get(ep.air_date) ?? [];
+    arr.push(ep);
+    byDate.set(ep.air_date, arr);
+  }
+  if (!byDate.has(today)) byDate.set(today, []);
+
+  const groups: TimelineDayGroup[] = [];
+  for (const [date, eps] of byDate) {
+    const sorted = [...eps].sort(byShowTitleThenEpisodeOrder);
+    groups.push({
+      date,
+      isToday: date === today,
+      isPastOrToday: date <= today,
+      episodes: sorted.map((e) => ({ ...e, watched: watchedEpisodeIds.has(e.id) })),
+    });
+  }
+
+  groups.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return groups;
 }
