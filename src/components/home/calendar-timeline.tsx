@@ -162,9 +162,18 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
   // scrollable area, not appear after the virtualized rows (which is the
   // bottom of the DOM flow, i.e. the future/J+90 end). Same overlay technique
   // for all three (absolute, pinned to the viewport top, outside the scroll
-  // flow) so the retry affordance is always reachable without scrolling all
-  // the way down to the future horizon first.
-  const showTopOverlay = isFetchingPreviousPage || isError || !hasPreviousPage;
+  // flow) so the retry affordance is reachable without scrolling all the way
+  // down to the future horizon first.
+  //
+  // `isFetchingPreviousPage` is inherently scroll-gated already (it only
+  // becomes true from the `firstRenderedIndex <= 4` trigger below). `isError`
+  // and `!hasPreviousPage`, once true, stay true for the rest of the session
+  // regardless of where the user scrolls afterwards — so they must be
+  // explicitly re-gated on the same "near the top" condition, or the pill
+  // would stay permanently pinned over whatever is currently at the top of
+  // the viewport (e.g. "aujourd'hui"), even while browsing the future.
+  const nearTop = firstRenderedIndex <= 4;
+  const showTopOverlay = isFetchingPreviousPage || (nearTop && (isError || !hasPreviousPage));
 
   return (
     <div className="relative">
