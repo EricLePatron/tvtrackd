@@ -22,8 +22,14 @@ import {
 } from "@/components/onboarding/onboarding-icons";
 
 const CARD_HEIGHT = "h-[calc(100dvh-6.5rem)]";
+// `justify-[safe_center]` (not the plain `justify-center`) matters here: when
+// this panel's content overflows a short viewport (landscape mobile), a
+// plain centered flex axis makes the overflow at the *start* (icon + title)
+// unreachable by scroll — only the *end* overflow scrolls into view. `safe`
+// falls back to start-alignment once content no longer fits, keeping 100%
+// of the card reachable. See https://github.com/philipwalton/flexbugs/issues/53
 const CARD_PANEL =
-  "flex flex-col items-center justify-center overflow-y-auto rounded-xl border border-border bg-card px-8 py-6 text-center";
+  "flex flex-col items-center justify-[safe_center] overflow-y-auto rounded-xl border border-border bg-card px-8 py-6 text-center";
 
 /**
  * Full-screen, swipeable first-run onboarding for anonymous visitors.
@@ -118,7 +124,7 @@ export function OnboardingCarousel() {
 function CardOne() {
   return (
     <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
-      <CassetteIcon className="h-[120px] w-[120px] text-foreground" />
+      <CassetteIcon className="h-[120px] w-[120px] shrink-0 text-foreground" />
       <h2 className="mt-8 font-display text-2xl text-foreground">
         Un tracker qui fait bien les choses simples
       </h2>
@@ -135,19 +141,19 @@ function CardTwo() {
     <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
       <div className="flex items-start gap-8">
         <div className="flex flex-col items-center gap-2">
-          <MarkWatchedIcon className="h-12 w-12" />
+          <MarkWatchedIcon className="h-12 w-12 shrink-0" />
           <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Marquer vu
           </span>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <TrackProgressIcon className="h-12 w-12" />
+          <TrackProgressIcon className="h-12 w-12 shrink-0" />
           <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Suivre
           </span>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <CalendarGridIcon className="h-12 w-12" />
+          <CalendarGridIcon className="h-12 w-12 shrink-0" />
           <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Calendrier
           </span>
@@ -171,7 +177,7 @@ function CardThree({
 }) {
   return (
     <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
-      <ImportExportIcon className="h-[135px] w-[135px]" />
+      <ImportExportIcon className="h-[135px] w-[135px] shrink-0" />
       <h2 className="mt-8 font-display text-2xl text-foreground">
         Vos données ne sont jamais piégées ici
       </h2>
