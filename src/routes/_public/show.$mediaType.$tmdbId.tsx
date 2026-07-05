@@ -359,7 +359,16 @@ function ShowDetail() {
           )}
           {!userShow && (
             <button
-              onClick={() => requireAuth(() => follow.mutate(), { reason: "suivre cette série" })}
+              onClick={() =>
+                requireAuth(() => follow.mutate(), {
+                  reason: "suivre cette série",
+                  intent: {
+                    kind: "follow",
+                    tmdbId: Number(tmdbId),
+                    mediaType: mediaType as "tv" | "movie",
+                  },
+                })
+              }
               disabled={follow.isPending}
               className="mt-3 inline-flex h-11 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
             >
@@ -434,7 +443,16 @@ function ShowDetail() {
                               lockEpisode();
                               toggleWatched.mutate({ episodeId: e.id, isWatched });
                             },
-                            { reason: "marquer cet épisode" },
+                            {
+                              reason: "marquer cet épisode",
+                              intent: {
+                                kind: "mark_watched",
+                                tmdbId: Number(tmdbId),
+                                mediaType: mediaType as "tv" | "movie",
+                                seasonNumber: e.season_number,
+                                episodeNumber: e.episode_number,
+                              },
+                            },
                           )
                         }
                         onRewatch={() =>
