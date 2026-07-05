@@ -285,23 +285,26 @@ function ShowDetail() {
               {new Date(nextAirDate).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
             </p>
           )}
-          <button
-            onClick={() => requireAuth(() => follow.mutate(), { reason: "suivre cette série" })}
-            disabled={follow.isPending}
-            className={`mt-3 inline-flex h-11 items-center gap-1.5 rounded-md px-4 text-xs font-medium ${
-              userShow
-                ? "bg-cyan-accent/10 text-cyan-accent border border-cyan-accent/30"
-                : "bg-primary text-primary-foreground"
-            }`}
-          >
-            {userShow ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {userShow ? (STATUS_LABELS[userShow.status] ?? "Suivi") : "Suivre"}
-          </button>
+          {!userShow && (
+            <button
+              onClick={() => requireAuth(() => follow.mutate(), { reason: "suivre cette série" })}
+              disabled={follow.isPending}
+              className="mt-3 inline-flex h-11 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Suivre
+            </button>
+          )}
           {userShow && (
-            <StatusPicker
-              userShow={userShow}
-              onChange={() => qc.invalidateQueries({ queryKey: followKey })}
-            />
+            <>
+              <p className="mt-3 flex items-center gap-1.5 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+                <Check className="h-3 w-3" /> Suivi
+              </p>
+              <StatusPicker
+                userShow={userShow}
+                onChange={() => qc.invalidateQueries({ queryKey: followKey })}
+              />
+            </>
           )}
         </div>
       </div>
@@ -459,7 +462,7 @@ function StatusPicker({
   };
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <div className="mt-2 flex flex-wrap gap-2">
       {Object.entries(STATUS_LABELS).map(([k, label]) => (
         <button
           key={k}
