@@ -23,7 +23,7 @@ import {
 
 const CARD_HEIGHT = "h-[calc(100dvh-6.5rem)]";
 const CARD_PANEL =
-  "flex flex-col items-center justify-center rounded-xl border border-border bg-card px-8 text-center";
+  "flex flex-col items-center justify-center overflow-y-auto rounded-xl border border-border bg-card px-8 py-6 text-center";
 
 /**
  * Full-screen, swipeable first-run onboarding for anonymous visitors.
@@ -97,14 +97,14 @@ export function OnboardingCarousel() {
         opts={{ align: "start", loop: false }}
         className="group relative mt-2"
       >
-        <CarouselContent className="ml-5">
-          <CarouselItem className="basis-[88vw] pl-4">
+        <CarouselContent className="ml-4">
+          <CarouselItem className="basis-[84vw] pl-4">
             <CardOne />
           </CarouselItem>
-          <CarouselItem className="basis-[88vw] pl-4">
+          <CarouselItem className="basis-[84vw] pl-4">
             <CardTwo />
           </CarouselItem>
-          <CarouselItem className="basis-[88vw] pl-4">
+          <CarouselItem className="basis-[84vw] pl-4">
             <CardThree onCreateAccount={goToAuth} onExplore={dismiss} />
           </CarouselItem>
         </CarouselContent>
