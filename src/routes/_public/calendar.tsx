@@ -16,12 +16,8 @@ function CalendarScreen() {
   return (
     <>
       <div className="flex items-center gap-3 px-5 pt-6">
-        <Link
-          to="/"
-          className="rounded-full border border-border bg-card p-2 text-muted-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallbackTo="/" />
+
         <div>
           <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Calendrier
