@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
 import {
   Carousel,
   CarouselContent,
@@ -20,7 +21,9 @@ import {
   TrackProgressIcon,
 } from "@/components/onboarding/onboarding-icons";
 
-const CARD_HEIGHT = "h-[calc(100dvh-4.5rem)]";
+const CARD_HEIGHT = "h-[calc(100dvh-6.5rem)]";
+const CARD_PANEL =
+  "flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-8 text-center";
 
 /**
  * Full-screen, swipeable first-run onboarding for anonymous visitors.
@@ -74,8 +77,9 @@ export function OnboardingCarousel() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="flex items-center justify-between px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
-        <span className="font-counter text-xs tracking-widest text-muted-foreground">
+        <span className="flex items-center gap-0.5 font-counter text-xs tracking-widest text-primary">
           {String(index + 1).padStart(2, "0")}/03
+          <ChevronRight className="h-3 w-3" />
         </span>
         {index < 2 ? (
           <button
@@ -93,14 +97,14 @@ export function OnboardingCarousel() {
         opts={{ align: "start", loop: false }}
         className="group relative mt-2"
       >
-        <CarouselContent className="ml-0">
-          <CarouselItem className="pl-0">
+        <CarouselContent className="ml-5">
+          <CarouselItem className="basis-[88vw] pl-4">
             <CardOne />
           </CarouselItem>
-          <CarouselItem className="pl-0">
+          <CarouselItem className="basis-[88vw] pl-4">
             <CardTwo />
           </CarouselItem>
-          <CarouselItem className="pl-0">
+          <CarouselItem className="basis-[88vw] pl-4">
             <CardThree onCreateAccount={goToAuth} onExplore={dismiss} />
           </CarouselItem>
         </CarouselContent>
@@ -113,7 +117,7 @@ export function OnboardingCarousel() {
 
 function CardOne() {
   return (
-    <div className={`flex ${CARD_HEIGHT} flex-col items-center justify-center px-8 text-center`}>
+    <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
       <CassetteIcon className="h-[120px] w-[120px] text-foreground" />
       <h2 className="mt-8 font-display text-2xl text-foreground">
         Un tracker qui fait bien les choses simples
@@ -128,7 +132,7 @@ function CardOne() {
 
 function CardTwo() {
   return (
-    <div className={`flex ${CARD_HEIGHT} flex-col items-center justify-center px-8 text-center`}>
+    <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
       <div className="flex items-start gap-8">
         <div className="flex flex-col items-center gap-2">
           <MarkWatchedIcon className="h-12 w-12" />
@@ -166,7 +170,7 @@ function CardThree({
   onExplore: () => void;
 }) {
   return (
-    <div className={`flex ${CARD_HEIGHT} flex-col items-center justify-center px-8 text-center`}>
+    <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
       <ImportExportIcon className="h-[135px] w-[135px]" />
       <h2 className="mt-8 font-display text-2xl text-foreground">
         Vos données ne sont jamais piégées ici
