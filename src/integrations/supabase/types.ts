@@ -106,44 +106,35 @@ export type Database = {
         Row: {
           cached_at: string
           first_air_date: string | null
-          genres: string[]
           id: number
           media_type: string
           overview: string | null
           poster_path: string | null
           status: string | null
-          tagline: string | null
           title: string
           tmdb_id: number
-          vote_average: number | null
         }
         Insert: {
           cached_at?: string
           first_air_date?: string | null
-          genres?: string[]
           id?: number
           media_type: string
           overview?: string | null
           poster_path?: string | null
           status?: string | null
-          tagline?: string | null
           title: string
           tmdb_id: number
-          vote_average?: number | null
         }
         Update: {
           cached_at?: string
           first_air_date?: string | null
-          genres?: string[]
           id?: number
           media_type?: string
           overview?: string | null
           poster_path?: string | null
           status?: string | null
-          tagline?: string | null
           title?: string
           tmdb_id?: number
-          vote_average?: number | null
         }
         Relationships: []
       }
