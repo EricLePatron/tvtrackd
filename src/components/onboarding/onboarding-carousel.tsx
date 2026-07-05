@@ -82,16 +82,20 @@ export function OnboardingCarousel() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <div className="flex items-center justify-between px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
-        <span className="flex items-center gap-0.5 font-counter text-xs tracking-widest text-muted-foreground">
+      <div className="grid grid-cols-3 items-center px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
+        <span className="flex items-center gap-0.5 justify-self-start font-counter text-xs tracking-widest text-muted-foreground">
           {String(index + 1).padStart(2, "0")}/03
           {index < 2 ? <ChevronRight className="h-3 w-3 text-primary" /> : null}
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5 justify-self-center whitespace-nowrap font-display text-sm text-foreground">
+          <CassetteIcon className="h-4 w-4 shrink-0" />
+          <span className="truncate">{APP_NAME}</span>
         </span>
         {index < 2 ? (
           <button
             type="button"
             onClick={dismiss}
-            className="font-counter text-xs uppercase tracking-widest text-muted-foreground"
+            className="justify-self-end font-counter text-xs uppercase tracking-widest text-muted-foreground"
           >
             Passer
           </button>
@@ -125,12 +129,12 @@ function CardOne() {
   return (
     <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
       <CassetteIcon className="h-[120px] w-[120px] shrink-0 text-foreground" />
-      <h2 className="mt-8 font-display text-2xl text-foreground">
-        Un tracker qui fait bien les choses simples
-      </h2>
-      <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
-        {APP_NAME} suit vos séries et films, épisode par épisode. Simple à utiliser. Fiable au
-        quotidien. Là quand vous en avez besoin. Gratuit.
+      <h2 className="mt-8 font-display text-2xl text-foreground">Bienvenue sur {APP_NAME}</h2>
+      <p className="mt-2 max-w-xs text-sm font-medium leading-relaxed text-foreground">
+        Un tracker qui fait bien les choses simples : vos séries et films, épisode par épisode.
+      </p>
+      <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
+        Simple à utiliser. Fiable au quotidien. Là quand vous en avez besoin. Gratuit.
       </p>
     </div>
   );
