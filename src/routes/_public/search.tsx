@@ -128,7 +128,7 @@ function SearchScreen() {
 
         {debounced.length < 2 && (
           <div className="mt-8">
-            <DiscoverySection variant="grid" />
+            <DiscoverySection variant="compact" />
           </div>
         )}
       </div>
