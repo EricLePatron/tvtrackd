@@ -82,16 +82,20 @@ export function OnboardingCarousel() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <div className="flex items-center justify-between px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
-        <span className="flex items-center gap-0.5 font-counter text-xs tracking-widest text-muted-foreground">
+      <div className="grid grid-cols-3 items-center px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
+        <span className="flex items-center gap-0.5 justify-self-start font-counter text-xs tracking-widest text-muted-foreground">
           {String(index + 1).padStart(2, "0")}/03
           {index < 2 ? <ChevronRight className="h-3 w-3 text-primary" /> : null}
+        </span>
+        <span className="flex items-center gap-1.5 justify-self-center font-display text-sm text-foreground">
+          <CassetteIcon className="h-4 w-4 shrink-0" />
+          {APP_NAME}
         </span>
         {index < 2 ? (
           <button
             type="button"
             onClick={dismiss}
-            className="font-counter text-xs uppercase tracking-widest text-muted-foreground"
+            className="justify-self-end font-counter text-xs uppercase tracking-widest text-muted-foreground"
           >
             Passer
           </button>
