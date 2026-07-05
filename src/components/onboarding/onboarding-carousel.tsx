@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import {
@@ -175,19 +175,59 @@ function CardThree({
   onCreateAccount: () => void;
   onExplore: () => void;
 }) {
-  return (
-    <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
-      <ImportExportIcon className="h-[135px] w-[135px] shrink-0" />
-      <h2 className="mt-8 font-display text-2xl text-foreground">
-        Vos données ne sont jamais piégées ici
-      </h2>
-      <p className="mt-2 font-display text-lg font-bold text-primary">{APP_NAME} est gratuit.</p>
-      <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
-        Importez votre historique TV Time ou Betaseries (CSV/JSON) dès l'inscription. Exportez vos
-        données quand vous le voulez.
-      </p>
+  // Unlike CardOne/CardTwo, this card ends in the two exit-path buttons —
+  // they must never scroll out of view, so only the icon/text block above
+  // them (not the whole card) is allowed to shrink and scroll on short
+  // viewports. See CARD_PANEL comment for the `safe_center` overflow issue
+  // this also has to account for.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showMoreHint, setShowMoreHint] = useState(false);
 
-      <div className="mt-8 flex w-full max-w-xs flex-col gap-3">
+  // Fades the bottom edge of the scrollable block whenever it's actually
+  // truncated (and hides once scrolled to the end) — an invisible-scrollbar
+  // `overflow-y-auto` on mobile otherwise gives no sign that the pitch text
+  // continues below the fold.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setShowMoreHint(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, []);
+
+  return (
+    <div
+      className={`${CARD_HEIGHT} flex flex-col rounded-xl border border-border bg-card px-8 py-6 text-center`}
+    >
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          className="flex h-full flex-col items-center justify-[safe_center] overflow-y-auto"
+        >
+          <ImportExportIcon className="h-24 w-24 shrink-0" />
+          <h2 className="mt-6 font-display text-2xl text-foreground">
+            Vos données ne sont jamais piégées ici
+          </h2>
+          <p className="mt-2 font-display text-lg font-bold text-primary">
+            {APP_NAME} est gratuit.
+          </p>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
+            Importez votre historique TV Time ou Betaseries (CSV/JSON) dès l'inscription. Exportez
+            vos données quand vous le voulez.
+          </p>
+        </div>
+        {showMoreHint ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />
+        ) : null}
+      </div>
+
+      <div className="mx-auto mt-3 flex w-full max-w-xs shrink-0 flex-col gap-2">
         <Button onClick={onCreateAccount} className="h-12 w-full text-base font-medium">
           Créer un compte
         </Button>
