@@ -43,8 +43,7 @@ Deno.serve(async (req) => {
       .eq("media_type", media_type)
       .maybeSingle();
 
-    const fresh =
-      cached && Date.now() - new Date(cached.cached_at).getTime() < CACHE_MS;
+    const fresh = cached && Date.now() - new Date(cached.cached_at).getTime() < CACHE_MS;
 
     let showRow = cached;
 
@@ -55,12 +54,12 @@ Deno.serve(async (req) => {
         media_type,
         title: details.title ?? details.name ?? "",
         overview: details.overview ?? "",
-        poster_path: details.poster_path
-          ? `${TMDB_IMG}${details.poster_path}`
-          : null,
-        first_air_date:
-          details.first_air_date || details.release_date || null,
+        poster_path: details.poster_path ? `${TMDB_IMG}${details.poster_path}` : null,
+        first_air_date: details.first_air_date || details.release_date || null,
         status: details.status ?? null,
+        genres: (details.genres ?? []).map((g: { name: string }) => g.name),
+        vote_average: details.vote_average ?? null,
+        tagline: details.tagline?.trim() || null,
         cached_at: new Date().toISOString(),
       };
       const { data: upserted, error: upErr } = await admin
@@ -88,9 +87,7 @@ Deno.serve(async (req) => {
             .single();
           if (sErr) throw sErr;
 
-          const seasonDetails = await tmdb(
-            `/tv/${tmdb_id}/season/${s.season_number}`,
-          );
+          const seasonDetails = await tmdb(`/tv/${tmdb_id}/season/${s.season_number}`);
           const episodes = (seasonDetails.episodes ?? []).map((ep: any) => ({
             show_id: showRow.id,
             season_number: s.season_number,
@@ -100,11 +97,9 @@ Deno.serve(async (req) => {
             air_date: ep.air_date || null,
           }));
           if (episodes.length) {
-            const { error: eErr } = await admin
-              .from("episodes")
-              .upsert(episodes, {
-                onConflict: "show_id,season_number,episode_number",
-              });
+            const { error: eErr } = await admin.from("episodes").upsert(episodes, {
+              onConflict: "show_id,season_number,episode_number",
+            });
             if (eErr) throw eErr;
           }
         }
@@ -138,9 +133,6 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("[get-show-details]", err);
-    return Response.json(
-      { error: (err as Error).message },
-      { status: 500, headers: corsHeaders },
-    );
+    return Response.json({ error: (err as Error).message }, { status: 500, headers: corsHeaders });
   }
 });

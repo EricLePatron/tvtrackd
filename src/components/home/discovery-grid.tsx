@@ -27,6 +27,7 @@ export function DiscoveryGrid({
   title = "Le rayon du moment",
   items,
   isLoading,
+  isError,
   variant = "grid",
   followedKeys,
   pendingKey,
@@ -35,19 +36,26 @@ export function DiscoveryGrid({
   title?: string;
   items: TrendingItem[];
   isLoading?: boolean;
+  isError?: boolean;
   variant?: "grid" | "compact";
   followedKeys: ReadonlySet<string>;
   pendingKey?: string | null;
   onFollow: (item: TrendingItem) => void;
 }) {
-  if (!isLoading && items.length === 0) return null;
+  const showError = !isLoading && !!isError && items.length === 0;
+
+  if (!isLoading && !showError && items.length === 0) return null;
 
   return (
     <section className={variant === "grid" ? "mt-8" : "mt-6"}>
       <h3 className="mb-3 font-display text-sm uppercase tracking-widest text-foreground">
         {title}
       </h3>
-      {isLoading ? (
+      {showError ? (
+        <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+          Indisponible pour le moment
+        </p>
+      ) : isLoading ? (
         <div
           className={variant === "grid" ? "grid grid-cols-3 gap-3" : "flex gap-3 overflow-x-auto"}
         >
@@ -55,7 +63,7 @@ export function DiscoveryGrid({
             <div
               key={i}
               className={`aspect-[2/3] animate-pulse rounded-md bg-surface-elevated ${
-                variant === "compact" ? "w-24 shrink-0" : ""
+                variant === "compact" ? "w-28 shrink-0" : ""
               }`}
             />
           ))}
@@ -75,7 +83,7 @@ export function DiscoveryGrid({
             return (
               <div
                 key={key}
-                className={variant === "compact" ? "w-24 shrink-0 snap-start" : undefined}
+                className={variant === "compact" ? "w-28 shrink-0 snap-start" : undefined}
               >
                 <div className="relative">
                   <Link
@@ -102,7 +110,7 @@ export function DiscoveryGrid({
                     onClick={() => !followed && onFollow(item)}
                     disabled={followed || pending}
                     aria-label={followed ? "Déjà suivi" : `Suivre ${item.title}`}
-                    className={`absolute bottom-1.5 right-1.5 grid h-7 w-7 place-items-center rounded-full border transition-colors ${
+                    className={`absolute bottom-1.5 right-1.5 grid h-8 w-8 place-items-center rounded-full border transition-colors ${
                       followed
                         ? "border-secondary bg-secondary text-secondary-foreground"
                         : "border-primary/60 bg-background/80 text-primary backdrop-blur-sm"

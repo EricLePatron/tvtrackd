@@ -54,11 +54,7 @@ export async function searchTv(title: string, year?: number) {
   return { match: scored[0].r, confidence: Math.min(1, scored[0].score) };
 }
 
-export async function cacheShow(
-  admin: any,
-  tmdbId: number,
-  mediaType: "tv" | "movie",
-) {
+export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "movie") {
   const { data: cached } = await admin
     .from("shows")
     .select("*")
@@ -77,6 +73,9 @@ export async function cacheShow(
     poster_path: details.poster_path ? `${TMDB_IMG}${details.poster_path}` : null,
     first_air_date: details.first_air_date || details.release_date || null,
     status: details.status ?? null,
+    genres: (details.genres ?? []).map((g: { name: string }) => g.name),
+    vote_average: details.vote_average ?? null,
+    tagline: details.tagline?.trim() || null,
     cached_at: new Date().toISOString(),
   };
   const { data: show } = await admin

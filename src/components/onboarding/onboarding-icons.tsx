@@ -64,7 +64,15 @@ export function CassetteIcon(props: IconProps) {
 export function MarkWatchedIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-      <rect x="6" y="6" width="36" height="36" rx="9" className="stroke-foreground" strokeWidth="2" />
+      <rect
+        x="6"
+        y="6"
+        width="36"
+        height="36"
+        rx="9"
+        className="stroke-foreground"
+        strokeWidth="2"
+      />
       <circle cx="42" cy="6" r="4.5" className="fill-background" />
       <circle cx="24" cy="24" r="10" className="fill-cyan-accent" />
       <path
@@ -101,7 +109,15 @@ export function TrackProgressIcon(props: IconProps) {
 export function CalendarGridIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-      <rect x="5" y="8" width="38" height="32" rx="4" className="stroke-foreground" strokeWidth="2" />
+      <rect
+        x="5"
+        y="8"
+        width="38"
+        height="32"
+        rx="4"
+        className="stroke-foreground"
+        strokeWidth="2"
+      />
       <line x1="5" y1="21.33" x2="43" y2="21.33" className="stroke-foreground" strokeWidth="2" />
       <line x1="5" y1="29.67" x2="43" y2="29.67" className="stroke-foreground" strokeWidth="2" />
       <line x1="17.67" y1="8" x2="17.67" y2="40" className="stroke-foreground" strokeWidth="2" />

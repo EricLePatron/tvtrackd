@@ -64,7 +64,13 @@ export function useReplayPendingIntent() {
           return;
         }
 
-        // kind === "mark_watched"
+        // kind === "mark_watched" — replays the anonymous visitor's "toggle to
+        // watched" click (see `toggleWatched` in the show detail route). The
+        // intent was captured while signed out, i.e. always from the
+        // "currently unwatched" state, so it only ever means "mark watched",
+        // never "unmark". If the now-authenticated account already has this
+        // episode watched (e.g. from another device), leave it untouched
+        // rather than resetting an existing watch_count/rewatch history.
         const episode = episodes.find(
           (e) =>
             e.season_number === intent.seasonNumber && e.episode_number === intent.episodeNumber,
@@ -78,16 +84,18 @@ export function useReplayPendingIntent() {
           .eq("episode_id", episode.id)
           .maybeSingle();
 
-        const { error: watchError } = await supabase.from("watch_status").upsert(
-          {
-            user_id: user.id,
-            episode_id: episode.id,
-            watch_count: (existingWatch?.watch_count ?? 0) + 1,
-            watched_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,episode_id" },
-        );
-        if (watchError) throw watchError;
+        if (!existingWatch) {
+          const { error: watchError } = await supabase.from("watch_status").upsert(
+            {
+              user_id: user.id,
+              episode_id: episode.id,
+              watch_count: 1,
+              watched_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,episode_id" },
+          );
+          if (watchError) throw watchError;
+        }
 
         qc.invalidateQueries({ queryKey: ["watched", user.id, show.id] });
         qc.invalidateQueries({ queryKey: ["home-schedule", user.id] });
