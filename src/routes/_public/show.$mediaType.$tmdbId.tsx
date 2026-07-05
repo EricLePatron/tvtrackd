@@ -85,6 +85,12 @@ function ShowDetail() {
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
   const qc = useQueryClient();
+  // Verrou par épisode, partagé entre toggleWatched et addRewatch : les deux
+  // actions touchent la même ligne watch_status pour un épisode donné, donc
+  // ni isPending ni variables (qui ne reflètent que le DERNIER mutate() sur
+  // une instance de mutation partagée par toute la liste) ne suffisent à
+  // empêcher des requêtes concurrentes sur le même épisode.
+  const [lockedEpisodes, setLockedEpisodes] = useState<Set<number>>(new Set());
 
   const detailsKey = ["show-details", mediaType, tmdbId];
   const { data, isLoading, error } = useQuery({
@@ -147,7 +153,59 @@ function ShowDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: followKey }),
   });
 
-  const markWatched = useMutation({
+  const toggleWatched = useMutation({
+    mutationFn: async ({ episodeId, isWatched }: { episodeId: number; isWatched: boolean }) => {
+      if (!user) throw new Error("no user");
+      if (isWatched) {
+        // Décocher = reset complet, quel que soit le nombre de rewatchs accumulés.
+        const { error } = await supabase
+          .from("watch_status")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("episode_id", episodeId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("watch_status").upsert(
+          {
+            user_id: user.id,
+            episode_id: episodeId,
+            watch_count: 1,
+            watched_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,episode_id" },
+        );
+        if (error) throw error;
+      }
+    },
+    onMutate: async ({ episodeId, isWatched }) => {
+      await qc.cancelQueries({ queryKey: watchedKey });
+      const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => {
+        const next = { ...(old ?? {}) };
+        if (isWatched) {
+          delete next[episodeId];
+        } else {
+          next[episodeId] = { count: 1 };
+        }
+        return next;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
+      toast.error("Impossible de mettre à jour l'épisode");
+    },
+    onSettled: (_data, _err, { episodeId }) => {
+      qc.invalidateQueries({ queryKey: watchedKey });
+      setLockedEpisodes((prev) => {
+        const next = new Set(prev);
+        next.delete(episodeId);
+        return next;
+      });
+    },
+  });
+
+  const addRewatch = useMutation({
     mutationFn: async ({
       episodeId,
       currentCount,
@@ -180,9 +238,16 @@ function ShowDetail() {
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
-      toast.error("Impossible de marquer vu");
+      toast.error("Impossible d'ajouter le revisionnage");
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: watchedKey }),
+    onSettled: (_data, _err, { episodeId }) => {
+      qc.invalidateQueries({ queryKey: watchedKey });
+      setLockedEpisodes((prev) => {
+        const next = new Set(prev);
+        next.delete(episodeId);
+        return next;
+      });
+    },
   });
 
   if (isLoading || !data) {
@@ -354,17 +419,36 @@ function ShowDetail() {
                 <ul className="mt-3 space-y-1.5">
                   {eps.map((e) => {
                     const count = watched?.[e.id]?.count ?? 0;
+                    const isWatched = count > 0;
+                    const isLocked = lockedEpisodes.has(e.id);
+                    const lockEpisode = () => setLockedEpisodes((prev) => new Set(prev).add(e.id));
                     return (
                       <EpisodeRow
                         key={e.id}
                         episode={e}
                         count={count}
-                        onMarkWatched={() =>
+                        onToggleWatched={() =>
                           requireAuth(
-                            () => markWatched.mutate({ episodeId: e.id, currentCount: count }),
+                            () => {
+                              if (lockedEpisodes.has(e.id)) return;
+                              lockEpisode();
+                              toggleWatched.mutate({ episodeId: e.id, isWatched });
+                            },
                             { reason: "marquer cet épisode" },
                           )
                         }
+                        onRewatch={() =>
+                          requireAuth(
+                            () => {
+                              if (lockedEpisodes.has(e.id)) return;
+                              lockEpisode();
+                              addRewatch.mutate({ episodeId: e.id, currentCount: count });
+                            },
+                            { reason: "ajouter un revisionnage" },
+                          )
+                        }
+                        isTogglePending={isLocked}
+                        isRewatchPending={isLocked}
                       />
                     );
                   })}
@@ -381,11 +465,17 @@ function ShowDetail() {
 function EpisodeRow({
   episode,
   count,
-  onMarkWatched,
+  onToggleWatched,
+  onRewatch,
+  isTogglePending,
+  isRewatchPending,
 }: {
   episode: EpisodeRow;
   count: number;
-  onMarkWatched: () => void;
+  onToggleWatched: () => void;
+  onRewatch: () => void;
+  isTogglePending: boolean;
+  isRewatchPending: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isWatched = count > 0;
@@ -395,9 +485,10 @@ function EpisodeRow({
     <li className="rounded-md border border-border bg-card px-3 py-2.5">
       <div className="flex items-center gap-3">
         <button
-          onClick={onMarkWatched}
-          aria-label={isWatched ? "Marquer comme revu" : "Marquer vu"}
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors ${
+          onClick={onToggleWatched}
+          disabled={isTogglePending}
+          aria-label={isWatched ? "Marquer non vu" : "Marquer vu"}
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 ${
             isWatched
               ? "border-cyan-accent bg-cyan-accent/10 text-cyan-accent"
               : "border-border bg-surface-elevated text-muted-foreground hover:text-primary hover:border-primary/60"
@@ -424,7 +515,16 @@ function EpisodeRow({
             {episode.air_date ?? "date inconnue"}
           </p>
         </div>
-        {isWatched && count > 1 && <RotateCcw className="h-3.5 w-3.5 shrink-0 text-cyan-accent" />}
+        {isWatched && (
+          <button
+            onClick={onRewatch}
+            disabled={isRewatchPending}
+            aria-label="Ajouter un revisionnage"
+            className="shrink-0 rounded-full p-1.5 text-cyan-accent hover:text-cyan-accent/80 disabled:opacity-50"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+        )}
         {hasOverview && (
           <button
             onClick={() => setExpanded((v) => !v)}
