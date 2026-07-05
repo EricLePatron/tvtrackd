@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { APP_NAME } from "../_shared/config.ts";
 
 const admin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -41,7 +42,7 @@ Deno.serve(async (req) => {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="nightframe-export-${Date.now()}.json"`,
+        "Content-Disposition": `attachment; filename="${APP_NAME}-export-${Date.now()}.json"`,
       },
     });
   } catch (err) {

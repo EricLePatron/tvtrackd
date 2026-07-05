@@ -72,7 +72,7 @@ Priorisation : impact sur la crédibilité de "remplaçant fiable de TV Time", p
 
 | # | Statut | Quoi | Pourquoi | Tags | Effort | Impact |
 |---|---|---|---|---|---|---|
-| 1 | ⬜ | Sortir "Nightframe" du code → constante `APP_NAME` | Bloquant avant tout lancement public — voir alerte transversale | Design | S | Moyen (bloquant) |
+| 1 | ✅ | ~~Sortir "Nightframe" du code → constante `APP_NAME`~~ | **Livré** : constante `APP_NAME` (`src/lib/config.ts` + copie locale `supabase/functions/_shared/config.ts` pour les edge functions Deno) référencée partout où "Nightframe" apparaissait (`__root.tsx`, `auth.tsx`, `index.tsx`, `profile.tsx`, `export-data`, `styles.css`) | Design | S | Moyen (bloquant) |
 | 2 | ✅ | ~~Vérifier le format réel d'export TV Time / Betaseries et fiabiliser le parseur~~ | **Livré** : détection explicite de format (Betaseries agrégé / granulaire TV Time / JSON imbriqué / non reconnu), support `.zip` GDPR TV Time. Effort réel plus proche de M que du S initial — voir section "Livré depuis ce dossier" | Produit | S | Très élevé |
 | 3 | ✅ | ~~Corriger le statut par défaut à l'import (pas tout en "en cours")~~ | **Livré** : statut déduit (`termine`/`en_cours`/`a_voir`/`archive`) à partir de TMDb + de l'agrégat Betaseries, sans jamais écraser un statut choisi manuellement | Produit | S | Élevé |
 | 4 | ✅ | ~~Onboarding post-signup orienté import~~ | **Livré via PR #7** : l'état vide "aucune série suivie" affiche directement les CTA import/recherche + une grille de découverte tendance | Produit, Design | M | Très élevé |

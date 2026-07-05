@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { APP_NAME } from "@/lib/config";
 
 const authSearchSchema = z.object({
   redirect: z.string().optional(),
@@ -23,8 +24,8 @@ export const Route = createFileRoute("/auth")({
   validateSearch: authSearchSchema,
   head: () => ({
     meta: [
-      { title: "Connexion — Nightframe" },
-      { name: "description", content: "Connectez-vous ou créez un compte Nightframe." },
+      { title: `Connexion — ${APP_NAME}` },
+      { name: "description", content: `Connectez-vous ou créez un compte ${APP_NAME}.` },
     ],
   }),
   component: AuthPage,
@@ -81,10 +82,10 @@ function AuthPage() {
           <div className="inline-flex items-center gap-2 mb-3">
             <span className="h-2 w-2 rounded-full bg-primary" />
             <span className="font-counter text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              N/F · 001
+              TVT · 001
             </span>
           </div>
-          <h1 className="font-display text-4xl text-foreground">Nightframe</h1>
+          <h1 className="font-display text-4xl tracking-tight text-foreground">{APP_NAME}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Le carnet nocturne de vos séries & films.
           </p>
@@ -141,7 +142,7 @@ function AuthPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@nightframe.app"
+                placeholder="you@tvtrackd.app"
                 className="bg-background border-border h-11"
               />
             </div>

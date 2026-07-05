@@ -4,6 +4,7 @@ import { Play } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { APP_NAME } from "@/lib/config";
 import {
   addDaysToDateString,
   bucketUpcoming,
@@ -328,7 +329,7 @@ function HeroTicket({ item }: { item: ReadyItem }) {
       </div>
       <div className="border-t border-dashed border-border px-4 py-2">
         <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          Nightframe · Ticket #{pad(nextEpisode.id % 100)}
+          {APP_NAME} · Ticket #{pad(nextEpisode.id % 100)}
         </p>
       </div>
     </Link>
