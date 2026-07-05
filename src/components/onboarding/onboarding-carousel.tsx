@@ -23,7 +23,7 @@ import {
 
 const CARD_HEIGHT = "h-[calc(100dvh-6.5rem)]";
 const CARD_PANEL =
-  "flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-8 text-center";
+  "flex flex-col items-center justify-center rounded-xl border border-border bg-card px-8 text-center";
 
 /**
  * Full-screen, swipeable first-run onboarding for anonymous visitors.
@@ -77,9 +77,9 @@ export function OnboardingCarousel() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="flex items-center justify-between px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
-        <span className="flex items-center gap-0.5 font-counter text-xs tracking-widest text-primary">
+        <span className="flex items-center gap-0.5 font-counter text-xs tracking-widest text-muted-foreground">
           {String(index + 1).padStart(2, "0")}/03
-          <ChevronRight className="h-3 w-3" />
+          {index < 2 ? <ChevronRight className="h-3 w-3 text-primary" /> : null}
         </span>
         {index < 2 ? (
           <button
