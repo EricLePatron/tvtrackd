@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { BackButton } from "@/components/back-button";
 import { useAuth } from "@/hooks/use-auth";
 import { useCalendarTimeline } from "@/hooks/use-calendar-timeline";
 import { CalendarTimelineList } from "@/components/home/calendar-timeline";
