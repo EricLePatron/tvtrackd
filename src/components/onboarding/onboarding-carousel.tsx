@@ -129,12 +129,10 @@ function CardOne() {
   return (
     <div className={`${CARD_HEIGHT} ${CARD_PANEL}`}>
       <CassetteIcon className="h-[120px] w-[120px] shrink-0 text-foreground" />
-      <h2 className="mt-8 font-display text-2xl text-foreground">
-        Un tracker qui fait bien les choses simples
-      </h2>
+      <h2 className="mt-8 font-display text-2xl text-primary">Bienvenue sur {APP_NAME}</h2>
       <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
-        {APP_NAME} suit vos séries et films, épisode par épisode. Simple à utiliser. Fiable au
-        quotidien. Là quand vous en avez besoin. Gratuit.
+        Un tracker qui fait bien les choses simples : vos séries et films, épisode par épisode.
+        Simple à utiliser. Fiable au quotidien. Là quand vous en avez besoin. Gratuit.
       </p>
     </div>
   );
