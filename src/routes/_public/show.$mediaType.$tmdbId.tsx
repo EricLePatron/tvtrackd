@@ -25,7 +25,7 @@ type ShowRow = {
   poster_path: string | null;
   first_air_date: string | null;
   status: string | null;
-  genres: string[];
+  genres: string[] | null;
   vote_average: number | null;
   tagline: string | null;
 };
@@ -261,7 +261,7 @@ function ShowDetail() {
           {show.tagline && (
             <p className="mt-1 text-sm italic text-muted-foreground">{show.tagline}</p>
           )}
-          {(!!show.vote_average || show.genres.length > 0) && (
+          {(!!show.vote_average || (show.genres ?? []).length > 0) && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {!!show.vote_average && (
                 <span className="font-counter text-sm text-primary">
@@ -269,7 +269,7 @@ function ShowDetail() {
                   <span className="text-muted-foreground">/10</span>
                 </span>
               )}
-              {show.genres.map((g) => (
+              {(show.genres ?? []).map((g) => (
                 <span
                   key={g}
                   className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
