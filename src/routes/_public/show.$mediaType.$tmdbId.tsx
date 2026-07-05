@@ -290,7 +290,7 @@ function ShowDetail() {
             disabled={follow.isPending}
             className={`mt-3 inline-flex h-11 items-center gap-1.5 rounded-md px-4 text-xs font-medium ${
               userShow
-                ? "bg-secondary/10 text-secondary border border-secondary/30"
+                ? "bg-cyan-accent/10 text-cyan-accent border border-cyan-accent/30"
                 : "bg-primary text-primary-foreground"
             }`}
           >
@@ -389,7 +389,7 @@ function EpisodeRow({
           aria-label={isWatched ? "Marquer comme revu" : "Marquer vu"}
           className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors ${
             isWatched
-              ? "border-secondary bg-secondary/10 text-secondary"
+              ? "border-cyan-accent bg-cyan-accent/10 text-cyan-accent"
               : "border-border bg-surface-elevated text-muted-foreground hover:text-primary hover:border-primary/60"
           }`}
         >
@@ -414,7 +414,7 @@ function EpisodeRow({
             {episode.air_date ?? "date inconnue"}
           </p>
         </div>
-        {isWatched && count > 1 && <RotateCcw className="h-3.5 w-3.5 shrink-0 text-secondary" />}
+        {isWatched && count > 1 && <RotateCcw className="h-3.5 w-3.5 shrink-0 text-cyan-accent" />}
         {hasOverview && (
           <button
             onClick={() => setExpanded((v) => !v)}
