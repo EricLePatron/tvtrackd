@@ -11,7 +11,6 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { APP_NAME } from "../lib/config";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -79,14 +78,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: `${APP_NAME} — Suivi de séries & films` },
+      { title: "Nightframe — Suivi de séries & films" },
       {
         name: "description",
-        content: `${APP_NAME} : suivez vos séries et films, épisode par épisode. Pensé pour le visionnage nocturne.`,
+        content:
+          "Nightframe : suivez vos séries et films, épisode par épisode. Pensé pour le visionnage nocturne.",
       },
-      { name: "author", content: APP_NAME },
+      { name: "author", content: "Nightframe" },
       { name: "theme-color", content: "#0B0E14" },
-      { property: "og:title", content: `${APP_NAME} — Suivi de séries & films` },
+      { property: "og:title", content: "Nightframe — Suivi de séries & films" },
       {
         property: "og:description",
         content:
@@ -94,7 +94,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: `${APP_NAME} — Suivi de séries & films` },
+      { name: "twitter:title", content: "Nightframe — Suivi de séries & films" },
       { name: "description", content: "Track TV shows and movies with a unique, dark-themed mobile app." },
       { property: "og:description", content: "Track TV shows and movies with a unique, dark-themed mobile app." },
       { name: "twitter:description", content: "Track TV shows and movies with a unique, dark-themed mobile app." },

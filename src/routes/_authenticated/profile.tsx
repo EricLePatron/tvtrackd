@@ -8,7 +8,6 @@ import { ScreenHeader } from "@/components/screen-header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { parseImportFile, FORMAT_LABELS, type ImportItem } from "@/lib/import-parsers";
-import { APP_NAME } from "@/lib/config";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfileScreen,
@@ -87,7 +86,7 @@ function ProfileScreen() {
     const blob = await res.blob();
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${APP_NAME}-export-${Date.now()}.json`;
+    link.download = `nightframe-export-${Date.now()}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
