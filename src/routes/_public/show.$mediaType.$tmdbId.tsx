@@ -6,6 +6,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
 import { VhsCounter } from "@/components/vhs-counter";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
@@ -462,20 +469,17 @@ function StatusPicker({
   };
 
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {Object.entries(STATUS_LABELS).map(([k, label]) => (
-        <button
-          key={k}
-          onClick={() => update(k)}
-          className={`flex h-11 items-center justify-center rounded-md border px-3 text-xs transition-colors ${
-            status === k
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border bg-card text-muted-foreground"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+    <Select value={status} onValueChange={update}>
+      <SelectTrigger className="mt-2 h-11 w-full max-w-[200px] rounded-md border-border bg-card px-3 text-sm text-foreground data-[state=open]:border-primary sm:w-auto">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(STATUS_LABELS).map(([k, label]) => (
+          <SelectItem key={k} value={k} className="py-2.5 text-sm">
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
