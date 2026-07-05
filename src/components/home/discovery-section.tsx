@@ -41,7 +41,10 @@ export function DiscoverySection({ variant }: { variant: "grid" | "compact" }) {
           },
         });
       },
-      { reason: "suivre cette série" },
+      {
+        reason: "suivre cette série",
+        intent: { kind: "follow", tmdbId: item.tmdb_id, mediaType: item.media_type },
+      },
     );
   };
 

@@ -13,9 +13,7 @@ export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   errorComponent: ({ error }) => (
     <div className="p-6 text-sm text-destructive">Erreur : {error.message}</div>
   ),
-  notFoundComponent: () => (
-    <div className="p-6 text-sm text-muted-foreground">Introuvable.</div>
-  ),
+  notFoundComponent: () => <div className="p-6 text-sm text-muted-foreground">Introuvable.</div>,
 });
 
 type ShowRow = {
@@ -28,7 +26,12 @@ type ShowRow = {
   first_air_date: string | null;
   status: string | null;
 };
-type SeasonRow = { id: number; show_id: number; season_number: number; episode_count: number | null };
+type SeasonRow = {
+  id: number;
+  show_id: number;
+  season_number: number;
+  episode_count: number | null;
+};
 type EpisodeRow = {
   id: number;
   show_id: number;
@@ -53,11 +56,7 @@ function ShowDetail() {
   const qc = useQueryClient();
 
   const detailsKey = ["show-details", mediaType, tmdbId];
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: detailsKey,
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("get-show-details", {
@@ -118,20 +117,24 @@ function ShowDetail() {
   });
 
   const markWatched = useMutation({
-    mutationFn: async ({ episodeId, currentCount }: { episodeId: number; currentCount: number }) => {
+    mutationFn: async ({
+      episodeId,
+      currentCount,
+    }: {
+      episodeId: number;
+      currentCount: number;
+    }) => {
       if (!user) throw new Error("no user");
       const newCount = currentCount + 1;
-      const { error } = await supabase
-        .from("watch_status")
-        .upsert(
-          {
-            user_id: user.id,
-            episode_id: episodeId,
-            watch_count: newCount,
-            watched_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,episode_id" },
-        );
+      const { error } = await supabase.from("watch_status").upsert(
+        {
+          user_id: user.id,
+          episode_id: episodeId,
+          watch_count: newCount,
+          watched_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,episode_id" },
+      );
       if (error) throw error;
       return newCount;
     },
@@ -191,7 +194,14 @@ function ShowDetail() {
           <h1 className="font-display text-2xl leading-tight text-foreground">{show.title}</h1>
           <button
             onClick={() =>
-              requireAuth(() => follow.mutate(), { reason: "suivre cette série" })
+              requireAuth(() => follow.mutate(), {
+                reason: "suivre cette série",
+                intent: {
+                  kind: "follow",
+                  tmdbId: Number(tmdbId),
+                  mediaType: mediaType as "tv" | "movie",
+                },
+              })
             }
             disabled={follow.isPending}
             className={`mt-3 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${
@@ -201,16 +211,19 @@ function ShowDetail() {
             }`}
           >
             {userShow ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {userShow ? STATUS_LABELS[userShow.status] ?? "Suivi" : "Suivre"}
+            {userShow ? (STATUS_LABELS[userShow.status] ?? "Suivi") : "Suivre"}
           </button>
-          {userShow && <StatusPicker userShow={userShow} onChange={() => qc.invalidateQueries({ queryKey: followKey })} />}
+          {userShow && (
+            <StatusPicker
+              userShow={userShow}
+              onChange={() => qc.invalidateQueries({ queryKey: followKey })}
+            />
+          )}
         </div>
       </div>
 
       {show.overview && (
-        <p className="mx-5 mt-4 text-sm leading-relaxed text-muted-foreground">
-          {show.overview}
-        </p>
+        <p className="mx-5 mt-4 text-sm leading-relaxed text-muted-foreground">{show.overview}</p>
       )}
 
       {mediaType === "tv" && (
@@ -222,9 +235,7 @@ function ShowDetail() {
             return (
               <section key={s.id}>
                 <div className="mb-2 flex items-baseline justify-between">
-                  <h2 className="font-display text-lg text-foreground">
-                    Saison {s.season_number}
-                  </h2>
+                  <h2 className="font-display text-lg text-foreground">Saison {s.season_number}</h2>
                 </div>
                 <VhsCounter
                   seasonNumber={s.season_number}
@@ -245,7 +256,16 @@ function ShowDetail() {
                           onClick={() =>
                             requireAuth(
                               () => markWatched.mutate({ episodeId: e.id, currentCount: count }),
-                              { reason: "marquer cet épisode" },
+                              {
+                                reason: "marquer cet épisode",
+                                intent: {
+                                  kind: "mark_watched",
+                                  tmdbId: Number(tmdbId),
+                                  mediaType: mediaType as "tv" | "movie",
+                                  seasonNumber: e.season_number,
+                                  episodeNumber: e.episode_number,
+                                },
+                              },
                             )
                           }
                           aria-label={isWatched ? "Marquer comme revu" : "Marquer vu"}
