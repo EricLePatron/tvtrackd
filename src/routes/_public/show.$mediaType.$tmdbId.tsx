@@ -85,6 +85,12 @@ function ShowDetail() {
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
   const qc = useQueryClient();
+  // Verrou par épisode, partagé entre toggleWatched et addRewatch : les deux
+  // actions touchent la même ligne watch_status pour un épisode donné, donc
+  // ni isPending ni variables (qui ne reflètent que le DERNIER mutate() sur
+  // une instance de mutation partagée par toute la liste) ne suffisent à
+  // empêcher des requêtes concurrentes sur le même épisode.
+  const [lockedEpisodes, setLockedEpisodes] = useState<Set<number>>(new Set());
 
   const detailsKey = ["show-details", mediaType, tmdbId];
   const { data, isLoading, error } = useQuery({
@@ -189,7 +195,14 @@ function ShowDetail() {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible de mettre à jour l'épisode");
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: watchedKey }),
+    onSettled: (_data, _err, { episodeId }) => {
+      qc.invalidateQueries({ queryKey: watchedKey });
+      setLockedEpisodes((prev) => {
+        const next = new Set(prev);
+        next.delete(episodeId);
+        return next;
+      });
+    },
   });
 
   const addRewatch = useMutation({
@@ -227,7 +240,14 @@ function ShowDetail() {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible d'ajouter le revisionnage");
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: watchedKey }),
+    onSettled: (_data, _err, { episodeId }) => {
+      qc.invalidateQueries({ queryKey: watchedKey });
+      setLockedEpisodes((prev) => {
+        const next = new Set(prev);
+        next.delete(episodeId);
+        return next;
+      });
+    },
   });
 
   if (isLoading || !data) {
@@ -400,28 +420,35 @@ function ShowDetail() {
                   {eps.map((e) => {
                     const count = watched?.[e.id]?.count ?? 0;
                     const isWatched = count > 0;
+                    const isLocked = lockedEpisodes.has(e.id);
+                    const lockEpisode = () => setLockedEpisodes((prev) => new Set(prev).add(e.id));
                     return (
                       <EpisodeRow
                         key={e.id}
                         episode={e}
                         count={count}
                         onToggleWatched={() =>
-                          requireAuth(() => toggleWatched.mutate({ episodeId: e.id, isWatched }), {
-                            reason: "marquer cet épisode",
-                          })
+                          requireAuth(
+                            () => {
+                              if (lockedEpisodes.has(e.id)) return;
+                              lockEpisode();
+                              toggleWatched.mutate({ episodeId: e.id, isWatched });
+                            },
+                            { reason: "marquer cet épisode" },
+                          )
                         }
                         onRewatch={() =>
                           requireAuth(
-                            () => addRewatch.mutate({ episodeId: e.id, currentCount: count }),
+                            () => {
+                              if (lockedEpisodes.has(e.id)) return;
+                              lockEpisode();
+                              addRewatch.mutate({ episodeId: e.id, currentCount: count });
+                            },
                             { reason: "ajouter un revisionnage" },
                           )
                         }
-                        isTogglePending={
-                          toggleWatched.isPending && toggleWatched.variables?.episodeId === e.id
-                        }
-                        isRewatchPending={
-                          addRewatch.isPending && addRewatch.variables?.episodeId === e.id
-                        }
+                        isTogglePending={isLocked}
+                        isRewatchPending={isLocked}
                       />
                     );
                   })}
