@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
+import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
@@ -310,12 +311,8 @@ function ShowDetail() {
   return (
     <>
       <div className="flex items-center gap-3 px-5 pt-6">
-        <Link
-          to="/search"
-          className="rounded-full border border-border bg-card p-2 text-muted-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallbackTo="/search" />
+
         <span className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
           {mediaType === "tv" ? "Série" : "Film"} · {year}
           {statusLabel ? ` · ${statusLabel}` : ""}
