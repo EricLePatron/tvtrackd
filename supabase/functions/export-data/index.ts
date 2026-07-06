@@ -20,7 +20,9 @@ Deno.serve(async (req) => {
 
     const { data: userShows } = await admin
       .from("user_shows")
-      .select("status, created_at, show:shows(tmdb_id, media_type, title, first_air_date)")
+      .select(
+        "status, manual_override, created_at, show:shows(tmdb_id, media_type, title, first_air_date)",
+      )
       .eq("user_id", userId);
 
     const { data: watch } = await admin
@@ -46,9 +48,6 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("[export-data]", err);
-    return Response.json(
-      { error: (err as Error).message },
-      { status: 500, headers: corsHeaders },
-    );
+    return Response.json({ error: (err as Error).message }, { status: 500, headers: corsHeaders });
   }
 });

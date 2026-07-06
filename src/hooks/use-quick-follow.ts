@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { followShow } from "@/lib/follow-show";
 import type { TrendingItem } from "@/components/home/discovery-grid";
 
 /**
@@ -11,13 +12,14 @@ import type { TrendingItem } from "@/components/home/discovery-grid";
  * `user_shows` client-side, which RLS does allow for the current user.
  *
  * If a `user_shows` row already exists for this show (any status —
- * en_cours, termine, abandonne, archive…), its status is preserved: we only
- * default to "a_voir" for a genuinely new follow, mirroring the `follow`
- * mutation in the show detail route (`status: userShow?.status ?? "a_voir"`).
- * The discovery grids also pre-mark already-followed items via
- * `useFollowedKeys` so the "+" shouldn't normally be clickable in that case
- * at all — this is a defense-in-depth check against overwriting real
- * progress on a race/stale-cache click.
+ * en_cours, termine, abandonne, archive…), it is left untouched: `status`
+ * (et `manual_override` pour les séries) sont déjà en place et ne doivent
+ * jamais être écrasés — voir `followShow` dans `src/lib/follow-show.ts`,
+ * partagée avec la mutation `follow` de la route show detail et
+ * `use-replay-pending-intent`. The discovery grids also pre-mark
+ * already-followed items via `useFollowedKeys` so the "+" shouldn't
+ * normally be clickable in that case at all — this is a defense-in-depth
+ * check against overwriting real progress on a race/stale-cache click.
  */
 export function useQuickFollow(userId: string | undefined) {
   const qc = useQueryClient();
@@ -38,13 +40,7 @@ export function useQuickFollow(userId: string | undefined) {
         .eq("show_id", show.id)
         .maybeSingle();
 
-      const { error: upsertError } = await supabase
-        .from("user_shows")
-        .upsert(
-          { user_id: userId, show_id: show.id, status: existing?.status ?? "a_voir" },
-          { onConflict: "user_id,show_id" },
-        );
-      if (upsertError) throw upsertError;
+      await followShow(userId, show.id, !!existing);
       return show;
     },
     onError: () => {

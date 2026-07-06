@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Archive, Ban, Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
+import { followShow } from "@/lib/follow-show";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import {
@@ -15,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
@@ -144,13 +146,7 @@ function ShowDetail() {
   const follow = useMutation({
     mutationFn: async () => {
       if (!user || !show) throw new Error("no user");
-      const { error } = await supabase
-        .from("user_shows")
-        .upsert(
-          { user_id: user.id, show_id: show.id, status: userShow?.status ?? "a_voir" },
-          { onConflict: "user_id,show_id" },
-        );
-      if (error) throw error;
+      await followShow(user.id, show.id, !!userShow);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: followKey }),
   });
@@ -441,6 +437,7 @@ function ShowDetail() {
               </p>
               <StatusPicker
                 userShow={userShow}
+                mediaType={mediaType}
                 onChange={() => qc.invalidateQueries({ queryKey: followKey })}
               />
             </>
@@ -682,11 +679,41 @@ function EpisodeRow({
   );
 }
 
+type UserShowRow = {
+  show_id: number;
+  status: string;
+  manual_override: string | null;
+};
+
+// Pour les séries TV, `status` (à voir / en cours / terminé) est désormais
+// TOUJOURS dérivé automatiquement de la progression de visionnage côté SQL
+// (triggers sur watch_status/episodes/seasons/shows, cf. migration
+// 20260706100000_auto_status.sql) — l'utilisateur ne le choisit plus jamais
+// directement. Le picker devient un badge lecture-seule + des actions
+// explicites qui n'écrivent que `manual_override` ("Abandonner" / "Archiver"
+// / "Reprendre le suivi"), jamais `status` directement. Pour les films
+// (aucune donnée episodes/seasons pour eux dans ce schéma), le comportement
+// reste inchangé : un select manuel classique à 5 valeurs.
 function StatusPicker({
+  userShow,
+  mediaType,
+  onChange,
+}: {
+  userShow: UserShowRow;
+  mediaType: string;
+  onChange: () => void;
+}) {
+  if (mediaType !== "tv") {
+    return <MovieStatusPicker userShow={userShow} onChange={onChange} />;
+  }
+  return <TvStatusBadge userShow={userShow} onChange={onChange} />;
+}
+
+function MovieStatusPicker({
   userShow,
   onChange,
 }: {
-  userShow: { show_id: number; status: string };
+  userShow: UserShowRow;
   onChange: () => void;
 }) {
   const { user } = useAuth();
@@ -716,5 +743,143 @@ function StatusPicker({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+// Couleurs du badge alignées sur les indicateurs déjà utilisés ailleurs dans
+// l'app (rail "Suivi" plus haut, ready-list-item, calendar-timeline) : ambre
+// pour "en cours", cyan pour "terminé", neutre (bordure seule, sans fond)
+// pour à voir / abandonné / archivé.
+const TV_STATUS_BADGE_STYLES: Record<string, string> = {
+  en_cours: "border-primary/40 bg-primary/10 text-primary",
+  termine: "border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent",
+  a_voir: "border-border text-muted-foreground",
+  abandonne: "border-border text-muted-foreground",
+  archive: "border-border text-muted-foreground",
+};
+
+function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange: () => void }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  // Même clé que celle utilisée par le composant parent pour `userShow`
+  // (reconstruite localement plutôt que passée en prop, `userShow.show_id`
+  // étant strictement égal au `show?.id` du parent une fois cette ligne
+  // chargée). Sert uniquement à annuler un refetch obsolète, cf. setOverride.
+  const followKey = ["user-show", user?.id, userShow.show_id];
+  const [pending, setPending] = useState(false);
+  // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
+  // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
+  // attendre la requête ni le refetch déclenché par onChange(). Pour
+  // "Abandonner"/"Archiver" le nouveau manual_override est connu à l'avance,
+  // donc affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend
+  // du recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client :
+  // on affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
+  // reflète la valeur confirmée.
+  const [optimistic, setOptimistic] = useState<{
+    manualOverride: "abandonne" | "archive" | null;
+    recalculating: boolean;
+  } | null>(null);
+
+  // Une fois que la donnée serveur rattrape la valeur optimiste (après le
+  // refetch déclenché par onChange()), on efface l'état local : `userShow`
+  // fait alors foi, statut recalculé inclus.
+  useEffect(() => {
+    if (optimistic && userShow.manual_override === optimistic.manualOverride) {
+      setOptimistic(null);
+    }
+  }, [userShow.manual_override, optimistic]);
+
+  const manualOverride = optimistic ? optimistic.manualOverride : userShow.manual_override;
+  const recalculating = optimistic?.recalculating ?? false;
+
+  const setOverride = async (next: "abandonne" | "archive" | null) => {
+    // Annule tout refetch de `followKey` encore en vol (déclenché par un
+    // clic précédent via onChange()) avant d'écrire un nouvel état
+    // optimiste : sans ça, une réponse obsolète peut résoudre après celle
+    // de cette action et écraser le cache avec une donnée périmée, laissant
+    // le badge bloqué sur "Recalcul…" (cf. commentaire QA ci-dessus).
+    await qc.cancelQueries({ queryKey: followKey });
+    setOptimistic({ manualOverride: next, recalculating: next === null });
+    setPending(true);
+    const { error } = await supabase
+      .from("user_shows")
+      .update({ manual_override: next })
+      .eq("user_id", user!.id)
+      .eq("show_id", userShow.show_id);
+    setPending(false);
+    if (error) {
+      setOptimistic(null);
+      toast.error(error.message);
+      return;
+    }
+    onChange();
+  };
+
+  const badgeLabel = recalculating
+    ? "Recalcul…"
+    : manualOverride
+      ? STATUS_LABELS[manualOverride]
+      : (STATUS_LABELS[userShow.status] ?? userShow.status);
+  const badgeStyle = recalculating
+    ? "border-border text-muted-foreground"
+    : (TV_STATUS_BADGE_STYLES[manualOverride ?? userShow.status] ??
+      "border-border text-muted-foreground");
+
+  const actionButtonClass =
+    "gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
+        >
+          {badgeLabel}
+        </span>
+        {manualOverride ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOverride(null)}
+            disabled={pending}
+            className={actionButtonClass}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reprendre le suivi
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setOverride("abandonne")}
+              disabled={pending}
+              className={actionButtonClass}
+            >
+              <Ban className="h-3.5 w-3.5" />
+              Abandonner
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setOverride("archive")}
+              disabled={pending}
+              className={actionButtonClass}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archiver
+            </Button>
+          </>
+        )}
+      </div>
+      {manualOverride === null && (
+        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+          Statut calculé automatiquement
+        </p>
+      )}
+    </div>
   );
 }
