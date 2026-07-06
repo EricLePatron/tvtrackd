@@ -17,6 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
@@ -95,6 +99,7 @@ function ShowDetail() {
   // une instance de mutation partagée par toute la liste) ne suffisent à
   // empêcher des requêtes concurrentes sur le même épisode.
   const [lockedEpisodes, setLockedEpisodes] = useState<Set<number>>(new Set());
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
 
   const detailsKey = ["show-details", mediaType, tmdbId];
   const { data, isLoading, error } = useQuery({
@@ -350,11 +355,11 @@ function ShowDetail() {
     : undefined;
 
   const today = new Date().toISOString().slice(0, 10);
-  const nextAirDate =
+  const nextUpcomingEpisode =
     mediaType === "tv"
       ? episodes
           .filter((e) => e.air_date && e.air_date >= today)
-          .sort((a, b) => (a.air_date! < b.air_date! ? -1 : 1))[0]?.air_date
+          .sort((a, b) => (a.air_date! < b.air_date! ? -1 : 1))[0]
       : undefined;
 
   const firstUnwatched =
@@ -395,21 +400,27 @@ function ShowDetail() {
                   <span className="text-muted-foreground">/10</span>
                 </span>
               )}
-              {(show.genres ?? []).map((g) => (
-                <span
-                  key={g}
-                  className="rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
-                >
-                  {g}
+              {(show.genres ?? []).length > 0 && (
+                <span className="text-[11px] text-muted-foreground">
+                  {(show.genres ?? []).slice(0, 2).join(" · ")}
+                  {(show.genres ?? []).length > 2 && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="ml-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                        >
+                          +{(show.genres ?? []).length - 2}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto max-w-[220px] p-3 text-[11px] text-foreground">
+                        {(show.genres ?? []).slice(2).join(" · ")}
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </span>
-              ))}
+              )}
             </div>
-          )}
-          {nextAirDate && (
-            <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-primary">
-              Prochain épisode le{" "}
-              {new Date(nextAirDate).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
-            </p>
           )}
           {!userShow && (
             <button
@@ -430,38 +441,75 @@ function ShowDetail() {
               Suivre
             </button>
           )}
-          {userShow && (
-            <>
-              <p className="mt-3 flex items-center gap-1.5 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-                <Check className="h-3 w-3" /> Suivi
-              </p>
-              <StatusPicker
-                userShow={userShow}
-                mediaType={mediaType}
-                onChange={() => qc.invalidateQueries({ queryKey: followKey })}
-              />
-            </>
-          )}
         </div>
       </div>
 
-      {show.overview && (
-        <p className="mx-5 mt-4 text-sm leading-relaxed text-muted-foreground">{show.overview}</p>
-      )}
-
-      {mediaType === "tv" && firstUnwatched && (
-        <div className="mx-5 mt-4 flex items-center gap-2">
-          <Play className="h-4 w-4 shrink-0 text-primary" />
-          <p className="text-sm text-foreground">
-            <span className="text-muted-foreground">
-              {anyWatched ? "Reprendre à" : "Commencer avec"}{" "}
-            </span>
-            <span className="font-counter text-primary">
-              S{pad(firstUnwatched.season_number)}E{pad(firstUnwatched.episode_number)}
-            </span>
-          </p>
+      {userShow && (
+        <div className="mx-5 mt-4">
+          <Card className="flex items-center gap-3 rounded-md border-border bg-card p-3 shadow-none">
+            <StatusPicker
+              userShow={userShow}
+              mediaType={mediaType}
+              onChange={() => qc.invalidateQueries({ queryKey: followKey })}
+            />
+          </Card>
         </div>
       )}
+
+      {mediaType === "tv" && (firstUnwatched || nextUpcomingEpisode) && (
+        <div className="mx-5 mt-4">
+          {firstUnwatched && (
+            <button
+              onClick={() => {
+                document
+                  .getElementById(`episode-${firstUnwatched.id}`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
+            >
+              <Play className="h-3.5 w-3.5" />
+              {anyWatched ? "Reprendre" : "Commencer"} S{pad(firstUnwatched.season_number)}E
+              {pad(firstUnwatched.episode_number)}
+            </button>
+          )}
+          {nextUpcomingEpisode && (
+            <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+              Prochain : S{pad(nextUpcomingEpisode.season_number)}E
+              {pad(nextUpcomingEpisode.episode_number)} ·{" "}
+              {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
+                day: "numeric",
+                month: "long",
+              })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {show.overview && (
+        <div className="mx-5 mt-4">
+          <p
+            className={cn(
+              "text-sm leading-relaxed text-muted-foreground",
+              !overviewExpanded && "line-clamp-2",
+            )}
+          >
+            {show.overview}
+          </p>
+          <button
+            type="button"
+            onClick={() => setOverviewExpanded((v) => !v)}
+            aria-expanded={overviewExpanded}
+            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            {overviewExpanded ? "Réduire" : "Lire la suite"}
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${overviewExpanded ? "rotate-180" : ""}`}
+            />
+          </button>
+        </div>
+      )}
+
+      {mediaType === "tv" && <Separator className="mx-5 mt-6 w-auto" />}
 
       {mediaType === "tv" && (
         <div className="mt-6 space-y-6 px-5 pb-24">
@@ -614,7 +662,10 @@ function EpisodeRow({
   const hasOverview = !!episode.overview;
 
   return (
-    <li className="rounded-md border border-border bg-card px-3 py-2.5">
+    <li
+      id={`episode-${episode.id}`}
+      className="scroll-mt-6 rounded-md border border-border bg-card px-3 py-2.5"
+    >
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleWatched}
@@ -732,7 +783,7 @@ function MovieStatusPicker({
 
   return (
     <Select value={status} onValueChange={update}>
-      <SelectTrigger className="mt-2 h-11 w-full max-w-[200px] rounded-md border-border bg-card px-3 text-sm text-foreground data-[state=open]:border-primary sm:w-auto">
+      <SelectTrigger className="h-11 w-full max-w-[200px] rounded-md border-border bg-card px-3 text-sm text-foreground data-[state=open]:border-primary sm:w-auto">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
