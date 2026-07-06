@@ -468,36 +468,39 @@ function ShowDetail() {
         </div>
       )}
 
-      {mediaType === "tv" && userShow && (firstUnwatched || nextUpcomingEpisode) && (
-        <div className="mx-5 mt-4">
-          {firstUnwatched && (
-            <button
-              type="button"
-              onClick={() => {
-                const target = document.getElementById(`episode-${firstUnwatched.id}`);
-                target?.scrollIntoView({ behavior: "smooth", block: "center" });
-                target?.focus({ preventScroll: true });
-              }}
-              className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
-            >
-              <Play className="h-3.5 w-3.5" />
-              {anyWatched ? "Reprendre" : "Commencer"} S{pad(firstUnwatched.season_number)}E
-              {pad(firstUnwatched.episode_number)}
-            </button>
-          )}
-          {nextUpcomingEpisode &&
-            (!firstUnwatched || nextUpcomingEpisode.id !== firstUnwatched.id) && (
-              <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-                Prochain : S{pad(nextUpcomingEpisode.season_number)}E
-                {pad(nextUpcomingEpisode.episode_number)} ·{" "}
-                {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
-                  day: "numeric",
-                  month: "long",
-                })}
-              </p>
+      {mediaType === "tv" &&
+        userShow &&
+        !userShow.manual_override &&
+        (firstUnwatched || nextUpcomingEpisode) && (
+          <div className="mx-5 mt-4">
+            {firstUnwatched && (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = document.getElementById(`episode-${firstUnwatched.id}`);
+                  target?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  target?.focus({ preventScroll: true });
+                }}
+                className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
+              >
+                <Play className="h-3.5 w-3.5" />
+                {anyWatched ? "Reprendre" : "Commencer"} S{pad(firstUnwatched.season_number)}E
+                {pad(firstUnwatched.episode_number)}
+              </button>
             )}
-        </div>
-      )}
+            {nextUpcomingEpisode &&
+              (!firstUnwatched || nextUpcomingEpisode.id !== firstUnwatched.id) && (
+                <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+                  Prochain : S{pad(nextUpcomingEpisode.season_number)}E
+                  {pad(nextUpcomingEpisode.episode_number)} ·{" "}
+                  {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </p>
+              )}
+          </div>
+        )}
 
       {show.overview && (
         <div className="mx-5 mt-4">
