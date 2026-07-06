@@ -86,7 +86,7 @@ function ProfileScreen() {
     const blob = await res.blob();
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `nightframe-export-${Date.now()}.json`;
+    link.download = `tvtrackd-export-${Date.now()}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
