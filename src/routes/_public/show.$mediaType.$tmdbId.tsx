@@ -412,7 +412,7 @@ function ShowDetail() {
                 </span>
               )}
               {(show.genres ?? []).length > 0 && (
-                <span className="text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                   {(genresExpanded ? show.genres! : show.genres!.slice(0, 2)).join(" · ")}
                   {(show.genres ?? []).length > 2 && (
                     <button
@@ -420,9 +420,12 @@ function ShowDetail() {
                       aria-expanded={genresExpanded}
                       aria-label={genresExpanded ? "Réduire les genres" : "Voir tous les genres"}
                       onClick={() => setGenresExpanded((v) => !v)}
-                      className="ml-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                      className="ml-1 inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground"
                     >
-                      {genresExpanded ? "réduire" : `+${(show.genres ?? []).length - 2}`}
+                      {genresExpanded ? "Réduire" : `+${(show.genres ?? []).length - 2}`}
+                      <ChevronDown
+                        className={`h-3 w-3 transition-transform ${genresExpanded ? "rotate-180" : ""}`}
+                      />
                     </button>
                   )}
                 </span>
