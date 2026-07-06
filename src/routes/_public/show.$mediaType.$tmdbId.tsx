@@ -192,11 +192,29 @@ function ShowDetail() {
   // après refetch, ça signifie que le trigger SQL vient de lever la reprise
   // de suivi implicite (nouvel épisode marqué vu) : on l'annonce par un
   // toast, plutôt que de laisser le badge changer silencieusement.
+  //
+  // Garde-fou anti double-toast : si l'utilisateur marque deux épisodes en
+  // succession rapide, les deux mutations peuvent chacune capturer
+  // `prevOverride: "abandonne"` avant que l'une ait abouti, et donc chacune
+  // constater après coup que l'override est passé à `null` — sans ce ref,
+  // les deux afficheraient le toast. `liftNotifiedRef` mémorise qu'une levée
+  // a déjà été annoncée pour le cycle "abandonne" courant ; il n'est remis à
+  // `false` que lorsque `manual_override` redevient "abandonne" (nouvelle
+  // action explicite de l'utilisateur), ce qui autorise une nouvelle
+  // notification lors d'une future levée.
+  const liftNotifiedRef = useRef(false);
+  useEffect(() => {
+    if (userShow?.manual_override === "abandonne") {
+      liftNotifiedRef.current = false;
+    }
+  }, [userShow?.manual_override]);
+
   const notifyOverrideLift = async (prevOverride: string | null | undefined) => {
     await qc.invalidateQueries({ queryKey: followKey });
-    if (prevOverride !== "abandonne") return;
+    if (prevOverride !== "abandonne" || liftNotifiedRef.current) return;
     const updated = qc.getQueryData<UserShowRow | null>(followKey);
     if (updated && updated.manual_override === null) {
+      liftNotifiedRef.current = true;
       toast.success("Reprise de suivi détectée");
     }
   };
@@ -893,7 +911,14 @@ function TvStatusBadge({
   // chargée). Sert uniquement à annuler un refetch obsolète, cf. setOverride.
   const followKey = ["user-show", user?.id, userShow.show_id];
   const [pending, setPending] = useState(false);
+  // Contrôlé (plutôt que laissé non contrôlé) pour pouvoir fermer
+  // explicitement le menu quand on ouvre l'AlertDialog de confirmation
+  // depuis l'item "Ne plus suivre" (cf. onSelect ci-dessous), et pour piloter
+  // la rotation du chevron du trigger comme les autres disclosures du
+  // fichier.
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmUnfollowOpen, setConfirmUnfollowOpen] = useState(false);
+  const [unfollowPending, setUnfollowPending] = useState(false);
   // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
   // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
   // attendre la requête ni le refetch déclenché par onChange(). Pour
@@ -947,17 +972,33 @@ function TvStatusBadge({
   // d'état optimiste local : après succès, onChange() invalide `followKey`
   // et le composant parent fait redevenir `userShow` null au refetch, ce qui
   // démonte ce composant et fait réapparaître le bouton "Suivre" — même
-  // mécanisme que pour un follow initial, en sens inverse.
+  // mécanisme que pour un follow initial, en sens inverse. Le clic sur
+  // l'AlertDialogAction fait un preventDefault (cf. JSX plus bas) pour garder
+  // la boîte de dialogue ouverte, boutons désactivés, le temps de la requête,
+  // plutôt que de la fermer instantanément sans retour visuel.
   const handleUnfollow = async () => {
+    setUnfollowPending(true);
     try {
       await unfollowShow(user!.id, userShow.show_id);
+      setConfirmUnfollowOpen(false);
       onChange();
       qc.invalidateQueries({ queryKey: ["followed-keys", user?.id] });
       qc.invalidateQueries({ queryKey: ["home-schedule", user?.id] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Impossible de retirer cette série");
+    } finally {
+      setUnfollowPending(false);
     }
   };
+
+  // Statut "effectif" affiché par le badge : l'override s'il est actif,
+  // sinon le statut calculé. `abandonne`/`archive` partagent le même style
+  // neutre que `a_voir` (cf. TV_STATUS_BADGE_STYLES) — sans texte de légende
+  // sous le badge, un signal non-textuel (icône Ban) est nécessaire pour ne
+  // pas rendre un statut figé indiscernable de "à voir".
+  const effectiveStatus = manualOverride ?? userShow.status;
+  const isOverrideState =
+    !recalculating && (effectiveStatus === "abandonne" || effectiveStatus === "archive");
 
   const badgeLabel = recalculating
     ? "Recalcul…"
@@ -966,32 +1007,39 @@ function TvStatusBadge({
       : (STATUS_LABELS[userShow.status] ?? userShow.status);
   const badgeStyle = recalculating
     ? "border-border text-muted-foreground"
-    : (TV_STATUS_BADGE_STYLES[manualOverride ?? userShow.status] ??
-      "border-border text-muted-foreground");
+    : (TV_STATUS_BADGE_STYLES[effectiveStatus] ?? "border-border text-muted-foreground");
 
   const actionButtonClass =
-    "gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
+    "h-11 gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
 
   return (
-    <div className="space-y-1.5">
+    <>
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className={`inline-flex items-center rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
         >
+          {isOverrideState && <Ban className="h-3 w-3" aria-hidden="true" />}
           {badgeLabel}
         </span>
 
-        <DropdownMenu>
+        {/* modal={false} : évite le bug Radix connu (radix-ui/primitives#3317,
+            shadcn-ui/ui#7124) où le pointer-events:none posé sur <body> par un
+            DropdownMenu modal peut ne jamais être relâché quand un AlertDialog
+            s'ouvre par-dessus (cf. onSelect "Ne plus suivre" ci-dessous), ce
+            qui gèlerait toute la page. */}
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={pending}
+              disabled={pending || unfollowPending}
               className={actionButtonClass}
             >
               Gérer le suivi
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+              />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
@@ -1009,7 +1057,14 @@ function TvStatusBadge({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={(e) => {
+                // preventDefault : évite la fermeture "par défaut" du menu
+                // (avec son retour de focus immédiat sur le trigger) pendant
+                // que l'AlertDialog s'ouvre. On ferme le menu nous-mêmes juste
+                // après via setMenuOpen(false), pour ne jamais le laisser
+                // réapparaître visuellement derrière une fois l'AlertDialog
+                // fermé (annulation ou confirmation).
                 e.preventDefault();
+                setMenuOpen(false);
                 setConfirmUnfollowOpen(true);
               }}
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
@@ -1031,9 +1086,13 @@ function TvStatusBadge({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={unfollowPending}>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleUnfollow}
+              onClick={(e) => {
+                e.preventDefault();
+                handleUnfollow();
+              }}
+              disabled={unfollowPending}
               className={cn(buttonVariants({ variant: "destructive" }))}
             >
               Ne plus suivre
@@ -1041,6 +1100,6 @@ function TvStatusBadge({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
