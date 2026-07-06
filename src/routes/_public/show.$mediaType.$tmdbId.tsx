@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -101,6 +100,7 @@ function ShowDetail() {
   const [lockedEpisodes, setLockedEpisodes] = useState<Set<number>>(new Set());
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [isOverviewTruncated, setIsOverviewTruncated] = useState(false);
+  const [genresExpanded, setGenresExpanded] = useState(false);
   const overviewRef = useRef<HTMLParagraphElement>(null);
 
   const detailsKey = ["show-details", mediaType, tmdbId];
@@ -413,22 +413,17 @@ function ShowDetail() {
               )}
               {(show.genres ?? []).length > 0 && (
                 <span className="text-[11px] text-muted-foreground">
-                  {(show.genres ?? []).slice(0, 2).join(" · ")}
+                  {(genresExpanded ? show.genres! : show.genres!.slice(0, 2)).join(" · ")}
                   {(show.genres ?? []).length > 2 && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label="Voir tous les genres"
-                          className="ml-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
-                        >
-                          +{(show.genres ?? []).length - 2}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto max-w-[220px] p-3 text-[11px] text-foreground">
-                        {(show.genres ?? []).slice(2).join(" · ")}
-                      </PopoverContent>
-                    </Popover>
+                    <button
+                      type="button"
+                      aria-expanded={genresExpanded}
+                      aria-label={genresExpanded ? "Réduire les genres" : "Voir tous les genres"}
+                      onClick={() => setGenresExpanded((v) => !v)}
+                      className="ml-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                    >
+                      {genresExpanded ? "réduire" : `+${(show.genres ?? []).length - 2}`}
+                    </button>
                   )}
                 </span>
               )}
