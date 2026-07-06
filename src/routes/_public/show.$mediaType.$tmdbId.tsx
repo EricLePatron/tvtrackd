@@ -456,7 +456,7 @@ function ShowDetail() {
         </div>
       )}
 
-      {mediaType === "tv" && (firstUnwatched || nextUpcomingEpisode) && (
+      {mediaType === "tv" && userShow && (firstUnwatched || nextUpcomingEpisode) && (
         <div className="mx-5 mt-4">
           {firstUnwatched && (
             <button
