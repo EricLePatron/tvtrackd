@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Archive, Ban, Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
@@ -745,11 +746,48 @@ function MovieStatusPicker({
   );
 }
 
+// Couleurs du badge alignées sur les indicateurs déjà utilisés ailleurs dans
+// l'app (rail "Suivi" plus haut, ready-list-item, calendar-timeline) : ambre
+// pour "en cours", cyan pour "terminé", neutre (bordure seule, sans fond)
+// pour à voir / abandonné / archivé.
+const TV_STATUS_BADGE_STYLES: Record<string, string> = {
+  en_cours: "border-primary/40 bg-primary/10 text-primary",
+  termine: "border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent",
+  a_voir: "border-border text-muted-foreground",
+  abandonne: "border-border text-muted-foreground",
+  archive: "border-border text-muted-foreground",
+};
+
 function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange: () => void }) {
   const { user } = useAuth();
   const [pending, setPending] = useState(false);
+  // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
+  // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
+  // attendre la requête ni le refetch déclenché par onChange(). Pour
+  // "Abandonner"/"Archiver" le nouveau manual_override est connu à l'avance,
+  // donc affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend
+  // du recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client :
+  // on affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
+  // reflète la valeur confirmée.
+  const [optimistic, setOptimistic] = useState<{
+    manualOverride: "abandonne" | "archive" | null;
+    recalculating: boolean;
+  } | null>(null);
+
+  // Une fois que la donnée serveur rattrape la valeur optimiste (après le
+  // refetch déclenché par onChange()), on efface l'état local : `userShow`
+  // fait alors foi, statut recalculé inclus.
+  useEffect(() => {
+    if (optimistic && userShow.manual_override === optimistic.manualOverride) {
+      setOptimistic(null);
+    }
+  }, [userShow.manual_override, optimistic]);
+
+  const manualOverride = optimistic ? optimistic.manualOverride : userShow.manual_override;
+  const recalculating = optimistic?.recalculating ?? false;
 
   const setOverride = async (next: "abandonne" | "archive" | null) => {
+    setOptimistic({ manualOverride: next, recalculating: next === null });
     setPending(true);
     const { error } = await supabase
       .from("user_shows")
@@ -757,43 +795,78 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
       .eq("user_id", user!.id)
       .eq("show_id", userShow.show_id);
     setPending(false);
-    if (error) toast.error(error.message);
-    else onChange();
+    if (error) {
+      setOptimistic(null);
+      toast.error(error.message);
+      return;
+    }
+    onChange();
   };
 
+  const badgeLabel = recalculating
+    ? "Recalcul…"
+    : manualOverride
+      ? STATUS_LABELS[manualOverride]
+      : (STATUS_LABELS[userShow.status] ?? userShow.status);
+  const badgeStyle = recalculating
+    ? "border-border text-muted-foreground"
+    : (TV_STATUS_BADGE_STYLES[manualOverride ?? userShow.status] ??
+      "border-border text-muted-foreground");
+
+  const actionButtonClass =
+    "gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
+
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <span className="inline-flex h-11 items-center rounded-md border border-border bg-card px-3 text-sm text-foreground">
-        {STATUS_LABELS[userShow.status] ?? userShow.status}
-      </span>
-      {userShow.manual_override ? (
-        <button
-          type="button"
-          onClick={() => setOverride(null)}
-          disabled={pending}
-          className="h-11 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+    <div className="mt-2 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
         >
-          Reprendre le suivi
-        </button>
-      ) : (
-        <>
-          <button
+          {badgeLabel}
+        </span>
+        {manualOverride ? (
+          <Button
             type="button"
-            onClick={() => setOverride("abandonne")}
+            variant="outline"
+            size="sm"
+            onClick={() => setOverride(null)}
             disabled={pending}
-            className="h-11 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className={actionButtonClass}
           >
-            Abandonner
-          </button>
-          <button
-            type="button"
-            onClick={() => setOverride("archive")}
-            disabled={pending}
-            className="h-11 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-          >
-            Archiver
-          </button>
-        </>
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reprendre le suivi
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setOverride("abandonne")}
+              disabled={pending}
+              className={actionButtonClass}
+            >
+              <Ban className="h-3.5 w-3.5" />
+              Abandonner
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setOverride("archive")}
+              disabled={pending}
+              className={actionButtonClass}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archiver
+            </Button>
+          </>
+        )}
+      </div>
+      {manualOverride === null && (
+        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+          Statut calculé automatiquement
+        </p>
       )}
     </div>
   );
