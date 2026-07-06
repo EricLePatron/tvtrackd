@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Archive, Ban, Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
+import { Ban, Check, ChevronDown, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
-import { followShow } from "@/lib/follow-show";
+import { followShow, unfollowShow } from "@/lib/follow-show";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import {
@@ -16,9 +16,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -167,6 +184,23 @@ function ShowDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: followKey }),
   });
 
+  // Invalide toujours `followKey` après une action de tracking (mark/unmark/
+  // rewatch/saison) : `status`/`manual_override` peuvent changer côté SQL
+  // (triggers de la migration auto_status) et le badge affiché plus haut sur
+  // cette page doit refléter ce changement sans attendre une renavigation.
+  // Si l'override valait "abandonne" juste avant l'action et vaut `null`
+  // après refetch, ça signifie que le trigger SQL vient de lever la reprise
+  // de suivi implicite (nouvel épisode marqué vu) : on l'annonce par un
+  // toast, plutôt que de laisser le badge changer silencieusement.
+  const notifyOverrideLift = async (prevOverride: string | null | undefined) => {
+    await qc.invalidateQueries({ queryKey: followKey });
+    if (prevOverride !== "abandonne") return;
+    const updated = qc.getQueryData<UserShowRow | null>(followKey);
+    if (updated && updated.manual_override === null) {
+      toast.success("Reprise de suivi détectée");
+    }
+  };
+
   const toggleWatched = useMutation({
     mutationFn: async ({ episodeId, isWatched }: { episodeId: number; isWatched: boolean }) => {
       if (!user) throw new Error("no user");
@@ -194,6 +228,7 @@ function ShowDetail() {
     onMutate: async ({ episodeId, isWatched }) => {
       await qc.cancelQueries({ queryKey: watchedKey });
       const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
       qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => {
         const next = { ...(old ?? {}) };
         if (isWatched) {
@@ -203,19 +238,20 @@ function ShowDetail() {
         }
         return next;
       });
-      return { prev };
+      return { prev, prevOverride };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible de mettre à jour l'épisode");
     },
-    onSettled: (_data, _err, { episodeId }) => {
+    onSettled: (_data, _err, { episodeId }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
         const next = new Set(prev);
         next.delete(episodeId);
         return next;
       });
+      notifyOverrideLift(ctx?.prevOverride);
     },
   });
 
@@ -244,23 +280,25 @@ function ShowDetail() {
     onMutate: async ({ episodeId, currentCount }) => {
       await qc.cancelQueries({ queryKey: watchedKey });
       const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
       qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => ({
         ...(old ?? {}),
         [episodeId]: { count: currentCount + 1 },
       }));
-      return { prev };
+      return { prev, prevOverride };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible d'ajouter le revisionnage");
     },
-    onSettled: (_data, _err, { episodeId }) => {
+    onSettled: (_data, _err, { episodeId }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
         const next = new Set(prev);
         next.delete(episodeId);
         return next;
       });
+      notifyOverrideLift(ctx?.prevOverride);
     },
   });
 
@@ -300,6 +338,7 @@ function ShowDetail() {
     onMutate: async ({ action, episodeIds }) => {
       await qc.cancelQueries({ queryKey: watchedKey });
       const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
       qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => {
         const next = { ...(old ?? {}) };
         episodeIds.forEach((episodeId) => {
@@ -308,19 +347,20 @@ function ShowDetail() {
         });
         return next;
       });
-      return { prev };
+      return { prev, prevOverride };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible de mettre à jour la saison");
     },
-    onSettled: (_data, _err, { episodeIds }) => {
+    onSettled: (_data, _err, { episodeIds }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
         const next = new Set(prev);
         episodeIds.forEach((episodeId) => next.delete(episodeId));
         return next;
       });
+      notifyOverrideLift(ctx?.prevOverride);
     },
   });
 
@@ -460,6 +500,7 @@ function ShowDetail() {
             <StatusPicker
               userShow={userShow}
               mediaType={mediaType}
+              showTitle={show.title}
               onChange={() => qc.invalidateQueries({ queryKey: followKey })}
             />
           </Card>
@@ -757,26 +798,33 @@ type UserShowRow = {
 
 // Pour les séries TV, `status` (à voir / en cours / terminé) est désormais
 // TOUJOURS dérivé automatiquement de la progression de visionnage côté SQL
-// (triggers sur watch_status/episodes/seasons/shows, cf. migration
-// 20260706100000_auto_status.sql) — l'utilisateur ne le choisit plus jamais
-// directement. Le picker devient un badge lecture-seule + des actions
-// explicites qui n'écrivent que `manual_override` ("Abandonner" / "Archiver"
-// / "Reprendre le suivi"), jamais `status` directement. Pour les films
-// (aucune donnée episodes/seasons pour eux dans ce schéma), le comportement
-// reste inchangé : un select manuel classique à 5 valeurs.
+// (triggers sur watch_status/episodes/seasons/shows, cf. migrations
+// 20260706100000_auto_status.sql et 20260706110000_lift_abandon_on_new_watch.sql)
+// — l'utilisateur ne le choisit plus jamais directement. Le picker devient un
+// badge lecture-seule + un menu "Gérer le suivi" qui n'écrit que
+// `manual_override` ("Abandonner" / "Reprendre le suivi") ou supprime la
+// ligne `user_shows` ("Ne plus suivre"), jamais `status` directement.
+// "Archiver" n'existe plus comme action : les lignes déjà en `archive`
+// (valeur toujours valide en base, cf. migration) sont traitées comme un
+// override actif au même titre que `abandonne` (proposent "Reprendre le
+// suivi"). Pour les films (aucune donnée episodes/seasons pour eux dans ce
+// schéma), le comportement reste inchangé : un select manuel classique à 5
+// valeurs.
 function StatusPicker({
   userShow,
   mediaType,
+  showTitle,
   onChange,
 }: {
   userShow: UserShowRow;
   mediaType: string;
+  showTitle: string;
   onChange: () => void;
 }) {
   if (mediaType !== "tv") {
     return <MovieStatusPicker userShow={userShow} onChange={onChange} />;
   }
-  return <TvStatusBadge userShow={userShow} onChange={onChange} />;
+  return <TvStatusBadge userShow={userShow} showTitle={showTitle} onChange={onChange} />;
 }
 
 function MovieStatusPicker({
@@ -828,7 +876,15 @@ const TV_STATUS_BADGE_STYLES: Record<string, string> = {
   archive: "border-border text-muted-foreground",
 };
 
-function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange: () => void }) {
+function TvStatusBadge({
+  userShow,
+  showTitle,
+  onChange,
+}: {
+  userShow: UserShowRow;
+  showTitle: string;
+  onChange: () => void;
+}) {
   const { user } = useAuth();
   const qc = useQueryClient();
   // Même clé que celle utilisée par le composant parent pour `userShow`
@@ -837,16 +893,17 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
   // chargée). Sert uniquement à annuler un refetch obsolète, cf. setOverride.
   const followKey = ["user-show", user?.id, userShow.show_id];
   const [pending, setPending] = useState(false);
+  const [confirmUnfollowOpen, setConfirmUnfollowOpen] = useState(false);
   // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
   // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
   // attendre la requête ni le refetch déclenché par onChange(). Pour
-  // "Abandonner"/"Archiver" le nouveau manual_override est connu à l'avance,
-  // donc affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend
-  // du recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client :
-  // on affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
+  // "Abandonner" le nouveau manual_override est connu à l'avance, donc
+  // affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend du
+  // recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client : on
+  // affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
   // reflète la valeur confirmée.
   const [optimistic, setOptimistic] = useState<{
-    manualOverride: "abandonne" | "archive" | null;
+    manualOverride: "abandonne" | null;
     recalculating: boolean;
   } | null>(null);
 
@@ -862,7 +919,7 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
   const manualOverride = optimistic ? optimistic.manualOverride : userShow.manual_override;
   const recalculating = optimistic?.recalculating ?? false;
 
-  const setOverride = async (next: "abandonne" | "archive" | null) => {
+  const setOverride = async (next: "abandonne" | null) => {
     // Annule tout refetch de `followKey` encore en vol (déclenché par un
     // clic précédent via onChange()) avant d'écrire un nouvel état
     // optimiste : sans ça, une réponse obsolète peut résoudre après celle
@@ -883,6 +940,23 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
       return;
     }
     onChange();
+  };
+
+  // "Ne plus suivre" : suppression réelle de la ligne user_shows (jamais de
+  // watch_status touché, cf. CLAUDE.md). Contrairement à setOverride, pas
+  // d'état optimiste local : après succès, onChange() invalide `followKey`
+  // et le composant parent fait redevenir `userShow` null au refetch, ce qui
+  // démonte ce composant et fait réapparaître le bouton "Suivre" — même
+  // mécanisme que pour un follow initial, en sens inverse.
+  const handleUnfollow = async () => {
+    try {
+      await unfollowShow(user!.id, userShow.show_id);
+      onChange();
+      qc.invalidateQueries({ queryKey: ["followed-keys", user?.id] });
+      qc.invalidateQueries({ queryKey: ["home-schedule", user?.id] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de retirer cette série");
+    }
   };
 
   const badgeLabel = recalculating
@@ -906,50 +980,67 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
         >
           {badgeLabel}
         </span>
-        {manualOverride ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setOverride(null)}
-            disabled={pending}
-            className={actionButtonClass}
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reprendre le suivi
-          </Button>
-        ) : (
-          <>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setOverride("abandonne")}
               disabled={pending}
               className={actionButtonClass}
             >
-              <Ban className="h-3.5 w-3.5" />
-              Abandonner
+              Gérer le suivi
+              <ChevronDown className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOverride("archive")}
-              disabled={pending}
-              className={actionButtonClass}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {manualOverride ? (
+              <DropdownMenuItem onClick={() => setOverride(null)}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reprendre le suivi
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => setOverride("abandonne")}>
+                <Ban className="h-3.5 w-3.5" />
+                Abandonner
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                setConfirmUnfollowOpen(true);
+              }}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
             >
-              <Archive className="h-3.5 w-3.5" />
-              Archiver
-            </Button>
-          </>
-        )}
+              <Trash2 className="h-3.5 w-3.5" />
+              Ne plus suivre
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      {manualOverride === null && (
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          Statut calculé automatiquement
-        </p>
-      )}
+
+      <AlertDialog open={confirmUnfollowOpen} onOpenChange={setConfirmUnfollowOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ne plus suivre {showTitle} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La série sera retirée de votre bibliothèque. Votre historique d'épisodes vus est
+              conservé — vous le retrouverez si vous suivez à nouveau la série.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnfollow}
+              className={cn(buttonVariants({ variant: "destructive" }))}
+            >
+              Ne plus suivre
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

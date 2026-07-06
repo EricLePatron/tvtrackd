@@ -33,3 +33,20 @@ export async function followShow(userId: string, showId: number, alreadyFollowed
     );
   if (error) throw error;
 }
+
+/**
+ * Supprime la ligne `user_shows` d'un utilisateur pour une série ("Ne plus
+ * suivre"). Ne touche jamais `watch_status` : l'historique de visionnage est
+ * conservé (cf. CLAUDE.md — ne jamais coupler l'archivage/désarchivage et
+ * l'historique d'épisodes vus dans la même table). Si l'utilisateur suit à
+ * nouveau la série plus tard, `followShow` retrouvera cet historique via
+ * `compute_my_show_status` et recalculera le bon statut initial.
+ */
+export async function unfollowShow(userId: string, showId: number) {
+  const { error } = await supabase
+    .from("user_shows")
+    .delete()
+    .eq("user_id", userId)
+    .eq("show_id", showId);
+  if (error) throw error;
+}
