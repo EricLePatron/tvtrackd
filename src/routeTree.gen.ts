@@ -11,8 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PublicRouteImport } from './routes/_public'
+import { Route as LegalRouteRouteImport } from './routes/legal/route'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as PublicIndexRouteImport } from './routes/_public/index'
+import { Route as LegalMentionsLegalesRouteImport } from './routes/legal/mentions-legales'
+import { Route as LegalCookiesRouteImport } from './routes/legal/cookies'
+import { Route as LegalConfidentialiteRouteImport } from './routes/legal/confidentialite'
+import { Route as LegalCguRouteImport } from './routes/legal/cgu'
 import { Route as PublicSearchRouteImport } from './routes/_public/search'
 import { Route as PublicCalendarRouteImport } from './routes/_public/calendar'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
@@ -28,6 +33,11 @@ const PublicRoute = PublicRouteImport.update({
   id: '/_public',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LegalRouteRoute = LegalRouteRouteImport.update({
+  id: '/legal',
+  path: '/legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -36,6 +46,26 @@ const PublicIndexRoute = PublicIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => PublicRoute,
+} as any)
+const LegalMentionsLegalesRoute = LegalMentionsLegalesRouteImport.update({
+  id: '/mentions-legales',
+  path: '/mentions-legales',
+  getParentRoute: () => LegalRouteRoute,
+} as any)
+const LegalCookiesRoute = LegalCookiesRouteImport.update({
+  id: '/cookies',
+  path: '/cookies',
+  getParentRoute: () => LegalRouteRoute,
+} as any)
+const LegalConfidentialiteRoute = LegalConfidentialiteRouteImport.update({
+  id: '/confidentialite',
+  path: '/confidentialite',
+  getParentRoute: () => LegalRouteRoute,
+} as any)
+const LegalCguRoute = LegalCguRouteImport.update({
+  id: '/cgu',
+  path: '/cgu',
+  getParentRoute: () => LegalRouteRoute,
 } as any)
 const PublicSearchRoute = PublicSearchRouteImport.update({
   id: '/search',
@@ -66,31 +96,46 @@ const PublicShowMediaTypeTmdbIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof PublicIndexRoute
+  '/legal': typeof LegalRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/calendar': typeof PublicCalendarRoute
   '/search': typeof PublicSearchRoute
+  '/legal/cgu': typeof LegalCguRoute
+  '/legal/confidentialite': typeof LegalConfidentialiteRoute
+  '/legal/cookies': typeof LegalCookiesRoute
+  '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof PublicIndexRoute
+  '/legal': typeof LegalRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/calendar': typeof PublicCalendarRoute
   '/search': typeof PublicSearchRoute
+  '/legal/cgu': typeof LegalCguRoute
+  '/legal/confidentialite': typeof LegalConfidentialiteRoute
+  '/legal/cookies': typeof LegalCookiesRoute
+  '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/legal': typeof LegalRouteRouteWithChildren
   '/_public': typeof PublicRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_public/calendar': typeof PublicCalendarRoute
   '/_public/search': typeof PublicSearchRoute
+  '/legal/cgu': typeof LegalCguRoute
+  '/legal/confidentialite': typeof LegalConfidentialiteRoute
+  '/legal/cookies': typeof LegalCookiesRoute
+  '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/_public/': typeof PublicIndexRoute
   '/_public/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -98,36 +143,52 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/legal'
     | '/auth'
     | '/library'
     | '/profile'
     | '/calendar'
     | '/search'
+    | '/legal/cgu'
+    | '/legal/confidentialite'
+    | '/legal/cookies'
+    | '/legal/mentions-legales'
     | '/show/$mediaType/$tmdbId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/legal'
     | '/auth'
     | '/library'
     | '/profile'
     | '/calendar'
     | '/search'
+    | '/legal/cgu'
+    | '/legal/confidentialite'
+    | '/legal/cookies'
+    | '/legal/mentions-legales'
     | '/show/$mediaType/$tmdbId'
   id:
     | '__root__'
     | '/_authenticated'
+    | '/legal'
     | '/_public'
     | '/auth'
     | '/_authenticated/library'
     | '/_authenticated/profile'
     | '/_public/calendar'
     | '/_public/search'
+    | '/legal/cgu'
+    | '/legal/confidentialite'
+    | '/legal/cookies'
+    | '/legal/mentions-legales'
     | '/_public/'
     | '/_public/show/$mediaType/$tmdbId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  LegalRouteRoute: typeof LegalRouteRouteWithChildren
   PublicRoute: typeof PublicRouteWithChildren
   AuthRoute: typeof AuthRoute
 }
@@ -148,6 +209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/legal': {
+      id: '/legal'
+      path: '/legal'
+      fullPath: '/legal'
+      preLoaderRoute: typeof LegalRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
@@ -161,6 +229,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof PublicIndexRouteImport
       parentRoute: typeof PublicRoute
+    }
+    '/legal/mentions-legales': {
+      id: '/legal/mentions-legales'
+      path: '/mentions-legales'
+      fullPath: '/legal/mentions-legales'
+      preLoaderRoute: typeof LegalMentionsLegalesRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/legal/cookies': {
+      id: '/legal/cookies'
+      path: '/cookies'
+      fullPath: '/legal/cookies'
+      preLoaderRoute: typeof LegalCookiesRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/legal/confidentialite': {
+      id: '/legal/confidentialite'
+      path: '/confidentialite'
+      fullPath: '/legal/confidentialite'
+      preLoaderRoute: typeof LegalConfidentialiteRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/legal/cgu': {
+      id: '/legal/cgu'
+      path: '/cgu'
+      fullPath: '/legal/cgu'
+      preLoaderRoute: typeof LegalCguRouteImport
+      parentRoute: typeof LegalRouteRoute
     }
     '/_public/search': {
       id: '/_public/search'
@@ -213,6 +309,24 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface LegalRouteRouteChildren {
+  LegalCguRoute: typeof LegalCguRoute
+  LegalConfidentialiteRoute: typeof LegalConfidentialiteRoute
+  LegalCookiesRoute: typeof LegalCookiesRoute
+  LegalMentionsLegalesRoute: typeof LegalMentionsLegalesRoute
+}
+
+const LegalRouteRouteChildren: LegalRouteRouteChildren = {
+  LegalCguRoute: LegalCguRoute,
+  LegalConfidentialiteRoute: LegalConfidentialiteRoute,
+  LegalCookiesRoute: LegalCookiesRoute,
+  LegalMentionsLegalesRoute: LegalMentionsLegalesRoute,
+}
+
+const LegalRouteRouteWithChildren = LegalRouteRoute._addFileChildren(
+  LegalRouteRouteChildren,
+)
+
 interface PublicRouteChildren {
   PublicCalendarRoute: typeof PublicCalendarRoute
   PublicSearchRoute: typeof PublicSearchRoute
@@ -232,6 +346,7 @@ const PublicRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  LegalRouteRoute: LegalRouteRouteWithChildren,
   PublicRoute: PublicRouteWithChildren,
   AuthRoute: AuthRoute,
 }
