@@ -1,3 +1,5 @@
+import { Check, Minus } from "lucide-react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,8 +12,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+
+const TOGGLE_BASE_CLASSES =
+  "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /**
  * Toggle tri-state pour marquer une saison entière vue/non vue.
@@ -37,12 +41,18 @@ export function SeasonToggle({
     return (
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Checkbox
-            checked
-            accent="cyan"
+          <button
+            type="button"
             disabled={disabled}
+            aria-pressed="true"
             aria-label={`Marquer la saison ${seasonNumber} non vue`}
-          />
+            className={cn(
+              TOGGLE_BASE_CLASSES,
+              "border-cyan-accent bg-cyan-accent/10 text-cyan-accent hover:bg-cyan-accent/20",
+            )}
+          >
+            <Check className="h-4 w-4" />
+          </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -66,12 +76,37 @@ export function SeasonToggle({
     );
   }
 
+  if (state === "indeterminate") {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onMark}
+        aria-pressed="mixed"
+        aria-label={`Marquer le reste de la saison ${seasonNumber} vue`}
+        className={cn(
+          TOGGLE_BASE_CLASSES,
+          "border-primary/60 bg-primary/15 text-primary hover:border-primary hover:bg-primary/20",
+        )}
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+    );
+  }
+
   return (
-    <Checkbox
-      checked={state}
+    <button
+      type="button"
       disabled={disabled}
-      onCheckedChange={onMark}
+      onClick={onMark}
+      aria-pressed="false"
       aria-label={`Marquer la saison ${seasonNumber} vue`}
-    />
+      className={cn(
+        TOGGLE_BASE_CLASSES,
+        "border-border bg-surface-elevated text-muted-foreground hover:text-primary hover:border-primary/60",
+      )}
+    >
+      <Check className="h-4 w-4 opacity-40" />
+    </button>
   );
 }
