@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Archive, Ban, Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
@@ -100,6 +100,8 @@ function ShowDetail() {
   // empêcher des requêtes concurrentes sur le même épisode.
   const [lockedEpisodes, setLockedEpisodes] = useState<Set<number>>(new Set());
   const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const [isOverviewTruncated, setIsOverviewTruncated] = useState(false);
+  const overviewRef = useRef<HTMLParagraphElement>(null);
 
   const detailsKey = ["show-details", mediaType, tmdbId];
   const { data, isLoading, error } = useQuery({
@@ -114,6 +116,15 @@ function ShowDetail() {
   });
 
   const show = data?.show;
+
+  // Détection simple de troncature (au montage / au chargement du synopsis) :
+  // line-clamp-2 peut ne rien tronquer si le texte est court, auquel cas le
+  // bouton "Lire la suite" ne doit pas s'afficher. Pas de ResizeObserver ni
+  // de recalcul au resize, un check ponctuel suffit pour ce cas d'usage.
+  useEffect(() => {
+    const el = overviewRef.current;
+    setIsOverviewTruncated(!!el && el.scrollHeight > el.clientHeight);
+  }, [show?.overview]);
 
   const followKey = ["user-show", user?.id, show?.id];
   const { data: userShow } = useQuery({
@@ -465,7 +476,7 @@ function ShowDetail() {
               onClick={() => {
                 const target = document.getElementById(`episode-${firstUnwatched.id}`);
                 target?.scrollIntoView({ behavior: "smooth", block: "center" });
-                target?.focus();
+                target?.focus({ preventScroll: true });
               }}
               className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
             >
@@ -474,22 +485,24 @@ function ShowDetail() {
               {pad(firstUnwatched.episode_number)}
             </button>
           )}
-          {nextUpcomingEpisode && (
-            <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-              Prochain : S{pad(nextUpcomingEpisode.season_number)}E
-              {pad(nextUpcomingEpisode.episode_number)} ·{" "}
-              {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
-                day: "numeric",
-                month: "long",
-              })}
-            </p>
-          )}
+          {nextUpcomingEpisode &&
+            (!firstUnwatched || nextUpcomingEpisode.id !== firstUnwatched.id) && (
+              <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
+                Prochain : S{pad(nextUpcomingEpisode.season_number)}E
+                {pad(nextUpcomingEpisode.episode_number)} ·{" "}
+                {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "long",
+                })}
+              </p>
+            )}
         </div>
       )}
 
       {show.overview && (
         <div className="mx-5 mt-4">
           <p
+            ref={overviewRef}
             className={cn(
               "text-sm leading-relaxed text-muted-foreground",
               !overviewExpanded && "line-clamp-2",
@@ -497,17 +510,19 @@ function ShowDetail() {
           >
             {show.overview}
           </p>
-          <button
-            type="button"
-            onClick={() => setOverviewExpanded((v) => !v)}
-            aria-expanded={overviewExpanded}
-            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-          >
-            {overviewExpanded ? "Réduire" : "Lire la suite"}
-            <ChevronDown
-              className={`h-3.5 w-3.5 transition-transform ${overviewExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
+          {isOverviewTruncated && (
+            <button
+              type="button"
+              onClick={() => setOverviewExpanded((v) => !v)}
+              aria-expanded={overviewExpanded}
+              className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              {overviewExpanded ? "Réduire" : "Lire la suite"}
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${overviewExpanded ? "rotate-180" : ""}`}
+              />
+            </button>
+          )}
         </div>
       )}
 
