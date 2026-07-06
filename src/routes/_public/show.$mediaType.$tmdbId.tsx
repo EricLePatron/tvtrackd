@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
 import { VhsCounter } from "@/components/vhs-counter";
+import { SeasonToggle } from "@/components/season-toggle";
 import {
   Select,
   SelectContent,
@@ -251,6 +252,66 @@ function ShowDetail() {
     },
   });
 
+  // Bulk (marquer/démarquer toute une saison). Réutilise le même verrou par
+  // épisode que toggleWatched/addRewatch pour empêcher un clic individuel
+  // concurrent pendant l'opération groupée.
+  const toggleSeason = useMutation({
+    mutationFn: async ({
+      action,
+      episodeIds,
+    }: {
+      action: "mark" | "unmark";
+      episodeIds: number[];
+    }) => {
+      if (!user) throw new Error("no user");
+      if (!episodeIds.length) return;
+      if (action === "mark") {
+        const rows = episodeIds.map((episodeId) => ({
+          user_id: user.id,
+          episode_id: episodeId,
+          watch_count: 1,
+          watched_at: new Date().toISOString(),
+        }));
+        const { error } = await supabase
+          .from("watch_status")
+          .upsert(rows, { onConflict: "user_id,episode_id" });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("watch_status")
+          .delete()
+          .eq("user_id", user.id)
+          .in("episode_id", episodeIds);
+        if (error) throw error;
+      }
+    },
+    onMutate: async ({ action, episodeIds }) => {
+      await qc.cancelQueries({ queryKey: watchedKey });
+      const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => {
+        const next = { ...(old ?? {}) };
+        episodeIds.forEach((episodeId) => {
+          if (action === "mark") next[episodeId] = { count: 1 };
+          else delete next[episodeId];
+        });
+        return next;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
+      toast.error("Impossible de mettre à jour la saison");
+    },
+    onSettled: (_data, _err, { episodeIds }) => {
+      qc.invalidateQueries({ queryKey: watchedKey });
+      setLockedEpisodes((prev) => {
+        const next = new Set(prev);
+        episodeIds.forEach((episodeId) => next.delete(episodeId));
+        return next;
+      });
+    },
+  });
+
   if (isLoading || !data) {
     return (
       <div className="p-6">
@@ -411,10 +472,69 @@ function ShowDetail() {
             const eps = episodes.filter((e) => e.season_number === s.season_number);
             const watchedCount = eps.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).length;
             const last = eps[eps.length - 1]?.episode_number ?? 0;
+
+            // Épisodes "éligibles" au marquage groupé : ceux déjà diffusés.
+            // Les épisodes sans air_date connue ne sont pas considérés comme
+            // futurs (on ne les bloque pas faute de donnée), seuls ceux avec
+            // une air_date strictement postérieure à aujourd'hui le sont.
+            const eligibleEpisodes = eps.filter((e) => !(e.air_date && e.air_date > today));
+            const eligibleWatchedCount = eligibleEpisodes.filter(
+              (e) => (watched?.[e.id]?.count ?? 0) > 0,
+            ).length;
+            const seasonState: boolean | "indeterminate" =
+              eligibleEpisodes.length === 0 || eligibleWatchedCount === 0
+                ? false
+                : eligibleWatchedCount === eligibleEpisodes.length
+                  ? true
+                  : "indeterminate";
+            const seasonLocked = eps.some((e) => lockedEpisodes.has(e.id));
+            const seasonToggleDisabled =
+              seasonLocked || (eligibleEpisodes.length === 0 && watchedCount === 0);
+
+            const lockEpisodes = (ids: number[]) =>
+              setLockedEpisodes((prev) => {
+                const next = new Set(prev);
+                ids.forEach((id) => next.add(id));
+                return next;
+              });
+
+            const markSeasonWatched = () =>
+              requireAuth(
+                () => {
+                  if (seasonLocked) return;
+                  const ids = eligibleEpisodes
+                    .filter((e) => (watched?.[e.id]?.count ?? 0) === 0)
+                    .map((e) => e.id);
+                  if (!ids.length) return;
+                  lockEpisodes(ids);
+                  toggleSeason.mutate({ action: "mark", episodeIds: ids });
+                },
+                { reason: "marquer cette saison" },
+              );
+
+            const unmarkSeasonWatched = () =>
+              requireAuth(
+                () => {
+                  if (seasonLocked) return;
+                  const ids = eps.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).map((e) => e.id);
+                  if (!ids.length) return;
+                  lockEpisodes(ids);
+                  toggleSeason.mutate({ action: "unmark", episodeIds: ids });
+                },
+                { reason: "démarquer cette saison" },
+              );
+
             return (
               <section key={s.id}>
-                <div className="mb-2 flex items-baseline justify-between">
+                <div className="mb-2 flex items-center justify-between">
                   <h2 className="font-display text-lg text-foreground">Saison {s.season_number}</h2>
+                  <SeasonToggle
+                    seasonNumber={s.season_number}
+                    state={seasonState}
+                    disabled={seasonToggleDisabled}
+                    onMark={markSeasonWatched}
+                    onUnmark={unmarkSeasonWatched}
+                  />
                 </div>
                 <VhsCounter
                   seasonNumber={s.season_number}
