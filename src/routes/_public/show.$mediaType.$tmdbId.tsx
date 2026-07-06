@@ -760,6 +760,12 @@ const TV_STATUS_BADGE_STYLES: Record<string, string> = {
 
 function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange: () => void }) {
   const { user } = useAuth();
+  const qc = useQueryClient();
+  // Même clé que celle utilisée par le composant parent pour `userShow`
+  // (reconstruite localement plutôt que passée en prop, `userShow.show_id`
+  // étant strictement égal au `show?.id` du parent une fois cette ligne
+  // chargée). Sert uniquement à annuler un refetch obsolète, cf. setOverride.
+  const followKey = ["user-show", user?.id, userShow.show_id];
   const [pending, setPending] = useState(false);
   // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
   // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
@@ -787,6 +793,12 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
   const recalculating = optimistic?.recalculating ?? false;
 
   const setOverride = async (next: "abandonne" | "archive" | null) => {
+    // Annule tout refetch de `followKey` encore en vol (déclenché par un
+    // clic précédent via onChange()) avant d'écrire un nouvel état
+    // optimiste : sans ça, une réponse obsolète peut résoudre après celle
+    // de cette action et écraser le cache avec une donnée périmée, laissant
+    // le badge bloqué sur "Recalcul…" (cf. commentaire QA ci-dessus).
+    await qc.cancelQueries({ queryKey: followKey });
     setOptimistic({ manualOverride: next, recalculating: next === null });
     setPending(true);
     const { error } = await supabase
