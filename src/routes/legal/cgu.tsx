@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BackButton } from "@/components/back-button";
-import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 
 export const Route = createFileRoute("/legal/cgu")({
@@ -86,7 +85,6 @@ function CGU() {
           consommateurs.
         </p>
       </article>
-      <LegalFooter />
     </>
   );
 }

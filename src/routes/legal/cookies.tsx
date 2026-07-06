@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BackButton } from "@/components/back-button";
-import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 
 export const Route = createFileRoute("/legal/cookies")({
@@ -66,7 +65,6 @@ function Cookies() {
           en place et la présente politique mise à jour.
         </p>
       </article>
-      <LegalFooter />
     </>
   );
 }

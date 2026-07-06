@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BackButton } from "@/components/back-button";
-import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 
 export const Route = createFileRoute("/legal/mentions-legales")({
@@ -63,7 +62,6 @@ function MentionsLegales() {
           Pour toute question relative au site, écrire à <em>[email de contact]</em>.
         </p>
       </article>
-      <LegalFooter />
     </>
   );
 }

@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BackButton } from "@/components/back-button";
-import { LegalFooter } from "@/components/legal-footer";
 import { APP_NAME } from "@/lib/app-config";
 
 export const Route = createFileRoute("/legal/confidentialite")({
@@ -107,7 +106,6 @@ function Confidentialite() {
           seront informés conformément à la réglementation.
         </p>
       </article>
-      <LegalFooter />
     </>
   );
 }
