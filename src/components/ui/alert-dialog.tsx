@@ -87,10 +87,15 @@ const AlertDialogAction = React.forwardRef<
   // h-11 (44px) plutôt que la taille par défaut de buttonVariants (h-9) pour
   // rester cohérent avec les CTA mobile-first du reste de l'app (bouton
   // "Suivre", StatusPicker, etc.) — pattern à conserver pour toute future
-  // AlertDialog de l'app.
+  // AlertDialog de l'app. `h-11` est placé APRÈS `className` dans le `cn()` :
+  // un consommateur qui passe `buttonVariants({ variant: "..." })` en
+  // className (pour changer la couleur, ex. variant destructive) réinjecte
+  // sa propre classe de hauteur par défaut (h-9) ; comme tailwind-merge ne
+  // garde que la dernière classe en conflit sur un même groupe, h-11 doit
+  // rester en dernier pour ne jamais être écrasé silencieusement.
   <AlertDialogPrimitive.Action
     ref={ref}
-    className={cn(buttonVariants(), "h-11", className)}
+    className={cn(buttonVariants(), className, "h-11")}
     {...props}
   />
 ));
@@ -100,9 +105,10 @@ const AlertDialogCancel = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Cancel>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
 >(({ className, ...props }, ref) => (
+  // Même précaution d'ordre que AlertDialogAction ci-dessus.
   <AlertDialogPrimitive.Cancel
     ref={ref}
-    className={cn(buttonVariants({ variant: "outline" }), "h-11 mt-2 sm:mt-0", className)}
+    className={cn(buttonVariants({ variant: "outline" }), className, "mt-2 sm:mt-0 h-11")}
     {...props}
   />
 ));
