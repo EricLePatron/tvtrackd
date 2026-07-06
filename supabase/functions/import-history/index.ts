@@ -39,51 +39,16 @@ function isAggregate(it: Item): it is AggregateItem {
   return it.kind === "aggregate";
 }
 
-// ------- Déduction du statut (roadmap #3) -------
-//
-// "Terminé" n'est déduit que si l'historique couvre toutes les saisons/épisodes
-// connus de TMDb ET que la série n'est plus en diffusion (Ended/Canceled côté
-// TMDb — champ non localisé, valeurs fixes même avec language=fr-FR). Une série
-// toujours en diffusion mais entièrement rattrapée reste "en_cours" : c'est le
-// cas ambigu explicitement identifié (à jour, pas terminé).
-function deduceStatus(
-  showStatus: string | null,
-  totalKnown: number | null,
-  watchedCount: number,
-): "termine" | "en_cours" {
-  if (totalKnown !== null && totalKnown > 0 && watchedCount >= totalKnown) {
-    if (showStatus === "Ended" || showStatus === "Canceled") return "termine";
-  }
-  return "en_cours";
-}
-
-async function getShowProgress(
-  userId: string,
-  showId: number,
-): Promise<{ totalKnown: number | null; watchedCount: number }> {
-  const { data: seasonsData } = await admin
-    .from("seasons")
-    .select("episode_count")
-    .eq("show_id", showId);
-
-  let totalKnown: number | null = 0;
-  for (const s of seasonsData ?? []) {
-    if (totalKnown === null) break;
-    if (s.episode_count === null || s.episode_count === undefined) {
-      totalKnown = null;
-      break;
-    }
-    totalKnown += s.episode_count;
-  }
-
-  const { count } = await admin
-    .from("watch_status")
-    .select("id, episodes!inner(show_id)", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("episodes.show_id", showId);
-
-  return { totalKnown, watchedCount: count ?? 0 };
-}
+// La déduction de statut (roadmap #3 — "terminé" seulement si l'historique
+// couvre toutes les saisons/épisodes connus ET que la série n'est plus en
+// diffusion) est désormais centralisée en SQL : voir compute_tv_status /
+// compute_show_status dans la migration 20260706100000_auto_status.sql.
+// Cette edge function ne fait plus que peupler watch_status ; les triggers
+// SQL recalculent `status` pour toute ligne user_shows déjà existante au fil
+// des inserts ci-dessous. Seule la création d'une TOUTE NOUVELLE ligne
+// user_shows a besoin d'un calcul explicite (les triggers watch_status ne
+// peuvent pas s'appliquer avant que la ligne existe) — voir compute_show_status
+// appelé plus bas via RPC.
 
 async function getEpisodesInOrder(
   showId: number,
@@ -265,23 +230,45 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Statut : archive (Betaseries) toujours prioritaire, puis "rien de vu" -> à
-      // voir, puis déduction TMDb (termine / en_cours). Ne jamais écraser un statut
-      // déjà choisi manuellement, sauf s'il est encore "a_voir" (valeur par défaut).
-      const progress = await getShowProgress(userId, show.id);
-      const baseline = deduceStatus(show.status, progress.totalKnown, progress.watchedCount);
-      const finalStatus = archived ? "archive" : progress.watchedCount === 0 ? "a_voir" : baseline;
-
+      // Statut : archive (Betaseries) toujours prioritaire ; sinon le statut est
+      // désormais calculé en SQL (compute_show_status), plus jamais déduit ici.
+      // Ne jamais écraser un statut déjà choisi manuellement (ou déjà figé par un
+      // import précédent), sauf s'il est encore "a_voir" sans manual_override
+      // (valeur par défaut, ligne "vierge").
       if (!existingUs) {
+        let status = "a_voir";
+        let manualOverride: "archive" | null = null;
+        if (archived) {
+          manualOverride = "archive";
+          status = "archive";
+        } else {
+          // Les watch_status insérés ci-dessus n'ont pas pu déclencher le
+          // recalcul automatique : la ligne user_shows n'existait pas encore
+          // au moment où les triggers se sont déclenchés. Calcul explicite ici.
+          const { data: computed } = await admin.rpc("compute_show_status", {
+            p_show_id: show.id,
+            p_user_id: userId,
+          });
+          if (computed) status = computed;
+        }
         await admin.from("user_shows").insert({
           user_id: userId,
           show_id: show.id,
-          status: finalStatus,
+          status,
+          manual_override: manualOverride,
         });
         followed += 1;
-      } else if (existingUs.status === "a_voir") {
-        await admin.from("user_shows").update({ status: finalStatus }).eq("id", existingUs.id);
+      } else if (existingUs.status === "a_voir" && archived) {
+        // Ligne vierge + signal d'archivage explicite de la source : le trigger
+        // AFTER UPDATE OF manual_override recalcule `status` tout seul.
+        await admin
+          .from("user_shows")
+          .update({ manual_override: "archive" })
+          .eq("id", existingUs.id);
       }
+      // Sinon (ligne vierge, pas de signal d'archivage) : `status` a déjà été
+      // recalculé par le trigger watch_status au fil des inserts ci-dessus,
+      // rien à faire ici.
     }
 
     return Response.json({ imported, followed, unmatched }, { headers: corsHeaders });

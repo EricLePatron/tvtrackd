@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { takePendingIntent } from "@/lib/client-storage";
+import { followShow } from "@/lib/follow-show";
 
 type ShowDetailsResponse = {
   show: { id: number };
@@ -49,13 +50,7 @@ export function useReplayPendingIntent() {
             .eq("show_id", show.id)
             .maybeSingle();
 
-          const { error: upsertError } = await supabase
-            .from("user_shows")
-            .upsert(
-              { user_id: user.id, show_id: show.id, status: existing?.status ?? "a_voir" },
-              { onConflict: "user_id,show_id" },
-            );
-          if (upsertError) throw upsertError;
+          await followShow(user.id, show.id, !!existing);
 
           qc.invalidateQueries({ queryKey: ["user-show", user.id, show.id] });
           qc.invalidateQueries({ queryKey: ["followed-keys", user.id] });

@@ -6,6 +6,7 @@ import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
+import { followShow } from "@/lib/follow-show";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import {
@@ -144,13 +145,7 @@ function ShowDetail() {
   const follow = useMutation({
     mutationFn: async () => {
       if (!user || !show) throw new Error("no user");
-      const { error } = await supabase
-        .from("user_shows")
-        .upsert(
-          { user_id: user.id, show_id: show.id, status: userShow?.status ?? "a_voir" },
-          { onConflict: "user_id,show_id" },
-        );
-      if (error) throw error;
+      await followShow(user.id, show.id, !!userShow);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: followKey }),
   });
@@ -441,6 +436,7 @@ function ShowDetail() {
               </p>
               <StatusPicker
                 userShow={userShow}
+                mediaType={mediaType}
                 onChange={() => qc.invalidateQueries({ queryKey: followKey })}
               />
             </>
@@ -682,11 +678,41 @@ function EpisodeRow({
   );
 }
 
+type UserShowRow = {
+  show_id: number;
+  status: string;
+  manual_override: string | null;
+};
+
+// Pour les séries TV, `status` (à voir / en cours / terminé) est désormais
+// TOUJOURS dérivé automatiquement de la progression de visionnage côté SQL
+// (triggers sur watch_status/episodes/seasons/shows, cf. migration
+// 20260706100000_auto_status.sql) — l'utilisateur ne le choisit plus jamais
+// directement. Le picker devient un badge lecture-seule + des actions
+// explicites qui n'écrivent que `manual_override` ("Abandonner" / "Archiver"
+// / "Reprendre le suivi"), jamais `status` directement. Pour les films
+// (aucune donnée episodes/seasons pour eux dans ce schéma), le comportement
+// reste inchangé : un select manuel classique à 5 valeurs.
 function StatusPicker({
+  userShow,
+  mediaType,
+  onChange,
+}: {
+  userShow: UserShowRow;
+  mediaType: string;
+  onChange: () => void;
+}) {
+  if (mediaType !== "tv") {
+    return <MovieStatusPicker userShow={userShow} onChange={onChange} />;
+  }
+  return <TvStatusBadge userShow={userShow} onChange={onChange} />;
+}
+
+function MovieStatusPicker({
   userShow,
   onChange,
 }: {
-  userShow: { show_id: number; status: string };
+  userShow: UserShowRow;
   onChange: () => void;
 }) {
   const { user } = useAuth();
@@ -716,5 +742,59 @@ function StatusPicker({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange: () => void }) {
+  const { user } = useAuth();
+  const [pending, setPending] = useState(false);
+
+  const setOverride = async (next: "abandonne" | "archive" | null) => {
+    setPending(true);
+    const { error } = await supabase
+      .from("user_shows")
+      .update({ manual_override: next })
+      .eq("user_id", user!.id)
+      .eq("show_id", userShow.show_id);
+    setPending(false);
+    if (error) toast.error(error.message);
+    else onChange();
+  };
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <span className="inline-flex h-11 items-center rounded-md border border-border bg-card px-3 text-sm text-foreground">
+        {STATUS_LABELS[userShow.status] ?? userShow.status}
+      </span>
+      {userShow.manual_override ? (
+        <button
+          type="button"
+          onClick={() => setOverride(null)}
+          disabled={pending}
+          className="h-11 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          Reprendre le suivi
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => setOverride("abandonne")}
+            disabled={pending}
+            className="h-11 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            Abandonner
+          </button>
+          <button
+            type="button"
+            onClick={() => setOverride("archive")}
+            disabled={pending}
+            className="h-11 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            Archiver
+          </button>
+        </>
+      )}
+    </div>
   );
 }
