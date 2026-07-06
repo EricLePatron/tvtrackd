@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="nightframe-export-${Date.now()}.json"`,
+        "Content-Disposition": `attachment; filename="tvtrackd-export-${Date.now()}.json"`,
       },
     });
   } catch (err) {

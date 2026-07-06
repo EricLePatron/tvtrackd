@@ -23,8 +23,8 @@ export const Route = createFileRoute("/auth")({
   validateSearch: authSearchSchema,
   head: () => ({
     meta: [
-      { title: "Connexion — Nightframe" },
-      { name: "description", content: "Connectez-vous ou créez un compte Nightframe." },
+      { title: "Connexion — tvtrackd" },
+      { name: "description", content: "Connectez-vous ou créez un compte tvtrackd." },
     ],
   }),
   component: AuthPage,
@@ -84,7 +84,7 @@ function AuthPage() {
               N/F · 001
             </span>
           </div>
-          <h1 className="font-display text-4xl text-foreground">Nightframe</h1>
+          <h1 className="font-display text-4xl text-foreground">tvtrackd</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Le carnet nocturne de vos séries & films.
           </p>
@@ -141,7 +141,7 @@ function AuthPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@nightframe.app"
+                placeholder="you@tvtrackd.app"
                 className="bg-background border-border h-11"
               />
             </div>

@@ -31,7 +31,7 @@ Couvre les items **#4** et **#19** ci-dessous (marqués ✅). Deux bugs latents 
 
 ## 0. Alerte transversale
 
-**"Nightframe" est hardcodé en dur dans le code, alors que le nom n'est pas tranché.** Le nom d'app affiché partout (titre de page, meta og:title, écran de connexion, et surtout le nom du fichier d'export JSON téléchargé par les utilisateurs) est **"Nightframe"** — un nom qui n'apparaît nulle part dans CLAUDE.md. "TVTrackd" est la piste réellement à l'étude, en attente de vérification de risque de marque. CLAUDE.md est explicite : ne pas committer de nom en dur tant que ce n'est pas arbitré.
+**"tvtrackd" est hardcodé en dur dans le code, alors que le nom n'est pas tranché.** Le nom d'app affiché partout (titre de page, meta og:title, écran de connexion, et surtout le nom du fichier d'export JSON téléchargé par les utilisateurs) est **"tvtrackd"** — un nom qui n'apparaît nulle part dans CLAUDE.md. "TVTrackd" est la piste réellement à l'étude, en attente de vérification de risque de marque. CLAUDE.md est explicite : ne pas committer de nom en dur tant que ce n'est pas arbitré.
 
 Six occurrences dans le code (`__root.tsx`, `auth.tsx`, `index.tsx`, `profile.tsx`, `styles.css`). Correction peu coûteuse (une constante `APP_NAME`) mais chaque jour qui passe avec ce nom visible dans un fichier téléchargé par de vrais utilisateurs rapproche d'une marque de fait.
 
@@ -72,7 +72,7 @@ Priorisation : impact sur la crédibilité de "remplaçant fiable de TV Time", p
 
 | # | Statut | Quoi | Pourquoi | Tags | Effort | Impact |
 |---|---|---|---|---|---|---|
-| 1 | ⬜ | Sortir "Nightframe" du code → constante `APP_NAME` | Bloquant avant tout lancement public — voir alerte transversale | Design | S | Moyen (bloquant) |
+| 1 | ⬜ | Sortir "tvtrackd" du code → constante `APP_NAME` | Bloquant avant tout lancement public — voir alerte transversale | Design | S | Moyen (bloquant) |
 | 2 | ✅ | ~~Vérifier le format réel d'export TV Time / Betaseries et fiabiliser le parseur~~ | **Livré** : détection explicite de format (Betaseries agrégé / granulaire TV Time / JSON imbriqué / non reconnu), support `.zip` GDPR TV Time. Effort réel plus proche de M que du S initial — voir section "Livré depuis ce dossier" | Produit | S | Très élevé |
 | 3 | ✅ | ~~Corriger le statut par défaut à l'import (pas tout en "en cours")~~ | **Livré** : statut déduit (`termine`/`en_cours`/`a_voir`/`archive`) à partir de TMDb + de l'agrégat Betaseries, sans jamais écraser un statut choisi manuellement | Produit | S | Élevé |
 | 4 | ✅ | ~~Onboarding post-signup orienté import~~ | **Livré via PR #7** : l'état vide "aucune série suivie" affiche directement les CTA import/recherche + une grille de découverte tendance | Produit, Design | M | Très élevé |

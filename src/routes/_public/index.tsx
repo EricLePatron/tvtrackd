@@ -328,7 +328,7 @@ function HeroTicket({ item }: { item: ReadyItem }) {
       </div>
       <div className="border-t border-dashed border-border px-4 py-2">
         <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          Nightframe · Ticket #{pad(nextEpisode.id % 100)}
+          tvtrackd · Ticket #{pad(nextEpisode.id % 100)}
         </p>
       </div>
     </Link>
