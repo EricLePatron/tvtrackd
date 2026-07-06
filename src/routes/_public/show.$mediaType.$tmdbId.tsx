@@ -408,6 +408,7 @@ function ShowDetail() {
                       <PopoverTrigger asChild>
                         <button
                           type="button"
+                          aria-label="Voir tous les genres"
                           className="ml-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
                         >
                           +{(show.genres ?? []).length - 2}
@@ -460,10 +461,11 @@ function ShowDetail() {
         <div className="mx-5 mt-4">
           {firstUnwatched && (
             <button
+              type="button"
               onClick={() => {
-                document
-                  .getElementById(`episode-${firstUnwatched.id}`)
-                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                const target = document.getElementById(`episode-${firstUnwatched.id}`);
+                target?.scrollIntoView({ behavior: "smooth", block: "center" });
+                target?.focus();
               }}
               className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
             >
@@ -664,6 +666,7 @@ function EpisodeRow({
   return (
     <li
       id={`episode-${episode.id}`}
+      tabIndex={-1}
       className="scroll-mt-6 rounded-md border border-border bg-card px-3 py-2.5"
     >
       <div className="flex items-center gap-3">
