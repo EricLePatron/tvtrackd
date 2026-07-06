@@ -84,7 +84,15 @@ const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
 >(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Action ref={ref} className={cn(buttonVariants(), className)} {...props} />
+  // h-11 (44px) plutôt que la taille par défaut de buttonVariants (h-9) pour
+  // rester cohérent avec les CTA mobile-first du reste de l'app (bouton
+  // "Suivre", StatusPicker, etc.) — pattern à conserver pour toute future
+  // AlertDialog de l'app.
+  <AlertDialogPrimitive.Action
+    ref={ref}
+    className={cn(buttonVariants(), "h-11", className)}
+    {...props}
+  />
 ));
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 
@@ -94,7 +102,7 @@ const AlertDialogCancel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
-    className={cn(buttonVariants({ variant: "outline" }), "mt-2 sm:mt-0", className)}
+    className={cn(buttonVariants({ variant: "outline" }), "h-11 mt-2 sm:mt-0", className)}
     {...props}
   />
 ));

@@ -526,7 +526,7 @@ function ShowDetail() {
 
             return (
               <section key={s.id}>
-                <div className="mb-2 flex items-baseline justify-between">
+                <div className="mb-2 flex items-center justify-between">
                   <h2 className="font-display text-lg text-foreground">Saison {s.season_number}</h2>
                   <SeasonToggle
                     seasonNumber={s.season_number}

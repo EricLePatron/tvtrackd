@@ -39,6 +39,7 @@ export function SeasonToggle({
         <AlertDialogTrigger asChild>
           <Checkbox
             checked
+            accent="cyan"
             disabled={disabled}
             aria-label={`Marquer la saison ${seasonNumber} non vue`}
           />
