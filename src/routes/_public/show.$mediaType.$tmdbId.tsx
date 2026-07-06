@@ -458,7 +458,7 @@ function ShowDetail() {
 
       {userShow && (
         <div className="mx-5 mt-4">
-          <Card className="flex items-center gap-3 rounded-md border-border bg-card p-3 shadow-none">
+          <Card className="rounded-md border-border bg-card p-3 shadow-none">
             <StatusPicker
               userShow={userShow}
               mediaType={mediaType}
@@ -898,7 +898,7 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
     "gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
 
   return (
-    <div className="mt-2 space-y-1.5">
+    <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`inline-flex items-center rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
