@@ -502,32 +502,6 @@ function ShowDetail() {
         </div>
       )}
 
-      {mediaType === "tv" && nextUpcomingEpisode && (
-        <div className="mx-5 mt-2">
-          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-            Prochain épisode
-          </p>
-          <p className="mt-0.5 font-counter text-sm font-semibold text-primary">
-            S{pad(nextUpcomingEpisode.season_number)}E{pad(nextUpcomingEpisode.episode_number)} ·{" "}
-            {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
-              day: "numeric",
-              month: "long",
-            })}
-          </p>
-        </div>
-      )}
-
-      {userShow && (
-        <div className="mx-5 mt-4">
-          <StatusPicker
-            userShow={userShow}
-            mediaType={mediaType}
-            showTitle={show.title}
-            onChange={() => qc.invalidateQueries({ queryKey: followKey })}
-          />
-        </div>
-      )}
-
       {show.overview && (
         <div className="mx-5 mt-4">
           <p
@@ -555,6 +529,32 @@ function ShowDetail() {
         </div>
       )}
 
+      {mediaType === "tv" && nextUpcomingEpisode && (
+        <div className="mx-5 mt-4">
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            Prochain épisode
+          </p>
+          <p className="mt-0.5 font-counter text-sm font-semibold text-foreground">
+            S{pad(nextUpcomingEpisode.season_number)}E{pad(nextUpcomingEpisode.episode_number)} ·{" "}
+            {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
+        </div>
+      )}
+
+      {userShow && (
+        <div className="mx-5 mt-4">
+          <StatusPicker
+            userShow={userShow}
+            mediaType={mediaType}
+            showTitle={show.title}
+            onChange={() => qc.invalidateQueries({ queryKey: followKey })}
+          />
+        </div>
+      )}
+
       {mediaType === "tv" && <Separator className="mx-5 mt-6 w-auto" />}
 
       {mediaType === "tv" && userShow && !userShow.manual_override && firstUnwatched && (
@@ -566,7 +566,7 @@ function ShowDetail() {
               target?.scrollIntoView({ behavior: "smooth", block: "center" });
               target?.focus({ preventScroll: true });
             }}
-            className="-my-2 inline-flex items-center gap-1.5 py-2 text-sm font-medium text-primary"
+            className="-my-3 inline-flex items-center gap-1.5 py-3 text-sm font-medium text-foreground"
           >
             {anyWatched ? "Reprendre" : "Commencer avec"}{" "}
             <span className="font-counter">
