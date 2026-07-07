@@ -151,7 +151,6 @@ export type Database = {
         Row: {
           created_at: string
           id: number
-          manual_override: string | null
           show_id: number
           status: string
           user_id: string
@@ -159,7 +158,6 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: number
-          manual_override?: string | null
           show_id: number
           status: string
           user_id: string
@@ -167,7 +165,6 @@ export type Database = {
         Update: {
           created_at?: string
           id?: number
-          manual_override?: string | null
           show_id?: number
           status?: string
           user_id?: string
@@ -219,10 +216,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      compute_my_show_status: {
-        Args: { p_show_id: number }
-        Returns: string | null
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never
