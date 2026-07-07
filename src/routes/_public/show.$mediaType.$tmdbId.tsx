@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Archive, Ban, Check, ChevronDown, Play, Plus, RotateCcw } from "lucide-react";
+import { Ban, Check, ChevronDown, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
-import { followShow } from "@/lib/follow-show";
+import { followShow, unfollowShow } from "@/lib/follow-show";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import {
@@ -16,9 +16,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -167,6 +184,41 @@ function ShowDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: followKey }),
   });
 
+  // Invalide toujours `followKey` après une action de tracking (mark/unmark/
+  // rewatch/saison) : `status`/`manual_override` peuvent changer côté SQL
+  // (triggers de la migration auto_status) et le badge affiché plus haut sur
+  // cette page doit refléter ce changement sans attendre une renavigation.
+  // Si l'override valait "abandonne" juste avant l'action et vaut `null`
+  // après refetch, ça signifie que le trigger SQL vient de lever la reprise
+  // de suivi implicite (nouvel épisode marqué vu) : on l'annonce par un
+  // toast, plutôt que de laisser le badge changer silencieusement.
+  //
+  // Garde-fou anti double-toast : si l'utilisateur marque deux épisodes en
+  // succession rapide, les deux mutations peuvent chacune capturer
+  // `prevOverride: "abandonne"` avant que l'une ait abouti, et donc chacune
+  // constater après coup que l'override est passé à `null` — sans ce ref,
+  // les deux afficheraient le toast. `liftNotifiedRef` mémorise qu'une levée
+  // a déjà été annoncée pour le cycle "abandonne" courant ; il n'est remis à
+  // `false` que lorsque `manual_override` redevient "abandonne" (nouvelle
+  // action explicite de l'utilisateur), ce qui autorise une nouvelle
+  // notification lors d'une future levée.
+  const liftNotifiedRef = useRef(false);
+  useEffect(() => {
+    if (userShow?.manual_override === "abandonne") {
+      liftNotifiedRef.current = false;
+    }
+  }, [userShow?.manual_override]);
+
+  const notifyOverrideLift = async (prevOverride: string | null | undefined) => {
+    await qc.invalidateQueries({ queryKey: followKey });
+    if (prevOverride !== "abandonne" || liftNotifiedRef.current) return;
+    const updated = qc.getQueryData<UserShowRow | null>(followKey);
+    if (updated && updated.manual_override === null) {
+      liftNotifiedRef.current = true;
+      toast.success("Reprise de suivi détectée");
+    }
+  };
+
   const toggleWatched = useMutation({
     mutationFn: async ({ episodeId, isWatched }: { episodeId: number; isWatched: boolean }) => {
       if (!user) throw new Error("no user");
@@ -194,6 +246,7 @@ function ShowDetail() {
     onMutate: async ({ episodeId, isWatched }) => {
       await qc.cancelQueries({ queryKey: watchedKey });
       const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
       qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => {
         const next = { ...(old ?? {}) };
         if (isWatched) {
@@ -203,19 +256,20 @@ function ShowDetail() {
         }
         return next;
       });
-      return { prev };
+      return { prev, prevOverride };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible de mettre à jour l'épisode");
     },
-    onSettled: (_data, _err, { episodeId }) => {
+    onSettled: (_data, _err, { episodeId }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
         const next = new Set(prev);
         next.delete(episodeId);
         return next;
       });
+      notifyOverrideLift(ctx?.prevOverride);
     },
   });
 
@@ -244,23 +298,25 @@ function ShowDetail() {
     onMutate: async ({ episodeId, currentCount }) => {
       await qc.cancelQueries({ queryKey: watchedKey });
       const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
       qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => ({
         ...(old ?? {}),
         [episodeId]: { count: currentCount + 1 },
       }));
-      return { prev };
+      return { prev, prevOverride };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible d'ajouter le revisionnage");
     },
-    onSettled: (_data, _err, { episodeId }) => {
+    onSettled: (_data, _err, { episodeId }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
         const next = new Set(prev);
         next.delete(episodeId);
         return next;
       });
+      notifyOverrideLift(ctx?.prevOverride);
     },
   });
 
@@ -300,6 +356,7 @@ function ShowDetail() {
     onMutate: async ({ action, episodeIds }) => {
       await qc.cancelQueries({ queryKey: watchedKey });
       const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
+      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
       qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => {
         const next = { ...(old ?? {}) };
         episodeIds.forEach((episodeId) => {
@@ -308,19 +365,20 @@ function ShowDetail() {
         });
         return next;
       });
-      return { prev };
+      return { prev, prevOverride };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible de mettre à jour la saison");
     },
-    onSettled: (_data, _err, { episodeIds }) => {
+    onSettled: (_data, _err, { episodeIds }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
         const next = new Set(prev);
         episodeIds.forEach((episodeId) => next.delete(episodeId));
         return next;
       });
+      notifyOverrideLift(ctx?.prevOverride);
     },
   });
 
@@ -460,6 +518,7 @@ function ShowDetail() {
             <StatusPicker
               userShow={userShow}
               mediaType={mediaType}
+              showTitle={show.title}
               onChange={() => qc.invalidateQueries({ queryKey: followKey })}
             />
           </Card>
@@ -757,26 +816,33 @@ type UserShowRow = {
 
 // Pour les séries TV, `status` (à voir / en cours / terminé) est désormais
 // TOUJOURS dérivé automatiquement de la progression de visionnage côté SQL
-// (triggers sur watch_status/episodes/seasons/shows, cf. migration
-// 20260706100000_auto_status.sql) — l'utilisateur ne le choisit plus jamais
-// directement. Le picker devient un badge lecture-seule + des actions
-// explicites qui n'écrivent que `manual_override` ("Abandonner" / "Archiver"
-// / "Reprendre le suivi"), jamais `status` directement. Pour les films
-// (aucune donnée episodes/seasons pour eux dans ce schéma), le comportement
-// reste inchangé : un select manuel classique à 5 valeurs.
+// (triggers sur watch_status/episodes/seasons/shows, cf. migrations
+// 20260706100000_auto_status.sql et 20260706110000_lift_abandon_on_new_watch.sql)
+// — l'utilisateur ne le choisit plus jamais directement. Le picker devient un
+// badge lecture-seule + un menu "Gérer le suivi" qui n'écrit que
+// `manual_override` ("Abandonner" / "Reprendre le suivi") ou supprime la
+// ligne `user_shows` ("Ne plus suivre"), jamais `status` directement.
+// "Archiver" n'existe plus comme action : les lignes déjà en `archive`
+// (valeur toujours valide en base, cf. migration) sont traitées comme un
+// override actif au même titre que `abandonne` (proposent "Reprendre le
+// suivi"). Pour les films (aucune donnée episodes/seasons pour eux dans ce
+// schéma), le comportement reste inchangé : un select manuel classique à 5
+// valeurs.
 function StatusPicker({
   userShow,
   mediaType,
+  showTitle,
   onChange,
 }: {
   userShow: UserShowRow;
   mediaType: string;
+  showTitle: string;
   onChange: () => void;
 }) {
   if (mediaType !== "tv") {
     return <MovieStatusPicker userShow={userShow} onChange={onChange} />;
   }
-  return <TvStatusBadge userShow={userShow} onChange={onChange} />;
+  return <TvStatusBadge userShow={userShow} showTitle={showTitle} onChange={onChange} />;
 }
 
 function MovieStatusPicker({
@@ -828,7 +894,15 @@ const TV_STATUS_BADGE_STYLES: Record<string, string> = {
   archive: "border-border text-muted-foreground",
 };
 
-function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange: () => void }) {
+function TvStatusBadge({
+  userShow,
+  showTitle,
+  onChange,
+}: {
+  userShow: UserShowRow;
+  showTitle: string;
+  onChange: () => void;
+}) {
   const { user } = useAuth();
   const qc = useQueryClient();
   // Même clé que celle utilisée par le composant parent pour `userShow`
@@ -837,16 +911,24 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
   // chargée). Sert uniquement à annuler un refetch obsolète, cf. setOverride.
   const followKey = ["user-show", user?.id, userShow.show_id];
   const [pending, setPending] = useState(false);
+  // Contrôlé (plutôt que laissé non contrôlé) pour pouvoir fermer
+  // explicitement le menu quand on ouvre l'AlertDialog de confirmation
+  // depuis l'item "Ne plus suivre" (cf. onSelect ci-dessous), et pour piloter
+  // la rotation du chevron du trigger comme les autres disclosures du
+  // fichier.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmUnfollowOpen, setConfirmUnfollowOpen] = useState(false);
+  const [unfollowPending, setUnfollowPending] = useState(false);
   // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
   // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
   // attendre la requête ni le refetch déclenché par onChange(). Pour
-  // "Abandonner"/"Archiver" le nouveau manual_override est connu à l'avance,
-  // donc affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend
-  // du recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client :
-  // on affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
+  // "Abandonner" le nouveau manual_override est connu à l'avance, donc
+  // affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend du
+  // recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client : on
+  // affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
   // reflète la valeur confirmée.
   const [optimistic, setOptimistic] = useState<{
-    manualOverride: "abandonne" | "archive" | null;
+    manualOverride: "abandonne" | null;
     recalculating: boolean;
   } | null>(null);
 
@@ -862,7 +944,7 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
   const manualOverride = optimistic ? optimistic.manualOverride : userShow.manual_override;
   const recalculating = optimistic?.recalculating ?? false;
 
-  const setOverride = async (next: "abandonne" | "archive" | null) => {
+  const setOverride = async (next: "abandonne" | null) => {
     // Annule tout refetch de `followKey` encore en vol (déclenché par un
     // clic précédent via onChange()) avant d'écrire un nouvel état
     // optimiste : sans ça, une réponse obsolète peut résoudre après celle
@@ -885,6 +967,39 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
     onChange();
   };
 
+  // "Ne plus suivre" : suppression réelle de la ligne user_shows (jamais de
+  // watch_status touché, cf. CLAUDE.md). Contrairement à setOverride, pas
+  // d'état optimiste local : après succès, onChange() invalide `followKey`
+  // et le composant parent fait redevenir `userShow` null au refetch, ce qui
+  // démonte ce composant et fait réapparaître le bouton "Suivre" — même
+  // mécanisme que pour un follow initial, en sens inverse. Le clic sur
+  // l'AlertDialogAction fait un preventDefault (cf. JSX plus bas) pour garder
+  // la boîte de dialogue ouverte, boutons désactivés, le temps de la requête,
+  // plutôt que de la fermer instantanément sans retour visuel.
+  const handleUnfollow = async () => {
+    setUnfollowPending(true);
+    try {
+      await unfollowShow(user!.id, userShow.show_id);
+      setConfirmUnfollowOpen(false);
+      onChange();
+      qc.invalidateQueries({ queryKey: ["followed-keys", user?.id] });
+      qc.invalidateQueries({ queryKey: ["home-schedule", user?.id] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de retirer cette série");
+    } finally {
+      setUnfollowPending(false);
+    }
+  };
+
+  // Statut "effectif" affiché par le badge : l'override s'il est actif,
+  // sinon le statut calculé. `abandonne`/`archive` partagent le même style
+  // neutre que `a_voir` (cf. TV_STATUS_BADGE_STYLES) — sans texte de légende
+  // sous le badge, un signal non-textuel (icône Ban) est nécessaire pour ne
+  // pas rendre un statut figé indiscernable de "à voir".
+  const effectiveStatus = manualOverride ?? userShow.status;
+  const isOverrideState =
+    !recalculating && (effectiveStatus === "abandonne" || effectiveStatus === "archive");
+
   const badgeLabel = recalculating
     ? "Recalcul…"
     : manualOverride
@@ -892,64 +1007,99 @@ function TvStatusBadge({ userShow, onChange }: { userShow: UserShowRow; onChange
       : (STATUS_LABELS[userShow.status] ?? userShow.status);
   const badgeStyle = recalculating
     ? "border-border text-muted-foreground"
-    : (TV_STATUS_BADGE_STYLES[manualOverride ?? userShow.status] ??
-      "border-border text-muted-foreground");
+    : (TV_STATUS_BADGE_STYLES[effectiveStatus] ?? "border-border text-muted-foreground");
 
   const actionButtonClass =
-    "gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
+    "h-11 gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
 
   return (
-    <div className="space-y-1.5">
+    <>
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className={`inline-flex items-center rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
         >
+          {isOverrideState && <Ban className="h-3 w-3" aria-hidden="true" />}
           {badgeLabel}
         </span>
-        {manualOverride ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setOverride(null)}
-            disabled={pending}
-            className={actionButtonClass}
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reprendre le suivi
-          </Button>
-        ) : (
-          <>
+
+        {/* modal={false} : évite le bug Radix connu (radix-ui/primitives#3317,
+            shadcn-ui/ui#7124) où le pointer-events:none posé sur <body> par un
+            DropdownMenu modal peut ne jamais être relâché quand un AlertDialog
+            s'ouvre par-dessus (cf. onSelect "Ne plus suivre" ci-dessous), ce
+            qui gèlerait toute la page. */}
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+          <DropdownMenuTrigger asChild>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setOverride("abandonne")}
-              disabled={pending}
+              disabled={pending || unfollowPending}
               className={actionButtonClass}
             >
-              <Ban className="h-3.5 w-3.5" />
-              Abandonner
+              Gérer le suivi
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+              />
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOverride("archive")}
-              disabled={pending}
-              className={actionButtonClass}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {manualOverride ? (
+              <DropdownMenuItem onClick={() => setOverride(null)}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reprendre le suivi
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => setOverride("abandonne")}>
+                <Ban className="h-3.5 w-3.5" />
+                Abandonner
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(e) => {
+                // preventDefault : évite la fermeture "par défaut" du menu
+                // (avec son retour de focus immédiat sur le trigger) pendant
+                // que l'AlertDialog s'ouvre. On ferme le menu nous-mêmes juste
+                // après via setMenuOpen(false), pour ne jamais le laisser
+                // réapparaître visuellement derrière une fois l'AlertDialog
+                // fermé (annulation ou confirmation).
+                e.preventDefault();
+                setMenuOpen(false);
+                setConfirmUnfollowOpen(true);
+              }}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
             >
-              <Archive className="h-3.5 w-3.5" />
-              Archiver
-            </Button>
-          </>
-        )}
+              <Trash2 className="h-3.5 w-3.5" />
+              Ne plus suivre
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      {manualOverride === null && (
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          Statut calculé automatiquement
-        </p>
-      )}
-    </div>
+
+      <AlertDialog open={confirmUnfollowOpen} onOpenChange={setConfirmUnfollowOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ne plus suivre {showTitle} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La série sera retirée de votre bibliothèque. Votre historique d'épisodes vus est
+              conservé — vous le retrouverez si vous suivez à nouveau la série.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unfollowPending}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleUnfollow();
+              }}
+              disabled={unfollowPending}
+              className={cn(buttonVariants({ variant: "destructive" }))}
+            >
+              Ne plus suivre
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
