@@ -461,7 +461,7 @@ function ShowDetail() {
           )}
           {!!show.vote_average && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="font-counter text-sm text-primary">
+              <span className="font-counter text-sm text-cyan-accent">
                 {show.vote_average.toFixed(1)}
                 <span className="text-muted-foreground">/10</span>
               </span>
@@ -756,7 +756,7 @@ function EpisodeRow({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="font-counter text-[11px] tracking-widest text-primary">
+            <span className="font-counter text-[11px] tracking-widest text-muted-foreground">
               E{pad(episode.episode_number)}
             </span>
             <span className="truncate text-sm text-foreground">{episode.title ?? "—"}</span>
