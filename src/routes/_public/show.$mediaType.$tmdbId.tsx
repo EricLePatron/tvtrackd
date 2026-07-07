@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Ban, Check, ChevronDown, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Ban, Check, ChevronDown, ChevronRight, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
@@ -117,7 +116,6 @@ function ShowDetail() {
   const [lockedEpisodes, setLockedEpisodes] = useState<Set<number>>(new Set());
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [isOverviewTruncated, setIsOverviewTruncated] = useState(false);
-  const [genresExpanded, setGenresExpanded] = useState(false);
   const overviewRef = useRef<HTMLParagraphElement>(null);
 
   const detailsKey = ["show-details", mediaType, tmdbId];
@@ -461,33 +459,12 @@ function ShowDetail() {
           {show.tagline && (
             <p className="mt-1 text-sm italic text-muted-foreground">{show.tagline}</p>
           )}
-          {(!!show.vote_average || (show.genres ?? []).length > 0) && (
+          {!!show.vote_average && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {!!show.vote_average && (
-                <span className="font-counter text-sm text-primary">
-                  {show.vote_average.toFixed(1)}
-                  <span className="text-muted-foreground">/10</span>
-                </span>
-              )}
-              {(show.genres ?? []).length > 0 && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                  {(genresExpanded ? show.genres! : show.genres!.slice(0, 2)).join(" · ")}
-                  {(show.genres ?? []).length > 2 && (
-                    <button
-                      type="button"
-                      aria-expanded={genresExpanded}
-                      aria-label={genresExpanded ? "Réduire les genres" : "Voir tous les genres"}
-                      onClick={() => setGenresExpanded((v) => !v)}
-                      className="ml-1 inline-flex items-center gap-1 font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      {genresExpanded ? "Réduire" : `+${(show.genres ?? []).length - 2}`}
-                      <ChevronDown
-                        className={`h-3 w-3 transition-transform ${genresExpanded ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                  )}
-                </span>
-              )}
+              <span className="font-counter text-sm text-cyan-accent">
+                {show.vote_average.toFixed(1)}
+                <span className="text-muted-foreground">/10</span>
+              </span>
             </div>
           )}
           {!userShow && (
@@ -512,52 +489,18 @@ function ShowDetail() {
         </div>
       </div>
 
-      {userShow && (
-        <div className="mx-5 mt-4">
-          <Card className="rounded-md border-border bg-card p-3 shadow-none">
-            <StatusPicker
-              userShow={userShow}
-              mediaType={mediaType}
-              showTitle={show.title}
-              onChange={() => qc.invalidateQueries({ queryKey: followKey })}
-            />
-          </Card>
+      {(show.genres ?? []).length > 0 && (
+        <div className="mx-5 mt-2 flex flex-wrap gap-2">
+          {show.genres!.map((genre) => (
+            <span
+              key={genre}
+              className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
+            >
+              {genre}
+            </span>
+          ))}
         </div>
       )}
-
-      {mediaType === "tv" &&
-        userShow &&
-        !userShow.manual_override &&
-        (firstUnwatched || nextUpcomingEpisode) && (
-          <div className="mx-5 mt-4">
-            {firstUnwatched && (
-              <button
-                type="button"
-                onClick={() => {
-                  const target = document.getElementById(`episode-${firstUnwatched.id}`);
-                  target?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  target?.focus({ preventScroll: true });
-                }}
-                className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
-              >
-                <Play className="h-3.5 w-3.5" />
-                {anyWatched ? "Reprendre" : "Commencer"} S{pad(firstUnwatched.season_number)}E
-                {pad(firstUnwatched.episode_number)}
-              </button>
-            )}
-            {nextUpcomingEpisode &&
-              (!firstUnwatched || nextUpcomingEpisode.id !== firstUnwatched.id) && (
-                <p className="mt-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-                  Prochain : S{pad(nextUpcomingEpisode.season_number)}E
-                  {pad(nextUpcomingEpisode.episode_number)} ·{" "}
-                  {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
-                    day: "numeric",
-                    month: "long",
-                  })}
-                </p>
-              )}
-          </div>
-        )}
 
       {show.overview && (
         <div className="mx-5 mt-4">
@@ -586,7 +529,53 @@ function ShowDetail() {
         </div>
       )}
 
+      {mediaType === "tv" && nextUpcomingEpisode && (
+        <div className="mx-5 mt-4">
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            Prochain épisode
+          </p>
+          <p className="mt-0.5 font-counter text-sm font-semibold text-foreground">
+            S{pad(nextUpcomingEpisode.season_number)}E{pad(nextUpcomingEpisode.episode_number)} ·{" "}
+            {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
+        </div>
+      )}
+
+      {userShow && (
+        <div className="mx-5 mt-4">
+          <StatusPicker
+            userShow={userShow}
+            mediaType={mediaType}
+            showTitle={show.title}
+            onChange={() => qc.invalidateQueries({ queryKey: followKey })}
+          />
+        </div>
+      )}
+
       {mediaType === "tv" && <Separator className="mx-5 mt-6 w-auto" />}
+
+      {mediaType === "tv" && userShow && !userShow.manual_override && firstUnwatched && (
+        <div className="mx-5 mt-6">
+          <button
+            type="button"
+            onClick={() => {
+              const target = document.getElementById(`episode-${firstUnwatched.id}`);
+              target?.scrollIntoView({ behavior: "smooth", block: "center" });
+              target?.focus({ preventScroll: true });
+            }}
+            className="-my-3 inline-flex items-center gap-1.5 py-3 text-sm font-medium text-foreground"
+          >
+            {anyWatched ? "Reprendre" : "Commencer avec"}{" "}
+            <span className="font-counter">
+              S{pad(firstUnwatched.season_number)}E{pad(firstUnwatched.episode_number)}
+            </span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {mediaType === "tv" && (
         <div className="mt-6 space-y-6 px-5 pb-24">
@@ -767,7 +756,7 @@ function EpisodeRow({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="font-counter text-[11px] tracking-widest text-primary">
+            <span className="font-counter text-[11px] tracking-widest text-muted-foreground">
               E{pad(episode.episode_number)}
             </span>
             <span className="truncate text-sm text-foreground">{episode.title ?? "—"}</span>
