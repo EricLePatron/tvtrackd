@@ -151,6 +151,7 @@ export type Database = {
         Row: {
           created_at: string
           id: number
+          manual_override: string | null
           show_id: number
           status: string
           user_id: string
@@ -158,6 +159,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: number
+          manual_override?: string | null
           show_id: number
           status: string
           user_id: string
@@ -165,6 +167,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: number
+          manual_override?: string | null
           show_id?: number
           status?: string
           user_id?: string
@@ -216,7 +219,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      apply_computed_status: {
+        Args: {
+          p_new_watch_event?: boolean
+          p_show_id: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      compute_my_show_status: { Args: { p_show_id: number }; Returns: string }
+      compute_show_status: {
+        Args: { p_show_id: number; p_user_id: string }
+        Returns: string
+      }
+      compute_tv_status: {
+        Args: { p_show_id: number; p_user_id: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
