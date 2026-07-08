@@ -189,6 +189,26 @@ describe("buildFlatRows", () => {
     expect(row.entries[0]).toMatchObject({ type: "drop", watched: false });
   });
 
+  it("sets `watchedCount` to the number of watched episodes on a partially-watched drop, and keeps `watched: false`", () => {
+    const s = show(1);
+    const g = group({
+      date: "2026-07-05",
+      isPastOrToday: true,
+      episodes: [
+        ep(s, 101, 1, 1, "2026-07-05", true),
+        ep(s, 102, 1, 2, "2026-07-05", true),
+        ep(s, 103, 1, 3, "2026-07-05", false),
+      ],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(1);
+    expect(row.entries[0]).toMatchObject({ type: "drop", watched: false, watchedCount: 2 });
+  });
+
   it("sets `isToday` and `saturated` from the group's `isToday`/`isPastOrToday`", () => {
     const s = show(1);
     const gToday = group({

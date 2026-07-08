@@ -88,7 +88,10 @@ export const ROW_HEIGHT = { day: 268, empty: 42 } as const;
  * `groupUpcomingByDay`) so a season-drop becomes one `UpcomingDropEntry`
  * instead of N near-identical `UpcomingSingleEntry` cards, then attaches the
  * `watched` flag: `true` for a drop only when every episode in it is
- * watched, and the original per-episode flag for a single. Both flow
+ * watched, and the original per-episode flag for a single. A drop also gets
+ * `watchedCount` (how many of its episodes are watched), so `EntryCard` can
+ * render a partial-progress chip instead of collapsing every
+ * not-fully-watched drop to the same "nothing watched" look. Both flow
  * straight into the unmodified `DayRail`/`EntryCard` from `day-rail.tsx`,
  * which already renders either variant.
  */
@@ -116,6 +119,7 @@ export function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
             episodes: entry.episodes,
             count: entry.count,
             watched: entry.episodes.every((ep) => ep.watched),
+            watchedCount: entry.episodes.filter((ep) => ep.watched).length,
           },
     );
     rows.push({

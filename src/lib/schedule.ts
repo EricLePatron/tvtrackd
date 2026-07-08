@@ -71,6 +71,18 @@ export type UpcomingDropEntry = {
    * invisible there.
    */
   watched?: boolean;
+  /**
+   * Optional count of already-watched episodes within this drop — a
+   * complement to `watched` (which stays `true` only when the drop is
+   * *entirely* watched), so a partially-watched drop (e.g. 6/8) doesn't
+   * collapse to the exact same "nothing watched" rendering as a 0/8 drop.
+   * Never populated by `groupUpcomingByDay` (Home's rail is future-only, so
+   * watched progress never applies there). Only the /calendar timeline
+   * (`buildFlatRows` in `calendar-timeline-rows.ts`) sets this. Left
+   * `undefined` for every existing Home call site, which keeps
+   * `EntryCard`'s partial-progress chip invisible there.
+   */
+  watchedCount?: number;
 };
 
 export type UpcomingEntry = UpcomingSingleEntry | UpcomingDropEntry;
