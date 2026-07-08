@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import type { DayGroup, UpcomingEntry } from "@/lib/schedule";
 import { formatUpcomingDayLabel } from "@/lib/schedule";
 
@@ -26,7 +27,7 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
       className="w-32 shrink-0 snap-start"
     >
       <div
-        className={`aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated ${
+        className={`relative aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated ${
           saturated ? "" : "opacity-60"
         }`}
       >
@@ -37,6 +38,15 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
             loading="lazy"
             className={`h-full w-full object-cover ${saturated ? "" : "grayscale-[35%]"}`}
           />
+        )}
+        {/* Overlay badge, not an extra text line below the poster — keeps every
+            card in a rail the same height whether or not it's watched (Home
+            never sets `watched`, so this never renders there). */}
+        {entry.type === "single" && entry.watched && (
+          <span className="absolute right-1 top-1 flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
+            <Check className="h-3 w-3" />
+            Vu
+          </span>
         )}
       </div>
       <p className="mt-1.5 line-clamp-1 text-sm text-foreground">{show.title}</p>

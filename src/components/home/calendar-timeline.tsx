@@ -1,23 +1,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { Link } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatUpcomingDayLabel, type TimelineEpisode } from "@/lib/schedule";
+import { formatUpcomingDayLabel } from "@/lib/schedule";
 import type { CalendarTimeline as CalendarTimelineData } from "@/hooks/use-calendar-timeline";
-import { buildFlatRows, estimateRowSize, type FlatRow } from "./calendar-timeline-rows";
-
-function pad(n: number) {
-  return n.toString().padStart(2, "0");
-}
+import { DayRail } from "./day-rail";
+import { buildFlatRows, estimateRowSize, ROW_HEIGHT, type FlatRow } from "./calendar-timeline-rows";
 
 /**
  * Full bidirectional timeline for the dedicated /calendar screen: a single
- * virtualized vertical list, one row per episode (never the Home rails'
- * "drop" aggregation), anchored on "today" on mount, with unlimited backward
- * pagination as the user scrolls up. Home's rails (`day-rail.tsx`,
- * `upcoming-section.tsx`) are untouched and unrelated to this component.
+ * virtualized vertical list, one row per DAY, each rendered through the
+ * unmodified `DayRail`/`EntryCard` from `day-rail.tsx` (same poster card,
+ * same horizontal scroll-if-several layout as the Home rails) — never the
+ * Home rails' "drop" aggregation (see `calendar-timeline-rows.ts`). Anchored
+ * on "today" on mount, with unlimited backward pagination as the user
+ * scrolls up. `upcoming-section.tsx` (Home's bucket-header wrapper around
+ * `DayRail`) is untouched and unrelated to this component.
  */
 export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineData }) {
   const {
@@ -62,7 +60,10 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
 
     if (!hasScrolledToToday.current) {
       if (!flatRows.length) return;
-      const todayIndex = flatRows.findIndex((r) => r.kind === "day-header" && r.isToday);
+      // Both `FlatRow` kinds carry `date` — buildTimelineDayGroups always
+      // includes a group for "today" (possibly empty, hence "empty-today"),
+      // so comparing on `date` covers both the populated and empty cases.
+      const todayIndex = flatRows.findIndex((r) => r.date === today);
       if (todayIndex === -1) return; // defensive: buildTimelineDayGroups always includes "today"
       rowVirtualizer.scrollToIndex(todayIndex, { align: "start" });
       hasScrolledToToday.current = true;
@@ -100,10 +101,9 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     return (
       <div className="space-y-3 px-5">
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-[204px] w-full" />
-        <Skeleton className="h-[204px] w-full" />
+        <Skeleton style={{ height: ROW_HEIGHT.day }} className="w-full" />
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-[204px] w-full" />
+        <Skeleton style={{ height: ROW_HEIGHT.day }} className="w-full" />
       </div>
     );
   }
@@ -174,96 +174,34 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
   );
 }
 
+/**
+ * Renders each day's row: `DayRail` (imported unmodified from `day-rail.tsx`)
+ * for a populated day — identical poster-card/horizontal-rail layout as the
+ * Home screen, no border/background wrapper around it — or a plain,
+ * border-free label + text line for the one case `DayRail` doesn't cover:
+ * an empty "today". The label markup below intentionally mirrors (small,
+ * unavoidable duplication) `DayRail`'s own day-label JSX, since `day-rail.tsx`
+ * is not to be modified to add an "empty state" variant to the shared
+ * component.
+ */
 function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
-  if (row.kind === "day-header") {
-    return (
-      <div className="flex h-10 items-center gap-2">
-        {row.isToday && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
-        <p
-          className={`font-counter text-xs uppercase tracking-widest ${
-            row.isToday ? "text-primary" : "text-muted-foreground"
-          }`}
-        >
-          {formatUpcomingDayLabel(row.date, today)}
-        </p>
-      </div>
-    );
-  }
-
   if (row.kind === "empty-today") {
-    // Only reached for "today" (buildTimelineDayGroups never emits an empty
-    // group otherwise) — reuses the same reinforced background/border as an
-    // isToday `EpisodeRow`, for consistency with the group it belongs to.
     return (
-      <div className="flex h-14 items-center rounded-lg border border-primary/40 bg-surface-elevated px-3">
+      <div>
+        <p className="mb-2 flex items-center gap-2 font-counter text-[10px] uppercase tracking-widest">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+          <span className="text-primary">{formatUpcomingDayLabel(row.date, today)}</span>
+        </p>
         <p className="text-xs text-muted-foreground">Rien de prévu aujourd'hui.</p>
       </div>
     );
   }
 
-  return <EpisodeRow episode={row.episode} saturated={row.saturated} isToday={row.isToday} />;
-}
-
-/**
- * One row per episode — reuses the same `saturated` treatment as the Home
- * rails' `EntryCard`. Fills its slot via `h-full` + bottom padding rather
- * than a second hardcoded pixel height, so it can never drift out of sync
- * with `ROW_HEIGHT.episode` (the virtualizer's `estimateSize`).
- */
-function EpisodeRow({
-  episode,
-  saturated,
-  isToday,
-}: {
-  episode: TimelineEpisode;
-  saturated: boolean;
-  isToday: boolean;
-}) {
-  const { show } = episode;
   return (
-    <div className="h-full pb-2">
-      <Link
-        to="/show/$mediaType/$tmdbId"
-        params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-        className={`flex h-full items-end gap-3 rounded-lg border px-3 py-2 ${
-          isToday ? "border-primary/40 bg-surface-elevated" : "border-border bg-card"
-        }`}
-      >
-        <div
-          className={`w-32 shrink-0 aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated ${
-            saturated ? "" : "opacity-60"
-          }`}
-        >
-          {show.poster_path && (
-            <img
-              src={show.poster_path}
-              alt={show.title}
-              loading="lazy"
-              className={`h-full w-full object-cover ${saturated ? "" : "grayscale-[35%]"}`}
-            />
-          )}
-        </div>
-        {/* items-end on the Link (not items-center) anchors this text block and the
-            "Vu" badge to the bottom of the poster — mirroring EntryCard on the home,
-            where the text sits below the poster (vertical layout); here the layout
-            stays horizontal, so "below the poster" translates to "bottom-aligned
-            next to it" instead. */}
-        <div className="min-w-0 flex-1 pb-0.5">
-          <h4 className="truncate text-base text-foreground">{show.title}</h4>
-          <p className="truncate text-xs text-muted-foreground">{episode.title ?? "—"}</p>
-          <p className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
-            S{pad(episode.season_number)} E{pad(episode.episode_number)}
-          </p>
-        </div>
-        {/* Vu/à-voir badge: only for aired entries, watched-only signal (cyan-accent, same as
-            elsewhere in the app) — absence of the badge implies "pas encore vu". */}
-        {saturated && episode.watched && (
-          <span className="flex shrink-0 items-center gap-1 pb-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
-            <Check className="h-3 w-3" />
-            Vu
-          </span>
-        )}
-      </Link>
-    </div>
+    <DayRail
+      group={{ date: row.date, entries: row.entries }}
+      today={today}
+      saturated={row.saturated}
+    />
   );
 }
