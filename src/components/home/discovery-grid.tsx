@@ -63,7 +63,7 @@ export function DiscoveryGrid({
             <div
               key={i}
               className={`aspect-[2/3] animate-pulse rounded-md bg-surface-elevated ${
-                variant === "compact" ? "w-28 shrink-0" : ""
+                variant === "compact" ? "w-32 shrink-0" : ""
               }`}
             />
           ))}
@@ -83,7 +83,7 @@ export function DiscoveryGrid({
             return (
               <div
                 key={key}
-                className={variant === "compact" ? "w-28 shrink-0 snap-start" : undefined}
+                className={variant === "compact" ? "w-32 shrink-0 snap-start" : undefined}
               >
                 <div className="relative">
                   <Link
@@ -110,20 +110,18 @@ export function DiscoveryGrid({
                     onClick={() => !followed && onFollow(item)}
                     disabled={followed || pending}
                     aria-label={followed ? "Déjà suivi" : `Suivre ${item.title}`}
-                    className={`absolute bottom-1.5 right-1.5 grid h-8 w-8 place-items-center rounded-full border transition-colors ${
+                    className={`absolute bottom-1.5 right-1.5 grid place-items-center rounded-full border transition-colors ${
+                      variant === "grid" ? "h-9 w-9" : "h-11 w-11"
+                    } ${
                       followed
                         ? "border-secondary bg-secondary text-secondary-foreground"
                         : "border-primary/60 bg-background/80 text-primary backdrop-blur-sm"
                     }`}
                   >
-                    {followed ? (
-                      <Check className="h-3.5 w-3.5" />
-                    ) : (
-                      <Plus className="h-3.5 w-3.5" />
-                    )}
+                    {followed ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="mt-1.5 line-clamp-1 text-xs text-foreground">{item.title}</p>
+                <p className="mt-1.5 line-clamp-1 text-sm text-foreground">{item.title}</p>
               </div>
             );
           })}

@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
+import { VhsCounter } from "@/components/vhs-counter";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -51,6 +53,10 @@ type HomeData = {
 
 function HomeScreen() {
   const { user } = useAuth();
+  // The anonymous demo hero already carries its own "Créer un compte" /
+  // "J'ai déjà un compte" CTAs — the header's pill would be redundant on
+  // this specific screen (it stays on every other screen, e.g. /calendar).
+  const hideHeaderAuthPill = !user;
 
   const { data, isLoading } = useQuery({
     queryKey: ["home-schedule", user?.id],
@@ -130,7 +136,7 @@ function HomeScreen() {
 
   return (
     <>
-      <ScreenHeader eyebrow="Ce soir" title="Programme">
+      <ScreenHeader eyebrow="Ce soir" title="Programme" hideAuthPill={hideHeaderAuthPill}>
         Vos prochaines diffusions, en un coup d'œil.
       </ScreenHeader>
 
@@ -151,21 +157,86 @@ function HomeScreen() {
   );
 }
 
+/**
+ * Fixed editorial show used only to render the demo hero below — never a
+ * fetch, so the anonymous screen has zero dependency on user data. Shaped as
+ * a `ReadyItem` so it can go straight through `HeroTicket` unmodified; ids
+ * are arbitrary placeholders (never persisted, never navigated to since the
+ * demo hero renders `interactive={false}`).
+ */
+const DEMO_HERO_ITEM: ReadyItem = {
+  show: {
+    id: 0,
+    tmdb_id: 1396,
+    media_type: "tv",
+    title: "Breaking Bad",
+    poster_path: "https://image.tmdb.org/t/p/w500/3xnWaLQjelJDDF7LT1WBo6f4BRe.jpg",
+  },
+  status: "en_cours",
+  episodes: [],
+  nextEpisode: {
+    id: 0,
+    season_number: 2,
+    episode_number: 4,
+    title: "Down",
+    air_date: null,
+    show: {
+      id: 0,
+      tmdb_id: 1396,
+      media_type: "tv",
+      title: "Breaking Bad",
+      poster_path: "https://image.tmdb.org/t/p/w500/3xnWaLQjelJDDF7LT1WBo6f4BRe.jpg",
+    },
+  },
+  extraCount: 0,
+  earliestAirDate: "",
+  isLate: false,
+  lateDays: 0,
+};
+
 function AnonymousHome() {
+  // Animate the VHS counter's bump once on mount, purely for demo effect —
+  // reuses VhsCounter's own increment logic (triggered by a `watched` prop
+  // change), not a new animation mechanism.
+  const [demoWatched, setDemoWatched] = useState(2);
+  useEffect(() => {
+    const id = setTimeout(() => setDemoWatched(3), 600);
+    return () => clearTimeout(id);
+  }, []);
+
   return (
-    <div className="mx-5 rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
-      <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-        Mode découverte
-      </p>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Créez un compte pour suivre vos séries et voir votre programme personnalisé.
-      </p>
-      <Link
-        to="/auth"
-        className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
-      >
-        Se connecter / Créer un compte
-      </Link>
+    <div className="mx-5">
+      <HeroTicket
+        item={DEMO_HERO_ITEM}
+        interactive={false}
+        badge={{ label: "Exemple", className: "text-cyan-accent" }}
+        progress={{ watched: demoWatched, total: 8 }}
+      />
+
+      <div className="mt-5 rounded-xl border border-border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          Suivez vos séries épisode par épisode, sans jamais perdre votre historique.
+        </p>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          Calendrier, statuts, rewatchs — tout au même endroit.
+        </p>
+        <div className="mt-5 flex flex-col gap-2">
+          <Link
+            to="/auth"
+            search={{ mode: "signup" }}
+            className="inline-flex h-12 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+          >
+            Créer un compte
+          </Link>
+          <Link
+            to="/auth"
+            search={{ mode: "signin" }}
+            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground"
+          >
+            J'ai déjà un compte
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
@@ -289,8 +360,77 @@ function UpcomingSectionHeader() {
   );
 }
 
-function HeroTicket({ item }: { item: ReadyItem }) {
+function HeroTicket({
+  item,
+  badge,
+  interactive = true,
+  progress,
+}: {
+  item: ReadyItem;
+  /** Overrides the default `formatReadyLabel` eyebrow — used by the anonymous demo hero's "Exemple" badge. */
+  badge?: { label: string; className?: string };
+  /** `false` renders a static `div` instead of a `Link` — the anonymous demo hero isn't navigable. */
+  interactive?: boolean;
+  /**
+   * Fabricated season watched/total fraction — only the anonymous demo hero
+   * supplies this (to demonstrate VhsCounter's bump animation). The real,
+   * signed-in hero has no season-progress data fetched yet, so it omits
+   * this and `VhsCounter` renders a single line.
+   */
+  progress?: { watched: number; total: number };
+}) {
   const { show, nextEpisode } = item;
+
+  const body = (
+    <>
+      {/* Perforation notches */}
+      <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-background" />
+      <span className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 h-4 w-4 rounded-full bg-background" />
+
+      <div className="flex gap-5 p-5">
+        <div className="h-32 w-[88px] shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
+          {show.poster_path && (
+            <img src={show.poster_path} alt={show.title} className="h-full w-full object-cover" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p
+            className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
+          >
+            {badge?.label ?? formatReadyLabel(item)}
+          </p>
+          <h2 className="mt-1 font-display text-xl leading-tight text-foreground truncate">
+            {show.title}
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground truncate">{nextEpisode.title ?? "—"}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="flex-1">
+              <VhsCounter
+                variant="hero"
+                seasonNumber={nextEpisode.season_number}
+                nextEpisodeNumber={nextEpisode.episode_number}
+                watched={progress?.watched}
+                total={progress?.total}
+              />
+            </div>
+            <Play className="h-5 w-5 shrink-0 text-primary" />
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-dashed border-border px-5 py-2">
+        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+          tvtrackd · Ticket #{pad(nextEpisode.id % 100)}
+        </p>
+      </div>
+    </>
+  );
+
+  const className = "relative block overflow-hidden rounded-xl border border-border bg-card";
+
+  if (!interactive) {
+    return <div className={className}>{body}</div>;
+  }
+
   return (
     <Link
       to="/show/$mediaType/$tmdbId"
@@ -298,39 +438,9 @@ function HeroTicket({ item }: { item: ReadyItem }) {
         mediaType: show.media_type,
         tmdbId: String(show.tmdb_id),
       }}
-      className="relative block overflow-hidden rounded-xl border border-border bg-card"
+      className={className}
     >
-      {/* Perforation notches */}
-      <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-background" />
-      <span className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 h-4 w-4 rounded-full bg-background" />
-
-      <div className="flex gap-4 p-4">
-        <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
-          {show.poster_path && (
-            <img src={show.poster_path} alt={show.title} className="h-full w-full object-cover" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-primary">
-            {formatReadyLabel(item)}
-          </p>
-          <h2 className="mt-1 font-display text-lg leading-tight text-foreground truncate">
-            {show.title}
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground truncate">{nextEpisode.title ?? "—"}</p>
-          <div className="mt-3 flex items-center justify-between rounded-md bg-surface-elevated px-3 py-1.5">
-            <span className="font-counter text-sm tracking-widest text-cyan-accent">
-              S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-            </span>
-            <Play className="h-4 w-4 text-primary" />
-          </div>
-        </div>
-      </div>
-      <div className="border-t border-dashed border-border px-4 py-2">
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          tvtrackd · Ticket #{pad(nextEpisode.id % 100)}
-        </p>
-      </div>
+      {body}
     </Link>
   );
 }

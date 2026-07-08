@@ -18,15 +18,33 @@ function pad(n: number) {
 type FlatRow =
   | { kind: "day-header"; key: string; date: string; isToday: boolean }
   | { kind: "empty-today"; key: string }
-  | { kind: "episode"; key: string; saturated: boolean; episode: TimelineEpisode };
+  | {
+      kind: "episode";
+      key: string;
+      saturated: boolean;
+      /** `group.isToday` — distinct from `saturated` (past-or-today): drives the
+       *  reinforced "aujourd'hui" background/border on the row itself, since this
+       *  flat, individually-positioned-row virtualizer has no per-day wrapper to
+       *  attach a group background to. */
+      isToday: boolean;
+      episode: TimelineEpisode;
+    };
 
 /**
  * Fixed row heights (no `measureElement`) so scroll-position math on prepend
  * stays exact. `episode` is the single source of truth for the episode row
  * slot — `EpisodeRow` fills it via `h-full` + bottom padding rather than a
  * second hardcoded height, so the two can never drift apart.
+ *
+ * All three values were measured with a headless-browser pass against the
+ * actual rendered markup (Playwright, `getBoundingClientRect` on the exact
+ * row classes, with representative text content), not hand-estimated:
+ * header = h-10 (40px, exact — fixed height, no content-driven variance),
+ * episode = 106px (h-20/80px poster + py-2/16px + border/2px on the `Link`,
+ * + pb-2/8px on the outer slot — the poster is still the height-driving
+ * element even with 3 lines of text), empty = h-14 (56px, unchanged).
  */
-const ROW_HEIGHT = { header: 36, episode: 76, empty: 56 } as const;
+const ROW_HEIGHT = { header: 40, episode: 106, empty: 56 } as const;
 
 function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
   const rows: FlatRow[] = [];
@@ -47,6 +65,7 @@ function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
           kind: "episode",
           key: `ep-${ep.id}`,
           saturated: group.isPastOrToday,
+          isToday: group.isToday,
           episode: ep,
         });
       }
@@ -149,10 +168,10 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     return (
       <div className="space-y-3 px-5">
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-[68px] w-full" />
-        <Skeleton className="h-[68px] w-full" />
+        <Skeleton className="h-[92px] w-full" />
+        <Skeleton className="h-[92px] w-full" />
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-[68px] w-full" />
+        <Skeleton className="h-[92px] w-full" />
       </div>
     );
   }
@@ -226,10 +245,10 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
 function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
   if (row.kind === "day-header") {
     return (
-      <div className="flex h-9 items-center gap-2">
+      <div className="flex h-10 items-center gap-2">
         {row.isToday && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
         <p
-          className={`font-counter text-[10px] uppercase tracking-widest ${
+          className={`font-counter text-xs uppercase tracking-widest ${
             row.isToday ? "text-primary" : "text-muted-foreground"
           }`}
         >
@@ -240,14 +259,17 @@ function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
   }
 
   if (row.kind === "empty-today") {
+    // Only reached for "today" (buildTimelineDayGroups never emits an empty
+    // group otherwise) — reuses the same reinforced background/border as an
+    // isToday `EpisodeRow`, for consistency with the group it belongs to.
     return (
-      <div className="flex h-14 items-center">
+      <div className="flex h-14 items-center rounded-lg border border-primary/40 bg-surface-elevated px-3">
         <p className="text-xs text-muted-foreground">Rien de prévu aujourd'hui.</p>
       </div>
     );
   }
 
-  return <EpisodeRow episode={row.episode} saturated={row.saturated} />;
+  return <EpisodeRow episode={row.episode} saturated={row.saturated} isToday={row.isToday} />;
 }
 
 /**
@@ -256,17 +278,27 @@ function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
  * than a second hardcoded pixel height, so it can never drift out of sync
  * with `ROW_HEIGHT.episode` (the virtualizer's `estimateSize`).
  */
-function EpisodeRow({ episode, saturated }: { episode: TimelineEpisode; saturated: boolean }) {
+function EpisodeRow({
+  episode,
+  saturated,
+  isToday,
+}: {
+  episode: TimelineEpisode;
+  saturated: boolean;
+  isToday: boolean;
+}) {
   const { show } = episode;
   return (
     <div className="h-full pb-2">
       <Link
         to="/show/$mediaType/$tmdbId"
         params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-        className="flex h-full items-center gap-3 rounded-lg border border-border bg-card px-3 py-2"
+        className={`flex h-full items-center gap-3 rounded-lg border px-3 py-2 ${
+          isToday ? "border-primary/40 bg-surface-elevated" : "border-border bg-card"
+        }`}
       >
         <div
-          className={`h-14 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated ${
+          className={`h-20 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated ${
             saturated ? "" : "opacity-60"
           }`}
         >
@@ -280,9 +312,9 @@ function EpisodeRow({ episode, saturated }: { episode: TimelineEpisode; saturate
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h4 className="truncate text-sm text-foreground">{show.title}</h4>
+          <h4 className="truncate text-base text-foreground">{show.title}</h4>
           <p className="truncate text-xs text-muted-foreground">{episode.title ?? "—"}</p>
-          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+          <p className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
             S{pad(episode.season_number)} E{pad(episode.episode_number)}
           </p>
         </div>
