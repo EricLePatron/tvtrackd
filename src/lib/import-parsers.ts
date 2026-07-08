@@ -44,9 +44,25 @@ export type ParseResult = {
 };
 
 export const FORMAT_LABELS: Record<DetectedFormat, string> = {
-  granular: "TV Time / générique (historique épisode par épisode)",
-  betaseries: "Betaseries (progression agrégée par série)",
+  granular: "TV Time / historique épisode par épisode",
+  betaseries: "Betaseries (progression par série)",
 };
+
+// Fichiers du zip GDPR TV Time qui contiennent réellement l'historique de
+// visionnage. Tout le reste (devices, notifications, ratings, movies, chats,
+// etc.) est ignoré silencieusement — sinon les warnings noient l'utilisateur.
+const TVTIME_HISTORY_FILE_HINTS = [
+  "tracking-prod-records",
+  "seen_episode",
+  "watched",
+  "history",
+  "episodes",
+];
+
+function looksLikeTvTimeHistoryFile(name: string): boolean {
+  const base = name.toLowerCase().replace(/^.*\//, "");
+  return TVTIME_HISTORY_FILE_HINTS.some((h) => base.includes(h));
+}
 
 // ------- Point d'entrée -------
 
@@ -64,15 +80,26 @@ export async function parseImportFile(file: File): Promise<ParseResult> {
     };
   }
 
+  // Sur un zip TV Time on ne garde que les fichiers d'historique connus.
+  // Les autres CSV (devices, ratings…) matcheraient parfois `title` et
+  // pollueraient l'import avec des lignes bruit → unmatched trompeurs.
+  const relevantSources = isZip
+    ? sources.filter((s) => looksLikeTvTimeHistoryFile(s.name))
+    : sources;
+  const effectiveSources = relevantSources.length ? relevantSources : sources;
+
   const items: ImportItem[] = [];
   const detectedFormats = new Set<DetectedFormat>();
   const warnings: string[] = [];
 
-  for (const src of sources) {
+  for (const src of effectiveSources) {
     const isJson = /\.json$/i.test(src.name);
     const result = isJson ? parseJsonSource(src.text) : parseCsvSource(src.text);
     if (!result) {
-      warnings.push(`${src.name} : format non reconnu, fichier ignoré.`);
+      // Silencieux dans un zip : on ne peut pas savoir à l'avance quels
+      // fichiers TV Time contiennent des colonnes exploitables selon la
+      // version de l'export.
+      if (!isZip) warnings.push(`${src.name} : format non reconnu, fichier ignoré.`);
       continue;
     }
     detectedFormats.add(result.format);
@@ -80,11 +107,36 @@ export async function parseImportFile(file: File): Promise<ParseResult> {
     warnings.push(...result.warnings);
   }
 
-  if (!items.length) {
+  const deduped = dedupeItems(items);
+
+  if (!deduped.length) {
     warnings.push("Aucune ligne exploitable trouvée dans le fichier.");
   }
 
-  return { items, detectedFormats: [...detectedFormats], warnings };
+  return { items: deduped, detectedFormats: [...detectedFormats], warnings };
+}
+
+// Un même épisode apparaît souvent plusieurs fois dans un export TV Time
+// (rewatch, resync appareil). On dédup sur (title|year|season|episode|jour)
+// pour éviter un watch_count faussement gonflé côté serveur.
+function dedupeItems(items: ImportItem[]): ImportItem[] {
+  const seen = new Set<string>();
+  const out: ImportItem[] = [];
+  for (const it of items) {
+    if (it.kind === "aggregate") {
+      const k = `A|${it.title.toLowerCase()}|${it.year ?? ""}|${it.lastSeason}|${it.lastEpisode}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(it);
+      continue;
+    }
+    const day = it.watched_at ? String(it.watched_at).slice(0, 10) : "";
+    const k = `G|${it.title.toLowerCase()}|${it.year ?? ""}|${it.season ?? ""}|${it.episode ?? ""}|${day}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(it);
+  }
+  return out;
 }
 
 // ------- Dézippage (.zip GDPR TV Time) -------
