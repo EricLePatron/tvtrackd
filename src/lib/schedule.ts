@@ -139,6 +139,73 @@ export function buildReadyItems(
   return items;
 }
 
+/**
+ * Per-show progress data for the library grid ("En cours" tab): next episode
+ * to watch + a tally scoped to that episode's SEASON only (not the whole
+ * series). Deliberately NOT built on top of `buildReadyItems` (which needs a
+ * show-status map irrelevant to callers that already pre-filter show ids) but
+ * mirrors it exactly on the parts that matter:
+ * - `nextEpisode` uses the identical "ready episode" predicate as
+ *   `buildReadyItems` (aired, not yet watched) and the same `byEpisodeOrder`
+ *   sort, so a show with several seasons airing concurrently still resolves
+ *   to the oldest unwatched episode in season/episode order, never air-date
+ *   order.
+ * - the season tally uses the same watched/total computation already done
+ *   inline for `VhsCounter` on the show detail page (filter episodes by
+ *   `season_number`, count watched vs length) — no new formula.
+ */
+export type LibraryProgressEntry = {
+  showId: number;
+  nextEpisode: ScheduleEpisode;
+  seasonWatched: number;
+  seasonTotal: number;
+};
+
+export function buildLibraryProgress(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  today: string,
+): {
+  /** Show ids present in `episodes` — i.e. shows with cached episode data at all. */
+  knownShowIds: ReadonlySet<number>;
+  /**
+   * One entry per show with a ready (aired, unwatched) episode. A show id
+   * present in `knownShowIds` but absent here is "caught up" (no chip data
+   * to show, distinct from "no cached data at all").
+   */
+  progressByShowId: ReadonlyMap<number, LibraryProgressEntry>;
+} {
+  const groups = new Map<number, ScheduleEpisode[]>();
+  for (const ep of episodes) {
+    const arr = groups.get(ep.show.id) ?? [];
+    arr.push(ep);
+    groups.set(ep.show.id, arr);
+  }
+
+  const knownShowIds = new Set(groups.keys());
+  const progressByShowId = new Map<number, LibraryProgressEntry>();
+
+  for (const [showId, eps] of groups) {
+    const sorted = [...eps].sort(byEpisodeOrder);
+    const nextEpisode = sorted.find(
+      (e) => !!e.air_date && e.air_date <= today && !watchedEpisodeIds.has(e.id),
+    );
+    if (!nextEpisode) continue; // caught up — no tally needed (never shown for this state)
+
+    const seasonEps = sorted.filter((e) => e.season_number === nextEpisode.season_number);
+    const seasonWatched = seasonEps.filter((e) => watchedEpisodeIds.has(e.id)).length;
+
+    progressByShowId.set(showId, {
+      showId,
+      nextEpisode,
+      seasonWatched,
+      seasonTotal: seasonEps.length,
+    });
+  }
+
+  return { knownShowIds, progressByShowId };
+}
+
 function byEarliestAirDate(a: ReadyItem, b: ReadyItem) {
   if (a.earliestAirDate !== b.earliestAirDate) {
     return a.earliestAirDate < b.earliestAirDate ? -1 : 1;
