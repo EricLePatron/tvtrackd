@@ -41,8 +41,10 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
         )}
         {/* Overlay badge, not an extra text line below the poster — keeps every
             card in a rail the same height whether or not it's watched (Home
-            never sets `watched`, so this never renders there). */}
-        {entry.type === "single" && entry.watched && (
+            never sets `watched` on either variant, so this never renders
+            there). Applies to both "single" and "drop" entries — a drop only
+            carries `watched: true` once every episode in it has been seen. */}
+        {entry.watched && (
           <span className="absolute right-1 top-1 flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
             <Check className="h-3 w-3" />
             Vu
