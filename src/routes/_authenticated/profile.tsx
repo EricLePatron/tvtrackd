@@ -128,7 +128,7 @@ function ProfileScreen() {
             Historique
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Importez depuis TV Time ou Betaseries. Exportez à tout moment.
+            Récupérez votre historique TV Time (.zip) ou Betaseries (.csv). Export JSON à tout moment.
           </p>
           <div className="mt-4 space-y-2">
             <ImportPanel />
