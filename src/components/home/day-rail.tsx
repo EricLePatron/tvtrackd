@@ -23,7 +23,7 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
     <Link
       to="/show/$mediaType/$tmdbId"
       params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-      className="w-28 shrink-0 snap-start"
+      className="w-32 shrink-0 snap-start"
     >
       <div
         className={`aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated ${
@@ -39,15 +39,20 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
           />
         )}
       </div>
-      <p className="mt-1.5 line-clamp-1 text-xs text-foreground">{show.title}</p>
-      <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+      <p className="mt-1.5 line-clamp-1 text-sm text-foreground">{show.title}</p>
+      <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
         {sub}
       </p>
     </Link>
   );
 }
 
-/** One horizontal mini-rail for a single calendar day. */
+/**
+ * One horizontal mini-rail for a single calendar day — reuses the same
+ * "aujourd'hui" treatment (primary dot + primary text) as
+ * `calendar-timeline.tsx`'s `TimelineRow` day-header, rather than a
+ * uniformly-muted label for every day.
+ */
 export function DayRail({
   group,
   today,
@@ -61,18 +66,22 @@ export function DayRail({
 }) {
   const entries = truncate ? group.entries.slice(0, truncate) : group.entries;
   const hiddenCount = group.entries.length - entries.length;
+  const isToday = group.date === today;
 
   return (
     <div>
-      <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-        {formatUpcomingDayLabel(group.date, today)}
+      <p className="mb-2 flex items-center gap-2 font-counter text-[10px] uppercase tracking-widest">
+        {isToday && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+        <span className={isToday ? "text-primary" : "text-muted-foreground"}>
+          {formatUpcomingDayLabel(group.date, today)}
+        </span>
       </p>
       <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
         {entries.map((entry) => (
           <EntryCard key={entryKey(entry)} entry={entry} saturated={saturated} />
         ))}
         {hiddenCount > 0 && (
-          <div className="flex w-28 shrink-0 items-center justify-center">
+          <div className="flex w-32 shrink-0 items-center justify-center">
             <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
               +{hiddenCount}
             </span>

@@ -7,10 +7,13 @@ export function ScreenHeader({
   eyebrow,
   title,
   children,
+  hideAuthPill = false,
 }: {
   eyebrow: string;
   title: string;
   children?: ReactNode;
+  /** Suppresses the "Se connecter" pill on screens that already surface their own auth CTAs (e.g. the anonymous Home hero). */
+  hideAuthPill?: boolean;
 }) {
   const { user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -24,7 +27,7 @@ export function ScreenHeader({
           </p>
           <h1 className="mt-2 font-display text-3xl text-foreground">{title}</h1>
         </div>
-        {!user && !loading && (
+        {!user && !loading && !hideAuthPill && (
           <Link
             to="/auth"
             search={{ redirect: pathname }}
@@ -40,21 +43,11 @@ export function ScreenHeader({
   );
 }
 
-export function EmptyPanel({
-  label,
-  stat,
-  hint,
-}: {
-  label: string;
-  stat: string;
-  hint: string;
-}) {
+export function EmptyPanel({ label, stat, hint }: { label: string; stat: string; hint: string }) {
   return (
     <div className="mx-5 rounded-xl border border-border bg-card p-6">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs uppercase tracking-widest text-muted-foreground">
-          {label}
-        </span>
+        <span className="text-xs uppercase tracking-widest text-muted-foreground">{label}</span>
         <span className="font-counter text-2xl text-foreground">{stat}</span>
       </div>
       <p className="mt-4 text-sm text-muted-foreground">{hint}</p>

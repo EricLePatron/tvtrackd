@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 const authSearchSchema = z.object({
   redirect: z.string().optional(),
+  mode: z.enum(["signin", "signup"]).optional(),
 });
 
 function safeRedirect(path: string | undefined): string {
@@ -20,7 +21,21 @@ function safeRedirect(path: string | undefined): string {
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
-  validateSearch: authSearchSchema,
+  // Wrapped in try/catch rather than passing `authSearchSchema` directly:
+  // TanStack Router's zod-schema shorthand throws uncaught on a malformed
+  // `mode` (anything outside the enum — typo'd marketing link, empty
+  // `?mode=`, etc.), which bubbles up to the root `errorComponent` and
+  // replaces the entire auth screen with a generic "This page didn't load"
+  // — on the signup/signin flow, the single most critical route in the app.
+  // Falling back to `{}` (→ `mode: undefined` → default "signin") keeps the
+  // form usable no matter what garbage lands in the query string.
+  validateSearch: (search: Record<string, unknown>) => {
+    try {
+      return authSearchSchema.parse(search);
+    } catch {
+      return {};
+    }
+  },
   head: () => ({
     meta: [
       { title: "Connexion — tvtrackd" },
@@ -34,7 +49,7 @@ function AuthPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const target = safeRedirect(search.redirect);
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(search.mode ?? "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -96,9 +111,7 @@ function AuthPage() {
               type="button"
               onClick={() => setMode("signin")}
               className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                mode === "signin"
-                  ? "bg-surface-elevated text-foreground"
-                  : "text-muted-foreground"
+                mode === "signin" ? "bg-surface-elevated text-foreground" : "text-muted-foreground"
               }`}
             >
               Connexion
@@ -107,9 +120,7 @@ function AuthPage() {
               type="button"
               onClick={() => setMode("signup")}
               className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                mode === "signup"
-                  ? "bg-surface-elevated text-foreground"
-                  : "text-muted-foreground"
+                mode === "signup" ? "bg-surface-elevated text-foreground" : "text-muted-foreground"
               }`}
             >
               Inscription
@@ -119,7 +130,10 @@ function AuthPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && (
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-xs uppercase tracking-wider text-muted-foreground">
+                <Label
+                  htmlFor="username"
+                  className="text-xs uppercase tracking-wider text-muted-foreground"
+                >
                   Pseudo
                 </Label>
                 <Input
@@ -132,7 +146,10 @@ function AuthPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label
+                htmlFor="email"
+                className="text-xs uppercase tracking-wider text-muted-foreground"
+              >
                 Email
               </Label>
               <Input
@@ -146,7 +163,10 @@ function AuthPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label
+                htmlFor="password"
+                className="text-xs uppercase tracking-wider text-muted-foreground"
+              >
                 Mot de passe
               </Label>
               <Input
