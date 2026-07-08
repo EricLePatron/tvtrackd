@@ -85,31 +85,36 @@ export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "m
     .single();
 
   if (mediaType === "tv" && Array.isArray(details.seasons)) {
-    for (const s of details.seasons) {
-      if (s.season_number === 0) continue;
-      await admin.from("seasons").upsert(
-        {
+    // Parallélise le fetch des saisons + upsert épisodes : sur une série avec
+    // beaucoup de saisons (import TV Time), la version séquentielle faisait
+    // exploser le temps par série et provoquait le timeout de l'edge function.
+    const seasons = details.seasons.filter((s: any) => s.season_number !== 0);
+    await Promise.all(
+      seasons.map(async (s: any) => {
+        await admin.from("seasons").upsert(
+          {
+            show_id: show.id,
+            season_number: s.season_number,
+            episode_count: s.episode_count ?? null,
+          },
+          { onConflict: "show_id,season_number" },
+        );
+        const sd = await tmdb(`/tv/${tmdbId}/season/${s.season_number}`);
+        const eps = (sd.episodes ?? []).map((ep: any) => ({
           show_id: show.id,
           season_number: s.season_number,
-          episode_count: s.episode_count ?? null,
-        },
-        { onConflict: "show_id,season_number" },
-      );
-      const sd = await tmdb(`/tv/${tmdbId}/season/${s.season_number}`);
-      const eps = (sd.episodes ?? []).map((ep: any) => ({
-        show_id: show.id,
-        season_number: s.season_number,
-        episode_number: ep.episode_number,
-        title: ep.name ?? null,
-        overview: ep.overview ?? null,
-        air_date: ep.air_date || null,
-      }));
-      if (eps.length) {
-        await admin
-          .from("episodes")
-          .upsert(eps, { onConflict: "show_id,season_number,episode_number" });
-      }
-    }
+          episode_number: ep.episode_number,
+          title: ep.name ?? null,
+          overview: ep.overview ?? null,
+          air_date: ep.air_date || null,
+        }));
+        if (eps.length) {
+          await admin
+            .from("episodes")
+            .upsert(eps, { onConflict: "show_id,season_number,episode_number" });
+        }
+      }),
+    );
   }
   return show;
 }
