@@ -128,7 +128,7 @@ function ProfileScreen() {
             Historique
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Importez depuis TV Time ou Betaseries. Exportez à tout moment.
+            Récupérez votre historique TV Time (.zip) ou Betaseries (.csv). Export JSON à tout moment.
           </p>
           <div className="mt-4 space-y-2">
             <ImportPanel />
@@ -169,6 +169,30 @@ function StatCard({ label, value, suffix }: { label: string; value: number; suff
 
 // ------- Import -------
 
+// Nombre de séries uniques envoyées par appel à l'edge function. Choisi pour
+// tenir sous le timeout ~150s : chaque série peut nécessiter un `searchTv` +
+// `cacheShow` (toutes ses saisons TMDb en parallèle) + N inserts watch_status.
+const SERIES_PER_BATCH = 12;
+
+function groupItemsByShow(items: ImportItem[]): ImportItem[][] {
+  const groups = new Map<string, ImportItem[]>();
+  for (const it of items) {
+    const key = itemKey(it);
+    const arr = groups.get(key) ?? [];
+    arr.push(it);
+    groups.set(key, arr);
+  }
+  return [...groups.values()];
+}
+
+function chunkGroups(groups: ImportItem[][], perBatch: number): ImportItem[][] {
+  const batches: ImportItem[][] = [];
+  for (let i = 0; i < groups.length; i += perBatch) {
+    batches.push(groups.slice(i, i + perBatch).flat());
+  }
+  return batches;
+}
+
 function ImportPanel() {
   const [busy, setBusy] = useState(false);
   const [unmatched, setUnmatched] = useState<Unmatched[]>([]);
@@ -176,11 +200,15 @@ function ImportPanel() {
   const [resolutions, setResolutions] = useState<Record<string, number>>({});
   const [detectedFormats, setDetectedFormats] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function handleFile(file: File) {
     setBusy(true);
     setDetectedFormats([]);
     setWarnings([]);
+    setUnmatched([]);
+    setResolutions({});
+    setProgress(null);
     try {
       const {
         items,
@@ -193,28 +221,77 @@ function ImportPanel() {
         toast.error("Aucune ligne exploitable détectée dans le fichier");
         return;
       }
-      await runImport(items, {});
+      await runImportInBatches(items);
     } catch {
       toast.error(
         "Impossible de lire ce fichier — vérifiez qu'il s'agit bien d'un export TV Time ou Betaseries.",
       );
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
-  async function runImport(items: ImportItem[], res: Record<string, number>) {
-    const { data, error } = await supabase.functions.invoke("import-history", {
-      body: { items, resolutions: res },
-    });
-    if (error) {
-      toast.error(error.message);
-      return;
+  // Envoie un batch (max SERIES_PER_BATCH séries uniques) à l'edge function
+  // avec 1 retry en cas d'erreur réseau/timeout. Retourne null seulement si
+  // l'appel a vraiment échoué (deux fois) — dans ce cas on continue avec les
+  // batches suivants pour ne pas tout perdre.
+  async function callBatch(
+    items: ImportItem[],
+    res: Record<string, number>,
+  ): Promise<{ imported: number; followed: number; unmatched: Unmatched[] } | null> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabase.functions.invoke("import-history", {
+        body: { items, resolutions: res },
+      });
+      if (!error) {
+        return data as { imported: number; followed: number; unmatched: Unmatched[] };
+      }
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
     }
-    const result = data as { imported: number; followed: number; unmatched: Unmatched[] };
-    toast.success(`${result.imported} épisodes importés · ${result.followed} nouvelles séries`);
+    return null;
+  }
+
+  async function runImportInBatches(items: ImportItem[]) {
+    const groups = groupItemsByShow(items);
+    const batches = chunkGroups(groups, SERIES_PER_BATCH);
+    setProgress({ done: 0, total: groups.length });
     setPendingItems(items);
-    setUnmatched(result.unmatched ?? []);
+
+    const allUnmatched: Unmatched[] = [];
+    let totalImported = 0;
+    let totalFollowed = 0;
+    let seriesDone = 0;
+    let failedBatches = 0;
+
+    for (const batch of batches) {
+      const seriesInBatch = new Set(batch.map(itemKey)).size;
+      const result = await callBatch(batch, {});
+      if (result) {
+        totalImported += result.imported;
+        totalFollowed += result.followed;
+        if (result.unmatched?.length) allUnmatched.push(...result.unmatched);
+      } else {
+        failedBatches += 1;
+      }
+      seriesDone += seriesInBatch;
+      setProgress({ done: seriesDone, total: groups.length });
+    }
+
+    setUnmatched(allUnmatched);
+    if (totalImported || totalFollowed) {
+      toast.success(
+        `${totalImported} épisodes importés · ${totalFollowed} nouvelles séries`,
+      );
+    }
+    if (failedBatches > 0) {
+      toast.error(
+        `${failedBatches} lot(s) n'ont pas pu être traités — réessayez ou recommencez l'import.`,
+      );
+    }
+    if (!totalImported && !totalFollowed && !failedBatches && !allUnmatched.length) {
+      toast("Rien de nouveau à importer");
+    }
   }
 
   // Ne renvoie que les groupes que l'utilisateur vient de résoudre manuellement,
@@ -225,17 +302,11 @@ function ImportPanel() {
     if (!keysToRetry.size) return;
     setBusy(true);
     const itemsToRetry = pendingItems.filter((it) => keysToRetry.has(itemKey(it)));
-    const { data, error } = await supabase.functions.invoke("import-history", {
-      body: { items: itemsToRetry, resolutions },
-    });
-    if (error) {
-      toast.error(error.message);
+    const result = await callBatch(itemsToRetry, resolutions);
+    if (!result) {
+      toast.error("Échec de la relance — réessayez.");
     } else {
-      const result = data as { imported: number; followed: number; unmatched: Unmatched[] };
       toast.success(`${result.imported} épisodes importés · ${result.followed} nouvelles séries`);
-      // Retire du panneau les groupes qu'on vient de résoudre, garde les autres
-      // toujours en attente, et rajoute ce que le serveur signalerait encore
-      // comme non résolu (ne devrait pas arriver avec une résolution explicite).
       setUnmatched((prev) => [
         ...prev.filter((u) => !keysToRetry.has(u.key)),
         ...(result.unmatched ?? []),
@@ -245,13 +316,20 @@ function ImportPanel() {
     setBusy(false);
   }
 
+  const progressPct =
+    progress && progress.total > 0
+      ? Math.min(100, Math.round((progress.done / progress.total) * 100))
+      : 0;
+
   return (
     <>
       <label className="flex h-11 w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-elevated px-4 text-sm text-foreground hover:bg-surface-elevated/70">
         <Upload className="h-4 w-4" />
         {busy
-          ? "Import en cours…"
-          : "Importer un fichier CSV, JSON ou .zip (export TV Time/Betaseries)"}
+          ? progress
+            ? `Import en cours… ${progress.done}/${progress.total} séries`
+            : "Lecture du fichier…"
+          : "Importer un export TV Time (.zip) ou Betaseries (.csv)"}
         <input
           type="file"
           accept=".csv,.json,.zip,text/csv,application/json,application/zip"
@@ -264,6 +342,15 @@ function ImportPanel() {
           className="hidden"
         />
       </label>
+
+      {busy && progress && (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-elevated">
+          <div
+            className="h-full bg-primary transition-all"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      )}
 
       {detectedFormats.length > 0 && (
         <div className="mt-3 rounded-md border border-border bg-surface-elevated/50 p-3 text-xs">
