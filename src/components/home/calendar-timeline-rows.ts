@@ -41,11 +41,13 @@ export type FlatRow =
  * actual rendered markup (Playwright, `getBoundingClientRect` on the exact
  * row classes, with representative text content), not hand-estimated:
  * header = h-10 (40px, exact — fixed height, no content-driven variance),
- * episode = 106px (h-20/80px poster + py-2/16px + border/2px on the `Link`,
+ * episode = 218px (w-32/aspect-[2/3] poster => 192px tall, matching the Home
+ * rails' `EntryCard` poster size, + py-2/16px + border/2px on the `Link`,
  * + pb-2/8px on the outer slot — the poster is still the height-driving
- * element even with 3 lines of text), empty = h-14 (56px, unchanged).
+ * element, re-verified with 3 lines of text and with/without the "Vu" badge;
+ * was 106px with the old h-20/w-14 poster), empty = h-14 (56px, unchanged).
  */
-export const ROW_HEIGHT = { header: 40, episode: 106, empty: 56 } as const;
+export const ROW_HEIGHT = { header: 40, episode: 218, empty: 56 } as const;
 
 export function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
   const rows: FlatRow[] = [];

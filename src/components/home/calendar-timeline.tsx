@@ -100,10 +100,10 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     return (
       <div className="space-y-3 px-5">
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-[92px] w-full" />
-        <Skeleton className="h-[92px] w-full" />
+        <Skeleton className="h-[204px] w-full" />
+        <Skeleton className="h-[204px] w-full" />
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-[92px] w-full" />
+        <Skeleton className="h-[204px] w-full" />
       </div>
     );
   }
@@ -225,12 +225,12 @@ function EpisodeRow({
       <Link
         to="/show/$mediaType/$tmdbId"
         params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-        className={`flex h-full items-center gap-3 rounded-lg border px-3 py-2 ${
+        className={`flex h-full items-end gap-3 rounded-lg border px-3 py-2 ${
           isToday ? "border-primary/40 bg-surface-elevated" : "border-border bg-card"
         }`}
       >
         <div
-          className={`h-20 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated ${
+          className={`w-32 shrink-0 aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated ${
             saturated ? "" : "opacity-60"
           }`}
         >
@@ -243,7 +243,12 @@ function EpisodeRow({
             />
           )}
         </div>
-        <div className="min-w-0 flex-1">
+        {/* items-end on the Link (not items-center) anchors this text block and the
+            "Vu" badge to the bottom of the poster — mirroring EntryCard on the home,
+            where the text sits below the poster (vertical layout); here the layout
+            stays horizontal, so "below the poster" translates to "bottom-aligned
+            next to it" instead. */}
+        <div className="min-w-0 flex-1 pb-0.5">
           <h4 className="truncate text-base text-foreground">{show.title}</h4>
           <p className="truncate text-xs text-muted-foreground">{episode.title ?? "—"}</p>
           <p className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
@@ -253,7 +258,7 @@ function EpisodeRow({
         {/* Vu/à-voir badge: only for aired entries, watched-only signal (cyan-accent, same as
             elsewhere in the app) — absence of the badge implies "pas encore vu". */}
         {saturated && episode.watched && (
-          <span className="flex shrink-0 items-center gap-1 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
+          <span className="flex shrink-0 items-center gap-1 pb-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
             <Check className="h-3 w-3" />
             Vu
           </span>
