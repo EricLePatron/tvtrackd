@@ -50,7 +50,6 @@ export function VhsCounter(props: VhsCounterProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watched]);
 
-  const pct = total ? Math.min(100, (watched / total) * 100) : 0;
   const pad = (n: number) => n.toString().padStart(2, "0");
 
   if (isGrid) {
@@ -67,6 +66,8 @@ export function VhsCounter(props: VhsCounterProps) {
       </div>
     );
   }
+
+  const pct = total ? Math.min(100, (watched / total) * 100) : 0;
 
   return (
     <div className="rounded-md border border-border bg-surface-elevated px-3 py-2.5">

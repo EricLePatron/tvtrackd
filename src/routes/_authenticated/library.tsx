@@ -75,12 +75,25 @@ function LibraryScreen() {
     queryKey: ["library-progress", user?.id, enCoursShowIds],
     enabled: !!user && active === "en_cours" && enCoursShowIds.length > 0,
     queryFn: async () => {
+      // Unlike the home screen's episodes query (src/routes/_public/index.tsx),
+      // this one cannot be bounded to a time window: buildLibraryProgress needs
+      // the *whole* show (all seasons) to walk back to the first unwatched
+      // episode and to size the current season's total, which can include
+      // not-yet-aired episodes. The unbounded payload is accepted for the MVP's
+      // low volume, but an explicit season/episode order means that if
+      // PostgREST's default row cap (commonly 1000) ever truncates the result,
+      // it drops the *tail* of a deterministically sorted list (later
+      // seasons/episodes) rather than an arbitrary DB-order slice — keeping
+      // buildLibraryProgress's "first unwatched episode" resolution correct for
+      // as many shows as possible instead of silently corrupting it.
       const { data: eps, error: epsError } = await supabase
         .from("episodes")
         .select(
           "id, season_number, episode_number, title, air_date, show:shows!inner(id, tmdb_id, media_type, title, poster_path)",
         )
-        .in("show_id", enCoursShowIds);
+        .in("show_id", enCoursShowIds)
+        .order("season_number", { ascending: true })
+        .order("episode_number", { ascending: true });
       if (epsError) throw epsError;
 
       const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
@@ -195,7 +208,11 @@ function LibraryCard({
       <p className="mt-1.5 line-clamp-2 text-xs text-foreground">{show.title}</p>
 
       {showProgress && (
-        <div className="mt-1.5">
+        // Fixed min-height shared by all 4 states (skeleton / chip / "à jour" /
+        // no-data) so the card never jumps when the skeleton resolves and
+        // sibling cards stay aligned in the grid — ~42px matches the 2-line
+        // grid VhsCounter chip, the tallest of the 4 states.
+        <div className="mt-1.5 flex min-h-[42px] w-full flex-col justify-center">
           {showProgress.loading ? (
             <div className="h-[42px] w-full animate-pulse rounded-md bg-surface-elevated" />
           ) : showProgress.entry ? (
@@ -207,10 +224,12 @@ function LibraryCard({
               total={showProgress.entry.seasonTotal}
             />
           ) : showProgress.knownShowIds?.has(show.id) ? (
-            <div className="rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            <div className="flex min-h-[42px] items-center justify-center rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
               À jour
             </div>
-          ) : null}
+          ) : (
+            <div className="min-h-[42px]" aria-hidden="true" />
+          )}
         </div>
       )}
     </Link>

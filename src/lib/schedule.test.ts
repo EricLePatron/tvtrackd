@@ -158,4 +158,28 @@ describe("buildLibraryProgress", () => {
     expect(knownShowIds.has(1)).toBe(true);
     expect(knownShowIds.has(999)).toBe(false); // show never opened / no episodes cached
   });
+
+  it("still resolves the correct nextEpisode when only the tail of a season/episode-sorted list is truncated", () => {
+    // Documents why the library.tsx episodes query orders by
+    // season_number/episode_number: if PostgREST's default row cap ever
+    // truncates the payload, dropping the tail of a sorted list only removes
+    // later (already-caught-up or not-yet-relevant) episodes, never the
+    // early, still-unwatched one that nextEpisode must resolve to.
+    const s = show(1);
+    const fullSeasonSortedEpisodes = [
+      ep(s, 101, 1, 1, "2026-01-01"),
+      ep(s, 102, 1, 2, "2026-01-08"),
+      ep(s, 103, 1, 3, "2026-01-15"),
+      ep(s, 201, 2, 1, "2026-02-01"),
+      ep(s, 202, 2, 2, "2026-02-08"),
+    ];
+    // Simulates a row-cap truncation that cuts the tail of the sorted list.
+    const truncated = fullSeasonSortedEpisodes.slice(0, 3);
+    const watched = new Set([101]);
+
+    const { progressByShowId } = buildLibraryProgress(truncated, watched, TODAY);
+
+    expect(progressByShowId.get(1)?.nextEpisode.id).toBe(102);
+    expect(progressByShowId.get(1)?.seasonTotal).toBe(3);
+  });
 });
