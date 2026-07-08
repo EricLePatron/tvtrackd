@@ -272,23 +272,35 @@ const YEAR_KEYS = ["year", "first_air_year", "release_year"];
 const SEASON_KEYS = ["season", "season_number", "s"];
 const EPISODE_KEYS = ["episode", "episode_number", "e"];
 const WATCHED_KEYS = ["watched_at", "updated_at", "date", "seen_at", "created_at"];
+// TV Time écrit `entity_type` = "episode" | "movie" | "show" dans son log
+// unifié. On ne garde ici que les épisodes ; les films seront gérés séparément.
+const TYPE_KEYS = ["entity_type", "type", "media_type"];
+const TYPE_EPISODE_VALUES = new Set(["episode", "tv", "tv_episode", "show_episode"]);
 
 function normalizeGranularRow(raw: unknown): GranularImportItem | null {
   if (!raw || typeof raw !== "object") return null;
   const lower = lowerKeys(raw as Record<string, unknown>);
 
+  const type = pick(lower, TYPE_KEYS)?.toLowerCase();
+  // Filtre uniquement quand un `entity_type` explicite non-épisode est présent
+  // — sinon on reste permissif (beaucoup d'exports tiers n'ont pas ce champ).
+  if (type && !TYPE_EPISODE_VALUES.has(type)) return null;
+
   const title = pick(lower, TITLE_KEYS);
   if (!title) return null;
   const season = pick(lower, SEASON_KEYS);
   const episode = pick(lower, EPISODE_KEYS);
+  // Sans saison ni épisode, un item granulaire est inexploitable côté serveur
+  // (searchTv le compterait en unmatched trompeur). On l'écarte tôt.
+  if (!season || !episode) return null;
   const year = pick(lower, YEAR_KEYS);
   const watched = pick(lower, WATCHED_KEYS);
   return {
     kind: "granular",
     title,
     year: year ? Number(year) : null,
-    season: season ? Number(season) : null,
-    episode: episode ? Number(episode) : null,
+    season: Number(season),
+    episode: Number(episode),
     watched_at: watched ?? null,
   };
 }
