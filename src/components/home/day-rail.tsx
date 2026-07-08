@@ -20,6 +20,16 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
       ? `S${pad(entry.seasonNumber)} · +${entry.count} épisodes`
       : `S${pad(entry.episode.season_number)}E${pad(entry.episode.episode_number)}`;
 
+  // Partial-progress chip — drop entries only. `entry.watchedCount` is never
+  // set on a "single" entry (the type has no such field) nor on any entry
+  // coming from Home (Home never populates watched progress at all), so this
+  // is always `undefined` there and the chip never renders outside the
+  // /calendar timeline's not-fully-watched drops.
+  const dropPartialCount =
+    entry.type === "drop" && !entry.watched && (entry.watchedCount ?? 0) > 0
+      ? entry.watchedCount
+      : undefined;
+
   return (
     <Link
       to="/show/$mediaType/$tmdbId"
@@ -41,11 +51,23 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
         )}
         {/* Overlay badge, not an extra text line below the poster — keeps every
             card in a rail the same height whether or not it's watched (Home
-            never sets `watched`, so this never renders there). */}
-        {entry.type === "single" && entry.watched && (
+            never sets `watched`/`watchedCount` on either variant, so nothing
+            here ever renders on Home). Three states for a "drop" entry (a
+            "single" entry only ever has the first one, unchanged): fully
+            watched → the cyan "Vu" check below; partially watched → the
+            amber fraction chip right after it; nothing watched → no badge at
+            all, same as today. Amber (not cyan) for the partial chip matches
+            the design system's "en cours" convention (see `vhs-counter.tsx`),
+            keeping it visually distinct from the cyan "done" badge. */}
+        {entry.watched && (
           <span className="absolute right-1 top-1 flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
             <Check className="h-3 w-3" />
             Vu
+          </span>
+        )}
+        {entry.type === "drop" && dropPartialCount !== undefined && (
+          <span className="absolute right-1 top-1 rounded-full bg-background/85 px-1.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-primary">
+            {dropPartialCount}/{entry.count}
           </span>
         )}
       </div>

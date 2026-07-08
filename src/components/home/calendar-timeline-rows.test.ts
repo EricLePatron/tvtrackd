@@ -67,7 +67,7 @@ describe("buildFlatRows", () => {
     expect(rows[0]).toMatchObject({ kind: "day", date: "2026-07-08" });
   });
 
-  it("maps every episode of the day into a 'single' UpcomingEntry, never a 'drop'", () => {
+  it("aggregates 2+ same-day episodes of the same show+season into a single UpcomingDropEntry", () => {
     const s = show(1);
     const g = group({
       date: "2026-07-08",
@@ -78,17 +78,75 @@ describe("buildFlatRows", () => {
     const row = rows[0];
     if (row.kind !== "day") throw new Error("expected a 'day' row");
 
-    expect(row.entries).toHaveLength(2);
-    expect(row.entries.every((e) => e.type === "single")).toBe(true);
-    expect(row.entries.map((e) => (e.type === "single" ? e.episode.id : null))).toEqual([101, 102]);
+    expect(row.entries).toHaveLength(1);
+    expect(row.entries[0]).toMatchObject({
+      type: "drop",
+      seasonNumber: 1,
+      count: 2,
+    });
+    expect(row.entries[0].type === "drop" && row.entries[0].episodes.map((e) => e.id)).toEqual([
+      101, 102,
+    ]);
   });
 
-  it("propagates each episode's `watched` flag onto its UpcomingSingleEntry", () => {
+  it("keeps episodes of different shows the same day as separate 'single' entries (no cross-show aggregation)", () => {
+    const s1 = show(1, "Alpha");
+    const s2 = show(2, "Beta");
+    const g = group({
+      date: "2026-07-08",
+      episodes: [ep(s1, 101, 1, 1, "2026-07-08"), ep(s2, 201, 1, 1, "2026-07-08")],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(2);
+    expect(row.entries.every((e) => e.type === "single")).toBe(true);
+  });
+
+  it("keeps episodes of the same show but different seasons the same day as separate 'single' entries", () => {
     const s = show(1);
+    const g = group({
+      date: "2026-07-08",
+      episodes: [ep(s, 101, 1, 1, "2026-07-08"), ep(s, 201, 2, 1, "2026-07-08")],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(2);
+    expect(row.entries.every((e) => e.type === "single")).toBe(true);
+  });
+
+  it("mixes a drop and a single in the same day when only one show has a season-drop", () => {
+    const s1 = show(1, "Alpha"); // season-drop: 2 episodes same day
+    const s2 = show(2, "Beta"); // single episode
+    const g = group({
+      date: "2026-07-08",
+      episodes: [
+        ep(s1, 101, 1, 1, "2026-07-08"),
+        ep(s1, 102, 1, 2, "2026-07-08"),
+        ep(s2, 201, 1, 1, "2026-07-08"),
+      ],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(2);
+    expect(row.entries.map((e) => e.type).sort()).toEqual(["drop", "single"]);
+  });
+
+  it("propagates a single episode's `watched` flag onto its UpcomingSingleEntry", () => {
+    const s1 = show(1, "Alpha");
+    const s2 = show(2, "Beta");
     const g = group({
       date: "2026-07-05",
       isPastOrToday: true,
-      episodes: [ep(s, 201, 1, 1, "2026-07-05", true), ep(s, 202, 1, 2, "2026-07-05", false)],
+      episodes: [ep(s1, 201, 1, 1, "2026-07-05", true), ep(s2, 202, 1, 1, "2026-07-05", false)],
     });
 
     const rows = buildFlatRows([g]);
@@ -97,6 +155,58 @@ describe("buildFlatRows", () => {
 
     expect(row.entries[0]).toMatchObject({ watched: true });
     expect(row.entries[1]).toMatchObject({ watched: false });
+  });
+
+  it("sets `watched: true` on a drop only when every episode in it is watched", () => {
+    const s = show(1);
+    const g = group({
+      date: "2026-07-05",
+      isPastOrToday: true,
+      episodes: [ep(s, 101, 1, 1, "2026-07-05", true), ep(s, 102, 1, 2, "2026-07-05", true)],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(1);
+    expect(row.entries[0]).toMatchObject({ type: "drop", watched: true });
+  });
+
+  it("sets `watched: false` on a drop when at least one episode in it is unwatched", () => {
+    const s = show(1);
+    const g = group({
+      date: "2026-07-05",
+      isPastOrToday: true,
+      episodes: [ep(s, 101, 1, 1, "2026-07-05", true), ep(s, 102, 1, 2, "2026-07-05", false)],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(1);
+    expect(row.entries[0]).toMatchObject({ type: "drop", watched: false });
+  });
+
+  it("sets `watchedCount` to the number of watched episodes on a partially-watched drop, and keeps `watched: false`", () => {
+    const s = show(1);
+    const g = group({
+      date: "2026-07-05",
+      isPastOrToday: true,
+      episodes: [
+        ep(s, 101, 1, 1, "2026-07-05", true),
+        ep(s, 102, 1, 2, "2026-07-05", true),
+        ep(s, 103, 1, 3, "2026-07-05", false),
+      ],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries).toHaveLength(1);
+    expect(row.entries[0]).toMatchObject({ type: "drop", watched: false, watchedCount: 2 });
   });
 
   it("sets `isToday` and `saturated` from the group's `isToday`/`isPastOrToday`", () => {

@@ -14,7 +14,7 @@
  * environment with full network access.
  */
 
-import type { TimelineDayGroup, UpcomingSingleEntry } from "@/lib/schedule";
+import { aggregateSameDayEntries, type TimelineDayGroup, type UpcomingEntry } from "@/lib/schedule";
 
 export type FlatRow =
   | {
@@ -24,14 +24,15 @@ export type FlatRow =
       isToday: boolean;
       /** `group.isPastOrToday` — drives `DayRail`'s `saturated` prop for this day. */
       saturated: boolean;
-      /** Always `UpcomingSingleEntry` — /calendar deliberately never aggregates
-       *  same-day/same-season episodes into a "drop" entry the way the Home
-       *  rails do (`groupUpcomingByDay`): every episode of a followed show
-       *  stays individually visible while scrolling back in time. Reusing
-       *  `UpcomingEntry`'s "single" variant (rather than a bespoke shape) is
-       *  what lets this render through the *unmodified* `DayRail`/`EntryCard`
-       *  from `day-rail.tsx`. */
-      entries: UpcomingSingleEntry[];
+      /** Same-day/same-season episodes (season-drops, e.g. 8 Netflix episodes
+       *  landing at once) are aggregated into a `UpcomingDropEntry`, exactly
+       *  like the Home rails' `groupUpcomingByDay` (shared via
+       *  `aggregateSameDayEntries`) — every other episode stays a
+       *  `UpcomingSingleEntry`. Reusing `UpcomingEntry` (rather than a bespoke
+       *  shape) is what lets this render through the *unmodified*
+       *  `DayRail`/`EntryCard` from `day-rail.tsx`, which already knows how to
+       *  render both variants. */
+      entries: UpcomingEntry[];
     }
   | { kind: "empty-today"; key: string; date: string };
 
@@ -82,9 +83,17 @@ export const ROW_HEIGHT = { day: 268, empty: 42 } as const;
  * One `FlatRow` per calendar day (not per episode, unlike the previous
  * revision of this module) — the virtualizer only ever needs to place a
  * day's rail as a whole, since `DayRail` handles the horizontal scroll
- * internally. Non-empty days map their `TimelineEpisode`s to
- * `UpcomingSingleEntry` (never "drop") so they can flow straight into the
- * unmodified `DayRail`/`EntryCard` from `day-rail.tsx`.
+ * internally. Non-empty days run their `TimelineEpisode`s through
+ * `aggregateSameDayEntries` (same show+season aggregation as the Home rails'
+ * `groupUpcomingByDay`) so a season-drop becomes one `UpcomingDropEntry`
+ * instead of N near-identical `UpcomingSingleEntry` cards, then attaches the
+ * `watched` flag: `true` for a drop only when every episode in it is
+ * watched, and the original per-episode flag for a single. A drop also gets
+ * `watchedCount` (how many of its episodes are watched), so `EntryCard` can
+ * render a partial-progress chip instead of collapsing every
+ * not-fully-watched drop to the same "nothing watched" look. Both flow
+ * straight into the unmodified `DayRail`/`EntryCard` from `day-rail.tsx`,
+ * which already renders either variant.
  */
 export function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
   const rows: FlatRow[] = [];
@@ -95,20 +104,31 @@ export function buildFlatRows(dayGroups: TimelineDayGroup[]): FlatRow[] {
       rows.push({ kind: "empty-today", key: `empty-${group.date}`, date: group.date });
       continue;
     }
+    const entries: UpcomingEntry[] = aggregateSameDayEntries(group.episodes).map((entry) =>
+      entry.type === "single"
+        ? {
+            type: "single",
+            show: entry.show,
+            episode: entry.episode,
+            watched: entry.episode.watched,
+          }
+        : {
+            type: "drop",
+            show: entry.show,
+            seasonNumber: entry.seasonNumber,
+            episodes: entry.episodes,
+            count: entry.count,
+            watched: entry.episodes.every((ep) => ep.watched),
+            watchedCount: entry.episodes.filter((ep) => ep.watched).length,
+          },
+    );
     rows.push({
       kind: "day",
       key: `day-${group.date}`,
       date: group.date,
       isToday: group.isToday,
       saturated: group.isPastOrToday,
-      entries: group.episodes.map(
-        (ep): UpcomingSingleEntry => ({
-          type: "single",
-          show: ep.show,
-          episode: ep,
-          watched: ep.watched,
-        }),
-      ),
+      entries,
     });
   }
   return rows;
