@@ -97,7 +97,7 @@ export function VhsCounter(props: VhsCounterProps) {
 
   if (isHero) {
     return (
-      <div className="flex items-center justify-between rounded-md bg-surface-elevated px-4 py-3 font-counter text-xl uppercase tracking-widest">
+      <div className="flex items-center justify-between rounded-md bg-surface-elevated px-3 py-1.5 font-counter text-sm uppercase tracking-widest">
         {/* Amber, not cyan — see the note above this if/else chain. */}
         <span className="text-primary">
           S{pad(seasonNumber)} E{pad(lineOneEpisode)}

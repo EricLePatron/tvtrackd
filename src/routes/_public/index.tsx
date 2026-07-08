@@ -387,8 +387,8 @@ function HeroTicket({
       <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-background" />
       <span className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 h-4 w-4 rounded-full bg-background" />
 
-      <div className="flex gap-5 p-5">
-        <div className="h-32 w-[88px] shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
+      <div className="flex gap-4 p-4">
+        <div className="h-28 w-20 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
           {show.poster_path && (
             <img src={show.poster_path} alt={show.title} className="h-full w-full object-cover" />
           )}
@@ -399,7 +399,7 @@ function HeroTicket({
           >
             {badge?.label ?? formatReadyLabel(item)}
           </p>
-          <h2 className="mt-1 font-display text-xl leading-tight text-foreground truncate">
+          <h2 className="mt-1 font-display text-lg leading-tight text-foreground truncate">
             {show.title}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground truncate">{nextEpisode.title ?? "—"}</p>
