@@ -1,9 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ScreenHeader } from "@/components/screen-header";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { VhsCounter } from "@/components/vhs-counter";
+import {
+  buildLibraryProgress,
+  type LibraryProgressEntry,
+  type ScheduleEpisode,
+} from "@/lib/schedule";
 
 export const Route = createFileRoute("/_authenticated/library")({
   component: LibraryScreen,
@@ -54,6 +60,46 @@ function LibraryScreen() {
 
   const filtered = rows.filter((r) => r.status === active);
 
+  // Show ids for the "En cours" tab only — the batched progress query below
+  // is scoped to this tab, not to the whole library (cf. plan).
+  const enCoursShowIds = useMemo(
+    () =>
+      rows
+        .filter((r) => r.status === "en_cours" && r.show)
+        .map((r) => r.show!.id)
+        .sort((a, b) => a - b),
+    [rows],
+  );
+
+  const { data: progressData, isLoading: progressLoading } = useQuery({
+    queryKey: ["library-progress", user?.id, enCoursShowIds],
+    enabled: !!user && active === "en_cours" && enCoursShowIds.length > 0,
+    queryFn: async () => {
+      const { data: eps, error: epsError } = await supabase
+        .from("episodes")
+        .select(
+          "id, season_number, episode_number, title, air_date, show:shows!inner(id, tmdb_id, media_type, title, poster_path)",
+        )
+        .in("show_id", enCoursShowIds);
+      if (epsError) throw epsError;
+
+      const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
+      const epIds = episodes.map((e) => e.id);
+      const { data: watched, error: watchedError } = epIds.length
+        ? await supabase
+            .from("watch_status")
+            .select("episode_id")
+            .eq("user_id", user!.id)
+            .in("episode_id", epIds)
+        : { data: [], error: null };
+      if (watchedError) throw watchedError;
+
+      const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
+      const today = new Date().toISOString().slice(0, 10);
+      return buildLibraryProgress(episodes, watchedSet, today);
+    },
+  });
+
   return (
     <>
       <ScreenHeader eyebrow="Ma collection" title="Bibliothèque">
@@ -94,34 +140,79 @@ function LibraryScreen() {
           <div className="mt-5 grid grid-cols-3 gap-3">
             {filtered.map((r) =>
               r.show ? (
-                <Link
+                <LibraryCard
                   key={r.id}
-                  to="/show/$mediaType/$tmdbId"
-                  params={{
-                    mediaType: r.show.media_type,
-                    tmdbId: String(r.show.tmdb_id),
-                  }}
-                  className="group block"
-                >
-                  <div className="aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated">
-                    {r.show.poster_path && (
-                      <img
-                        src={r.show.poster_path}
-                        alt={r.show.title}
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
-                    )}
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs text-foreground">
-                    {r.show.title}
-                  </p>
-                </Link>
+                  show={r.show}
+                  showProgress={
+                    active === "en_cours"
+                      ? {
+                          loading: progressLoading,
+                          knownShowIds: progressData?.knownShowIds,
+                          entry: progressData?.progressByShowId.get(r.show.id),
+                        }
+                      : undefined
+                  }
+                />
               ) : null,
             )}
           </div>
         )}
       </div>
     </>
+  );
+}
+
+function LibraryCard({
+  show,
+  showProgress,
+}: {
+  show: NonNullable<Row["show"]>;
+  showProgress?: {
+    loading: boolean;
+    knownShowIds: ReadonlySet<number> | undefined;
+    entry: LibraryProgressEntry | undefined;
+  };
+}) {
+  return (
+    <Link
+      to="/show/$mediaType/$tmdbId"
+      params={{
+        mediaType: show.media_type,
+        tmdbId: String(show.tmdb_id),
+      }}
+      className="group block"
+    >
+      <div className="aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated">
+        {show.poster_path && (
+          <img
+            src={show.poster_path}
+            alt={show.title}
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
+        )}
+      </div>
+      <p className="mt-1.5 line-clamp-2 text-xs text-foreground">{show.title}</p>
+
+      {showProgress && (
+        <div className="mt-1.5">
+          {showProgress.loading ? (
+            <div className="h-[42px] w-full animate-pulse rounded-md bg-surface-elevated" />
+          ) : showProgress.entry ? (
+            <VhsCounter
+              variant="grid"
+              seasonNumber={showProgress.entry.nextEpisode.season_number}
+              nextEpisodeNumber={showProgress.entry.nextEpisode.episode_number}
+              watched={showProgress.entry.seasonWatched}
+              total={showProgress.entry.seasonTotal}
+            />
+          ) : showProgress.knownShowIds?.has(show.id) ? (
+            <div className="rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+              À jour
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Link>
   );
 }
