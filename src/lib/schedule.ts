@@ -44,6 +44,14 @@ export type UpcomingSingleEntry = {
   type: "single";
   show: ShowLite;
   episode: ScheduleEpisode;
+  /**
+   * Optional "already watched" flag — never populated by `groupUpcomingByDay`
+   * (Home's rail is future-only, so "watched" never applies there). Only the
+   * /calendar timeline (`buildFlatRows` in `calendar-timeline-rows.ts`) sets
+   * this, for past/today episodes. Left `undefined` for every existing Home
+   * call site, which keeps `EntryCard`'s "Vu" badge invisible there.
+   */
+  watched?: boolean;
 };
 
 export type UpcomingDropEntry = {

@@ -4,13 +4,15 @@ import type { ShowLite, TimelineDayGroup, TimelineEpisode } from "@/lib/schedule
 
 /**
  * These tests cover `buildFlatRows` only — the pure, React-free logic that
- * turns `TimelineDayGroup[]` into the flat row list the virtualizer renders
- * (day-header / episode / empty-today). They do NOT and cannot exercise the
- * virtualizer itself (scroll-anchoring to "today", `scrollToIndex`, absence
- * of visual overlap between rows while scrolling) — `@tanstack/react-virtual`
- * isn't installable in this sandbox (private npm registry blocked by network
- * policy). That part still needs a manual pass in an environment with full
- * network access.
+ * turns `TimelineDayGroup[]` into the flat, one-row-per-DAY list the
+ * virtualizer renders (`day` / `empty-today`). They do NOT and cannot
+ * exercise the virtualizer itself (scroll-anchoring to "today",
+ * `scrollToIndex`, absence of visual overlap between rows while scrolling),
+ * nor `DayRail`'s own rendering (covered by `day-rail.tsx` being reused
+ * as-is, unmodified, from the Home screen) — `@tanstack/react-virtual`
+ * isn't installable in this sandbox (private npm registry blocked by
+ * network policy). That part still needs a manual pass in an environment
+ * with full network access.
  */
 
 const show = (id: number, title = `Show ${id}`): ShowLite => ({
@@ -50,7 +52,7 @@ function group(overrides: Partial<TimelineDayGroup> & { date: string }): Timelin
 }
 
 describe("buildFlatRows", () => {
-  it("marks every episode row isToday: true for a group where isToday is true", () => {
+  it("emits a single 'day' row (not one per episode) for a populated group", () => {
     const s = show(1);
     const g = group({
       date: "2026-07-08",
@@ -60,38 +62,74 @@ describe("buildFlatRows", () => {
     });
 
     const rows = buildFlatRows([g]);
-    const episodeRows = rows.filter((r) => r.kind === "episode");
 
-    expect(episodeRows).toHaveLength(2);
-    expect(episodeRows.every((r) => r.isToday === true)).toBe(true);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "day", date: "2026-07-08" });
   });
 
-  it("marks every episode row isToday: false for a group where isToday is false", () => {
+  it("maps every episode of the day into a 'single' UpcomingEntry, never a 'drop'", () => {
     const s = show(1);
     const g = group({
-      date: "2026-07-09",
-      isToday: false,
-      isPastOrToday: false,
-      episodes: [ep(s, 201, 1, 1, "2026-07-09")],
+      date: "2026-07-08",
+      episodes: [ep(s, 101, 1, 1, "2026-07-08"), ep(s, 102, 1, 2, "2026-07-08")],
     });
 
     const rows = buildFlatRows([g]);
-    const episodeRows = rows.filter((r) => r.kind === "episode");
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
 
-    expect(episodeRows).toHaveLength(1);
-    expect(episodeRows[0]).toMatchObject({ isToday: false });
+    expect(row.entries).toHaveLength(2);
+    expect(row.entries.every((e) => e.type === "single")).toBe(true);
+    expect(row.entries.map((e) => (e.type === "single" ? e.episode.id : null))).toEqual([101, 102]);
   });
 
-  it("emits an empty-today row (no episode row) for an empty isToday group", () => {
+  it("propagates each episode's `watched` flag onto its UpcomingSingleEntry", () => {
+    const s = show(1);
+    const g = group({
+      date: "2026-07-05",
+      isPastOrToday: true,
+      episodes: [ep(s, 201, 1, 1, "2026-07-05", true), ep(s, 202, 1, 2, "2026-07-05", false)],
+    });
+
+    const rows = buildFlatRows([g]);
+    const row = rows[0];
+    if (row.kind !== "day") throw new Error("expected a 'day' row");
+
+    expect(row.entries[0]).toMatchObject({ watched: true });
+    expect(row.entries[1]).toMatchObject({ watched: false });
+  });
+
+  it("sets `isToday` and `saturated` from the group's `isToday`/`isPastOrToday`", () => {
+    const s = show(1);
+    const gToday = group({
+      date: "2026-07-08",
+      isToday: true,
+      isPastOrToday: true,
+      episodes: [ep(s, 301, 1, 1, "2026-07-08")],
+    });
+    const gFuture = group({
+      date: "2026-07-09",
+      isToday: false,
+      isPastOrToday: false,
+      episodes: [ep(s, 302, 1, 2, "2026-07-09")],
+    });
+
+    const [rowToday, rowFuture] = buildFlatRows([gToday, gFuture]);
+
+    expect(rowToday).toMatchObject({ isToday: true, saturated: true });
+    expect(rowFuture).toMatchObject({ isToday: false, saturated: false });
+  });
+
+  it("emits an 'empty-today' row (no 'day' row) for an empty group", () => {
     const g = group({ date: "2026-07-08", isToday: true, isPastOrToday: true, episodes: [] });
 
     const rows = buildFlatRows([g]);
 
-    expect(rows.filter((r) => r.kind === "episode")).toHaveLength(0);
-    expect(rows.filter((r) => r.kind === "empty-today")).toHaveLength(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "empty-today", date: "2026-07-08" });
   });
 
-  it("still emits an empty-today row for an empty, non-today group (buildFlatRows has no isToday guard of its own)", () => {
+  it("still emits an 'empty-today' row for an empty, non-today group (buildFlatRows has no isToday guard of its own)", () => {
     // buildFlatRows' branch on `group.episodes.length === 0` is not itself
     // conditioned on `isToday` — the code comment above that branch documents
     // an *external* guarantee (buildTimelineDayGroups never emits an empty
@@ -103,59 +141,25 @@ describe("buildFlatRows", () => {
 
     const rows = buildFlatRows([g]);
 
-    expect(rows.filter((r) => r.kind === "episode")).toHaveLength(0);
-    expect(rows.filter((r) => r.kind === "empty-today")).toHaveLength(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "empty-today", date: "2026-07-10" });
   });
 
-  it("emits a day-header row first, with the group's date and isToday", () => {
-    const s = show(1);
-    const g = group({
-      date: "2026-07-12",
-      isToday: false,
-      isPastOrToday: false,
-      episodes: [ep(s, 301, 1, 1, "2026-07-12")],
-    });
-
-    const rows = buildFlatRows([g]);
-
-    expect(rows[0]).toMatchObject({ kind: "day-header", date: "2026-07-12", isToday: false });
-  });
-
-  it("propagates saturated (isPastOrToday) independently of isToday", () => {
-    const s = show(1);
-    const g = group({
-      date: "2026-07-05",
-      isToday: false,
-      isPastOrToday: true,
-      episodes: [ep(s, 401, 1, 1, "2026-07-05")],
-    });
-
-    const rows = buildFlatRows([g]);
-    const episodeRow = rows.find((r) => r.kind === "episode");
-
-    expect(episodeRow).toMatchObject({ saturated: true, isToday: false });
-  });
-
-  it("preserves group order: all rows of group 1 precede all rows of group 2", () => {
+  it("preserves group order: the row for group 1 precedes the row for group 2", () => {
     const s = show(1);
     const g1 = group({
       date: "2026-07-06",
-      isToday: false,
       isPastOrToday: true,
       episodes: [ep(s, 501, 1, 1, "2026-07-06")],
     });
     const g2 = group({
       date: "2026-07-07",
-      isToday: false,
       isPastOrToday: true,
       episodes: [ep(s, 502, 1, 2, "2026-07-07")],
     });
 
     const rows = buildFlatRows([g1, g2]);
-    const g1EndIndex = rows.findIndex((r) => r.kind === "episode" && r.episode.id === 501);
-    const g2StartIndex = rows.findIndex((r) => r.kind === "day-header" && r.date === "2026-07-07");
 
-    expect(g1EndIndex).toBeGreaterThanOrEqual(0);
-    expect(g2StartIndex).toBeGreaterThan(g1EndIndex);
+    expect(rows.map((r) => r.date)).toEqual(["2026-07-06", "2026-07-07"]);
   });
 });
