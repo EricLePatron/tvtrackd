@@ -10,6 +10,12 @@ import { followShow, unfollowShow } from "@/lib/follow-show";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import {
+  NetworkLine,
+  WhereToWatch,
+  type NetworkRef,
+  type WatchProviders,
+} from "@/components/where-to-watch";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -58,6 +64,8 @@ type ShowRow = {
   genres: string[] | null;
   vote_average: number | null;
   tagline: string | null;
+  watch_providers: WatchProviders | null;
+  networks: NetworkRef[] | null;
 };
 type SeasonRow = {
   id: number;
@@ -400,6 +408,15 @@ function ShowDetail() {
           <div className="h-3 w-5/6 animate-pulse rounded bg-surface-elevated" />
           <div className="h-3 w-2/3 animate-pulse rounded bg-surface-elevated" />
         </div>
+        <div className="mt-4 space-y-1.5">
+          <div className="h-3 w-20 animate-pulse rounded bg-surface-elevated" />
+          <div className="flex gap-2">
+            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
+            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
+            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
+            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
+          </div>
+        </div>
         <div className="mt-6 space-y-3">
           <div className="h-5 w-28 animate-pulse rounded bg-surface-elevated" />
           <div className="h-12 w-full animate-pulse rounded-md bg-surface-elevated" />
@@ -502,6 +519,8 @@ function ShowDetail() {
         </div>
       )}
 
+      {mediaType === "tv" && <NetworkLine networks={show.networks} />}
+
       {show.overview && (
         <div className="mx-5 mt-4">
           <p
@@ -528,6 +547,8 @@ function ShowDetail() {
           )}
         </div>
       )}
+
+      <WhereToWatch showTitle={show.title} watchProviders={show.watch_providers} />
 
       {mediaType === "tv" && nextUpcomingEpisode && (
         <div className="mx-5 mt-4">
