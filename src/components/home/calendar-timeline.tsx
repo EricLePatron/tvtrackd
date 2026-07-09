@@ -170,7 +170,13 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     <div className="relative">
       {stickyRow && (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 border-b border-border bg-surface px-5 py-2">
-          <CalendarDayHeader date={stickyRow.date} today={today} compact />
+          <div className="flex gap-3">
+            <span
+              aria-hidden="true"
+              className={`shrink-0 self-stretch rounded-full ${getTemporalBarClass(stickyRow.date, today)}`}
+            />
+            <CalendarDayHeader date={stickyRow.date} today={today} compact />
+          </div>
         </div>
       )}
       {showTopOverlay && (
@@ -236,7 +242,7 @@ function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
   if (row.kind === "empty-today") {
     return (
       <div className="flex gap-3">
-        <span className={`shrink-0 self-stretch rounded-full ${barClass}`} />
+        <span aria-hidden="true" className={`shrink-0 self-stretch rounded-full ${barClass}`} />
         <div className="min-w-0 flex-1">
           <div className="mb-3">
             <CalendarDayHeader date={row.date} today={today} />
@@ -249,7 +255,7 @@ function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
 
   return (
     <div className="flex gap-3">
-      <span className={`shrink-0 self-stretch rounded-full ${barClass}`} />
+      <span aria-hidden="true" className={`shrink-0 self-stretch rounded-full ${barClass}`} />
       <div className="min-w-0 flex-1">
         <DayRail
           group={{ date: row.date, entries: row.entries }}

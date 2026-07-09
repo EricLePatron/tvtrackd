@@ -87,15 +87,26 @@ export const ROW_HEIGHT = { day: 304, empty: 78 } as const;
 /**
  * Tailwind classes for the vertical "temporal status" bar accolated to the
  * left of every day-block on the /calendar timeline (liseré) — past = cyan
- * accent at reduced opacity, today = full-strength primary and slightly
- * thicker, future = neutral border color. Pure/testable on its own, kept
- * here (not inline in `calendar-timeline.tsx`) for the same reason the rest
- * of this file's row-shaping logic is: no React/virtualizer dependency
- * needed to exercise it.
+ * accent, today = full-strength primary and slightly thicker, future =
+ * neutral border color. Pure/testable on its own, kept here (not inline in
+ * `calendar-timeline.tsx`) for the same reason the rest of this file's
+ * row-shaping logic is: no React/virtualizer dependency needed to exercise
+ * it.
+ *
+ * Deliberately reuses cyan for "past" even though the "Vu" episode badge
+ * (`EntryCard`) is also cyan: the two encode different granularities on
+ * purpose (this bar = the whole DAY's temporal zone, past/today/future; the
+ * badge = a single episode's watched state) and are not meant to be
+ * unified or re-questioned as a "duplicate meaning" later.
+ *
+ * `/70` opacity (not `/40`, used in an earlier revision): `/40` measured
+ * ~2.6:1 contrast against the page background, under the WCAG 3:1 floor for
+ * non-text UI elements — `/70` clears that threshold while staying visibly
+ * lighter than today's full-strength `bg-primary`.
  */
 export function getTemporalBarClass(date: string, today: string): string {
-  if (date === today) return "w-1 bg-primary";
-  return date < today ? "w-[3px] bg-cyan-accent/40" : "w-[3px] bg-border";
+  if (date === today) return "w-[5px] bg-primary";
+  return date < today ? "w-[3px] bg-cyan-accent/70" : "w-[3px] bg-border";
 }
 
 /**

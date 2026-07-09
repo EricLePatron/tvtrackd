@@ -168,11 +168,11 @@ describe("getTemporalBarClass", () => {
   const TODAY = "2026-07-08";
 
   it("returns the thicker, full-strength primary bar for today", () => {
-    expect(getTemporalBarClass(TODAY, TODAY)).toBe("w-1 bg-primary");
+    expect(getTemporalBarClass(TODAY, TODAY)).toBe("w-[5px] bg-primary");
   });
 
-  it("returns a reduced-opacity cyan-accent bar for a past date", () => {
-    expect(getTemporalBarClass("2026-07-06", TODAY)).toBe("w-[3px] bg-cyan-accent/40");
+  it("returns a cyan-accent bar (WCAG-compliant /70 opacity) for a past date", () => {
+    expect(getTemporalBarClass("2026-07-06", TODAY)).toBe("w-[3px] bg-cyan-accent/70");
   });
 
   it("returns a neutral border-colored bar for a future date", () => {

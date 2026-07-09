@@ -28,8 +28,8 @@ export function CalendarDayHeader({
     <div className="flex items-center gap-3">
       <div
         className={
-          "flex shrink-0 items-center justify-center rounded-md " +
-          (parts.isToday ? "border border-primary bg-primary/10" : "bg-surface-elevated") +
+          "flex shrink-0 items-center justify-center rounded-md bg-surface-elevated " +
+          (parts.isToday ? "border border-primary/50" : "") +
           (compact ? " h-8 w-8" : " h-[46px] w-[46px]")
         }
       >
