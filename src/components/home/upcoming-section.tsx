@@ -50,19 +50,3 @@ export function UpcomingBucketRails({
     </section>
   );
 }
-
-/** Calendar-only: "Plus tard" is always a single summary line, never enumerated. */
-export function PlusTardSummary({ groups }: { groups: DayGroup[] }) {
-  if (!groups.length) return null;
-  const count = countUpcomingEntries(groups);
-  return (
-    <section>
-      <h3 className="mb-3 font-display text-sm uppercase tracking-widest text-foreground">
-        Plus tard
-      </h3>
-      <p className="rounded-lg border border-dashed border-border px-4 py-3 font-counter text-xs uppercase tracking-widest text-muted-foreground">
-        +{count} autres épisodes prévus
-      </p>
-    </section>
-  );
-}
