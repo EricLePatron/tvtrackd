@@ -85,6 +85,16 @@ function toUtcMs(dateStr: string): number {
   return Date.UTC(y, (m ?? 1) - 1, d ?? 1);
 }
 
+/** Same as `toUtcMs`, but as a `Date` — for callers that need `Intl`/`getUTCDate` etc. */
+function toUtcDate(dateStr: string): Date {
+  return new Date(toUtcMs(dateStr));
+}
+
+/** Capitalizes the first letter — `Intl.DateTimeFormat("fr-FR", ...)` short weekday/month labels come back lowercase. */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function daysBetween(fromDateStr: string, toDateStr: string): number {
   return Math.round((toUtcMs(toDateStr) - toUtcMs(fromDateStr)) / DAY_MS);
 }
@@ -359,15 +369,43 @@ export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): 
 export function formatUpcomingDayLabel(dateStr: string, today: string): string {
   if (dateStr === today) return "Aujourd'hui";
   if (dateStr === addDaysToDateString(today, 1)) return "Demain";
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
-  const label = date.toLocaleDateString("fr-FR", {
+  const label = toUtcDate(dateStr).toLocaleDateString("fr-FR", {
     timeZone: "UTC",
     weekday: "short",
     day: "2-digit",
     month: "short",
   });
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  return capitalize(label);
+}
+
+/**
+ * Split-out date parts for the /calendar screen's "counter module" day
+ * header (`CalendarDayHeader`): the day-of-month on its own (for the square
+ * module) plus weekday/month separately (stacked to the right of it) —
+ * unlike `formatUpcomingDayLabel`, which returns one combined string for the
+ * plain-text label used elsewhere (Home rails, /calendar's own previous
+ * label). Deliberately reuses `toUtcDate`/`capitalize` rather than
+ * re-parsing the date string, and mirrors `formatUpcomingDayLabel`'s
+ * "today" special-case (no weekday/month shown at all for today, just the
+ * word "Aujourd'hui") rather than introducing a different rule.
+ */
+export type DayLabelParts =
+  | { isToday: true; dayNumber: string }
+  | { isToday: false; dayNumber: string; weekday: string; month: string };
+
+export function getDayLabelParts(dateStr: string, today: string): DayLabelParts {
+  const date = toUtcDate(dateStr);
+  const dayNumber = String(date.getUTCDate());
+
+  if (dateStr === today) {
+    return { isToday: true, dayNumber };
+  }
+
+  const weekday = capitalize(
+    date.toLocaleDateString("fr-FR", { timeZone: "UTC", weekday: "short" }),
+  );
+  const month = capitalize(date.toLocaleDateString("fr-FR", { timeZone: "UTC", month: "short" }));
+  return { isToday: false, dayNumber, weekday, month };
 }
 
 /**

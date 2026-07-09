@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildLibraryProgress, type ScheduleEpisode, type ShowLite } from "./schedule";
+import {
+  buildLibraryProgress,
+  getDayLabelParts,
+  type ScheduleEpisode,
+  type ShowLite,
+} from "./schedule";
 
 const show = (id: number, title = `Show ${id}`): ShowLite => ({
   id,
@@ -181,5 +186,44 @@ describe("buildLibraryProgress", () => {
 
     expect(progressByShowId.get(1)?.nextEpisode.id).toBe(102);
     expect(progressByShowId.get(1)?.seasonTotal).toBe(3);
+  });
+});
+
+describe("getDayLabelParts", () => {
+  const TODAY = "2026-07-08"; // a Wednesday
+
+  it("returns the `isToday` variant (day number only, no weekday/month) for today", () => {
+    const parts = getDayLabelParts(TODAY, TODAY);
+
+    expect(parts).toEqual({ isToday: true, dayNumber: "8" });
+  });
+
+  it("returns day number + capitalized weekday/month for a past date", () => {
+    const parts = getDayLabelParts("2026-07-06", TODAY); // a Monday
+
+    expect(parts).toEqual({
+      isToday: false,
+      dayNumber: "6",
+      weekday: "Lun.",
+      month: "Juil.",
+    });
+  });
+
+  it("returns day number + capitalized weekday/month for a future date", () => {
+    const parts = getDayLabelParts("2026-07-13", TODAY); // a Monday, next week
+
+    expect(parts).toEqual({
+      isToday: false,
+      dayNumber: "13",
+      weekday: "Lun.",
+      month: "Juil.",
+    });
+  });
+
+  it("does not zero-pad the day number", () => {
+    const parts = getDayLabelParts("2026-07-06", TODAY);
+
+    expect(parts.dayNumber).toBe("6");
+    expect(parts.dayNumber).not.toBe("06");
   });
 });
