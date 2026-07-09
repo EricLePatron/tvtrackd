@@ -1,9 +1,46 @@
 // Shared TMDb helpers for edge functions
 const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY")!;
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
 const CACHE_MS = 48 * 60 * 60 * 1000;
 
 const IS_V4 = TMDB_API_KEY.startsWith("eyJ");
+
+function mapProvider(p: any) {
+  return {
+    provider_id: p.provider_id,
+    provider_name: p.provider_name,
+    logo_path: p.logo_path ? `${TMDB_LOGO}${p.logo_path}` : null,
+  };
+}
+
+// Ne garde que la région FR (app francophone, cf. CLAUDE.md) et les
+// catégories affichées côté front (flatrate/rent/buy/ads/free). `results.FR`
+// peut être absent (pas de données JustWatch connues pour ce titre en
+// France) : dans ce cas on stocke `{}` plutôt que de planter l'upsert.
+function extractWatchProviders(details: any): Record<string, unknown> {
+  const fr = details?.["watch/providers"]?.results?.FR;
+  if (!fr) return {};
+  const out: Record<string, unknown> = {};
+  if (fr.link) out.link = fr.link;
+  for (const key of ["flatrate", "rent", "buy", "ads", "free"] as const) {
+    if (Array.isArray(fr[key]) && fr[key].length) {
+      out[key] = fr[key].map(mapProvider);
+    }
+  }
+  return out;
+}
+
+function extractNetworks(
+  details: any,
+): Array<{ id: number; name: string; logo_path: string | null }> {
+  if (!Array.isArray(details?.networks)) return [];
+  return details.networks.map((n: any) => ({
+    id: n.id,
+    name: n.name,
+    logo_path: n.logo_path ? `${TMDB_LOGO}${n.logo_path}` : null,
+  }));
+}
 
 export async function tmdb(path: string, params: Record<string, string> = {}) {
   const url = new URL(`https://api.themoviedb.org/3${path}`);
@@ -64,7 +101,7 @@ export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "m
   if (cached && Date.now() - new Date(cached.cached_at).getTime() < CACHE_MS) {
     return cached;
   }
-  const details = await tmdb(`/${mediaType}/${tmdbId}`);
+  const details = await tmdb(`/${mediaType}/${tmdbId}`, { append_to_response: "watch/providers" });
   const payload = {
     tmdb_id: tmdbId,
     media_type: mediaType,
@@ -76,6 +113,8 @@ export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "m
     genres: (details.genres ?? []).map((g: { name: string }) => g.name),
     vote_average: details.vote_average ?? null,
     tagline: details.tagline?.trim() || null,
+    watch_providers: extractWatchProviders(details),
+    networks: extractNetworks(details),
     cached_at: new Date().toISOString(),
   };
   const { data: show } = await admin
