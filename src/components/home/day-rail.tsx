@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import type { DayGroup, UpcomingEntry } from "@/lib/schedule";
@@ -62,17 +63,26 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
  * "aujourd'hui" treatment (primary dot + primary text) as
  * `calendar-timeline.tsx`'s `TimelineRow` day-header, rather than a
  * uniformly-muted label for every day.
+ *
+ * `dateHeader` is an optional override for the day-label block above the
+ * rail: when provided (only `calendar-timeline.tsx` does this, to swap in
+ * `CalendarDayHeader`'s "counter module" treatment for the dedicated
+ * /calendar screen), it fully replaces the default dot+text `<p>` below.
+ * Left `undefined` by every Home call site (`upcoming-section.tsx`), whose
+ * rendering is therefore unchanged.
  */
 export function DayRail({
   group,
   today,
   saturated,
   truncate,
+  dateHeader,
 }: {
   group: DayGroup;
   today: string;
   saturated: boolean;
   truncate?: number;
+  dateHeader?: ReactNode;
 }) {
   const entries = truncate ? group.entries.slice(0, truncate) : group.entries;
   const hiddenCount = group.entries.length - entries.length;
@@ -80,12 +90,16 @@ export function DayRail({
 
   return (
     <div>
-      <p className="mb-2 flex items-center gap-2 font-counter text-[10px] uppercase tracking-widest">
-        {isToday && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
-        <span className={isToday ? "text-primary" : "text-muted-foreground"}>
-          {formatUpcomingDayLabel(group.date, today)}
-        </span>
-      </p>
+      {dateHeader ? (
+        <div className="mb-3">{dateHeader}</div>
+      ) : (
+        <p className="mb-2 flex items-center gap-2 font-counter text-[10px] uppercase tracking-widest">
+          {isToday && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+          <span className={isToday ? "text-primary" : "text-muted-foreground"}>
+            {formatUpcomingDayLabel(group.date, today)}
+          </span>
+        </p>
+      )}
       <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
         {entries.map((entry) => (
           <EntryCard key={entryKey(entry)} entry={entry} saturated={saturated} />

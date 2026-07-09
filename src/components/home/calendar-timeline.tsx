@@ -2,10 +2,27 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatUpcomingDayLabel } from "@/lib/schedule";
 import type { CalendarTimeline as CalendarTimelineData } from "@/hooks/use-calendar-timeline";
 import { DayRail } from "./day-rail";
-import { buildFlatRows, estimateRowSize, ROW_HEIGHT, type FlatRow } from "./calendar-timeline-rows";
+import { CalendarDayHeader } from "./calendar-day-header";
+import {
+  buildFlatRows,
+  estimateRowSize,
+  getTemporalBarClass,
+  ROW_HEIGHT,
+  type FlatRow,
+} from "./calendar-timeline-rows";
+
+/**
+ * Pinned-header bar height (px): `CalendarDayHeader`'s `compact` module
+ * (32px) + the overlay's own `py-2` padding (16px) + its `border-b` (1px),
+ * rounded up. Used to push the pagination pill (`showTopOverlay` below) down
+ * far enough that the two top-pinned overlays never visually collide —
+ * deliberately never suppressing either one; both must stay reachable at
+ * the same time (e.g. "Début de l'historique" while today's date is still
+ * pinned above it).
+ */
+const STICKY_HEADER_HEIGHT = 52;
 
 /**
  * Full bidirectional timeline for the dedicated /calendar screen: a single
@@ -97,6 +114,29 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
     }
   }, [firstRenderedIndex, hasPreviousPage, isFetchingPreviousPage, isError, fetchPreviousPage]);
 
+  // Which row currently sits at (or just above) the top edge of the visible
+  // viewport — drives the pinned header overlay below. Deliberately NOT
+  // `virtualItems[0]`: with `overscan: 6`, the first *rendered* item is
+  // usually several rows above the actual viewport top. Instead, walk the
+  // (index-ascending) virtual items and keep the last one whose `start` has
+  // already been scrolled past — the standard "sticky section header"
+  // lookup for a virtualized list. `rowVirtualizer.scrollOffset` is the same
+  // live scroll position the virtualizer already tracks internally to
+  // compute `virtualItems` on every scroll tick, so reading it here adds no
+  // new re-render churn beyond what the virtualizer already causes.
+  const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
+  const stickyRow = useMemo(() => {
+    let candidate: FlatRow | null = null;
+    for (const item of virtualItems) {
+      if (item.start <= scrollOffset) {
+        candidate = flatRows[item.index];
+      } else {
+        break;
+      }
+    }
+    return candidate ?? flatRows[0] ?? null;
+  }, [virtualItems, scrollOffset, flatRows]);
+
   if (isLoading) {
     return (
       <div className="space-y-3 px-5">
@@ -128,8 +168,16 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
 
   return (
     <div className="relative">
+      {stickyRow && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 border-b border-border bg-surface px-5 py-2">
+          <CalendarDayHeader date={stickyRow.date} today={today} compact />
+        </div>
+      )}
       {showTopOverlay && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
+        <div
+          className="pointer-events-none absolute inset-x-0 z-20 flex justify-center pt-2"
+          style={{ top: STICKY_HEADER_HEIGHT }}
+        >
           {isFetchingPreviousPage ? (
             <Skeleton className="h-6 w-32 rounded-full" />
           ) : isError ? (
@@ -175,33 +223,41 @@ export function CalendarTimelineList({ timeline }: { timeline: CalendarTimelineD
 }
 
 /**
- * Renders each day's row: `DayRail` (imported unmodified from `day-rail.tsx`)
- * for a populated day — identical poster-card/horizontal-rail layout as the
- * Home screen, no border/background wrapper around it — or a plain,
- * border-free label + text line for the one case `DayRail` doesn't cover:
- * an empty "today". The label markup below intentionally mirrors (small,
- * unavoidable duplication) `DayRail`'s own day-label JSX, since `day-rail.tsx`
- * is not to be modified to add an "empty state" variant to the shared
- * component.
+ * Renders each day's row: a vertical "temporal status" bar (liseré — past /
+ * today / future, see `getTemporalBarClass`) followed by either `DayRail`
+ * (imported unmodified from `day-rail.tsx`, its default label swapped for
+ * `CalendarDayHeader`'s counter-module treatment via the `dateHeader` prop)
+ * for a populated day, or a plain, border-free header + text line for the
+ * one case `DayRail` doesn't cover: an empty "today".
  */
 function TimelineRow({ row, today }: { row: FlatRow; today: string }) {
+  const barClass = getTemporalBarClass(row.date, today);
+
   if (row.kind === "empty-today") {
     return (
-      <div>
-        <p className="mb-2 flex items-center gap-2 font-counter text-[10px] uppercase tracking-widest">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-          <span className="text-primary">{formatUpcomingDayLabel(row.date, today)}</span>
-        </p>
-        <p className="text-xs text-muted-foreground">Rien de prévu aujourd'hui.</p>
+      <div className="flex gap-3">
+        <span className={`shrink-0 self-stretch rounded-full ${barClass}`} />
+        <div className="min-w-0 flex-1">
+          <div className="mb-3">
+            <CalendarDayHeader date={row.date} today={today} />
+          </div>
+          <p className="text-xs text-muted-foreground">Rien de prévu aujourd'hui.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <DayRail
-      group={{ date: row.date, entries: row.entries }}
-      today={today}
-      saturated={row.saturated}
-    />
+    <div className="flex gap-3">
+      <span className={`shrink-0 self-stretch rounded-full ${barClass}`} />
+      <div className="min-w-0 flex-1">
+        <DayRail
+          group={{ date: row.date, entries: row.entries }}
+          today={today}
+          saturated={row.saturated}
+          dateHeader={<CalendarDayHeader date={row.date} today={today} />}
+        />
+      </div>
+    </div>
   );
 }
