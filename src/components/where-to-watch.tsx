@@ -48,7 +48,7 @@ function dedupeProviders(providers: WatchProvider[]): WatchProvider[] {
   return out;
 }
 
-function buildCategories(watchProviders: WatchProviders | null): Category[] {
+export function buildCategories(watchProviders: WatchProviders | null): Category[] {
   if (!watchProviders) return [];
   const byCategory: Record<CategoryKey, WatchProvider[] | undefined> = {
     flatrate: watchProviders.flatrate,
@@ -66,6 +66,10 @@ function buildCategories(watchProviders: WatchProviders | null): Category[] {
   }));
 }
 
+function providerInitials(providerName: string): string {
+  return providerName.trim().slice(0, 2).toUpperCase();
+}
+
 function ProviderTile({
   provider,
   showTitle,
@@ -75,19 +79,22 @@ function ProviderTile({
   showTitle: string;
   categoryLabel: string;
 }) {
+  const altText = `Regarder ${showTitle} sur ${provider.provider_name} (${categoryLabel})`;
   return (
     <div
       className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border/60"
       title={provider.provider_name}
     >
       {provider.logo_path ? (
-        <img
-          src={provider.logo_path}
-          alt={`Regarder ${showTitle} sur ${provider.provider_name} (${categoryLabel})`}
-          className="h-full w-full object-cover"
-        />
+        <img src={provider.logo_path} alt={altText} className="h-full w-full object-cover" />
       ) : (
-        <span className="sr-only">{provider.provider_name}</span>
+        <span
+          role="img"
+          aria-label={altText}
+          className="grid h-full w-full place-items-center bg-surface-elevated font-counter text-xs text-muted-foreground"
+        >
+          {providerInitials(provider.provider_name)}
+        </span>
       )}
     </div>
   );
@@ -179,19 +186,20 @@ export function WhereToWatch({
           Non disponible en streaming pour le moment en France.
         </p>
       ) : (
-        <div className="mt-1.5 space-y-3">
-          {categories.map((category) => (
-            <CategoryRow
-              key={category.key}
-              category={category}
-              showTitle={showTitle}
-              onShowAll={() => setDrawerOpen(true)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mt-1.5 space-y-3">
+            {categories.map((category) => (
+              <CategoryRow
+                key={category.key}
+                category={category}
+                showTitle={showTitle}
+                onShowAll={() => setDrawerOpen(true)}
+              />
+            ))}
+          </div>
+          <JustWatchAttribution link={link} />
+        </>
       )}
-
-      <JustWatchAttribution link={link} />
 
       {categories.length > 0 && (
         <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
