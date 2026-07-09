@@ -2,6 +2,14 @@
 
 Contexte projet pour Claude Code. Ce fichier doit être lu en entier avant toute intervention sur le repo.
 
+## Note pour Lovable
+
+Ce fichier est aussi lu par Lovable, mais **Lovable doit se limiter au contexte produit, au schéma Supabase et à la direction design** décrits ci-dessous. En particulier :
+
+- **Lovable ne doit PAS prendre en compte les règles d'agents** — l'orchestration en sous-agents (`.claude/agents/` : `tvtrackd-developer`, `tvtrackd-qa-reviewer`, `entertainment-*`, `marketing-communication-expert`, etc.), le découpage plan → validation → implémentation, et toute règle du type « seul tel agent peut écrire du code » sont **spécifiques à Claude Code** et ne s'appliquent pas à Lovable.
+- **Lovable ne doit pas coder via ces agents ni tenter de les invoquer** — Lovable produit son code directement, comme d'habitude, sans passer par le workflow d'agents décrit pour Claude Code.
+- Les mentions « Claude Code » (sections « Ce que Claude Code NE doit PAS faire » et « Principes de développement pour Claude Code ») sont des consignes d'orchestration Claude Code, pas des instructions destinées à Lovable.
+
 ## Pourquoi ce projet existe
 
 TV Time (25M+ utilisateurs revendiqués) ferme le 15 juillet 2026 — l'éditeur (Whip Media, racheté par Blue Torch Capital en 2025) pivote vers l'IA et abandonne le produit faute de rentabilité. C'est la fermeture soudaine d'un des plus gros trackers de séries au monde, avec seulement ~2 semaines de préavis aux utilisateurs.
