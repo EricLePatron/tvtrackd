@@ -383,15 +383,30 @@ function HeroTicket({
 
   const body = (
     <>
+      {/* Backdrop: the poster itself, blown up and blurred behind the ticket.
+          No extra TMDB fetch — same URL, different treatment. */}
+      {show.poster_path && (
+        <div aria-hidden className="absolute inset-0 overflow-hidden">
+          <img
+            src={show.poster_path}
+            alt=""
+            className="h-full w-full scale-125 object-cover opacity-40 blur-2xl saturate-150"
+          />
+          <div className="absolute inset-0 bg-gradient-to-br from-background/85 via-background/70 to-background/95" />
+          <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
+        </div>
+      )}
+
       {/* Perforation notches */}
       <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-background" />
       <span className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 h-4 w-4 rounded-full bg-background" />
 
-      <div className="flex gap-4 p-4">
-        <div className="h-28 w-20 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
+      <div className="relative flex gap-4 p-4">
+        <div className="relative h-32 w-[5.5rem] shrink-0 overflow-hidden rounded-md border border-primary/30 bg-surface-elevated shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,138,61,0.15)]">
           {show.poster_path && (
             <img src={show.poster_path} alt={show.title} className="h-full w-full object-cover" />
           )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-white/10" />
         </div>
         <div className="min-w-0 flex-1">
           <p
@@ -402,7 +417,9 @@ function HeroTicket({
           <h2 className="mt-1 font-display text-lg leading-tight text-foreground truncate">
             {show.title}
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground truncate">{nextEpisode.title ?? "—"}</p>
+          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+            {nextEpisode.title ?? "—"}
+          </p>
           <div className="mt-3 flex items-center gap-2">
             <div className="flex-1">
               <VhsCounter
@@ -413,11 +430,14 @@ function HeroTicket({
                 total={progress?.total}
               />
             </div>
-            <Play className="h-5 w-5 shrink-0 text-primary" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_20px_-6px_rgba(255,138,61,0.7)]">
+              <Play className="h-4 w-4 fill-current" />
+            </span>
           </div>
         </div>
       </div>
-      <div className="border-t border-dashed border-border px-5 py-2">
+      <div className="relative border-t border-dashed border-border px-5 py-2">
+
         <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
           tvtrackd · Ticket #{pad(nextEpisode.id % 100)}
         </p>
