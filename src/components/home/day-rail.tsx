@@ -66,15 +66,8 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
           </span>
         )}
         {entry.type === "drop" && dropPartialCount !== undefined && (
-          <span
-            aria-label={
-              dropPartialCount === 1
-                ? `1 épisode vu sur ${entry.count}`
-                : `${dropPartialCount} épisodes vus sur ${entry.count}`
-            }
-            className="absolute right-1 top-1 rounded-full bg-background/85 px-1.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-primary"
-          >
-            {pad(dropPartialCount)}/{pad(entry.count)}
+          <span className="absolute right-1 top-1 rounded-full bg-background/85 px-1.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-primary">
+            {dropPartialCount}/{entry.count}
           </span>
         )}
       </div>
