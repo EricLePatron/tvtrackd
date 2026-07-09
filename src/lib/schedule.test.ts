@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  aggregateSameDayEntries,
-  buildLibraryProgress,
-  groupUpcomingByDay,
-  type ScheduleEpisode,
-  type ShowLite,
-} from "./schedule";
+import { buildLibraryProgress, type ScheduleEpisode, type ShowLite } from "./schedule";
 
 const show = (id: number, title = `Show ${id}`): ShowLite => ({
   id,
@@ -187,104 +181,5 @@ describe("buildLibraryProgress", () => {
 
     expect(progressByShowId.get(1)?.nextEpisode.id).toBe(102);
     expect(progressByShowId.get(1)?.seasonTotal).toBe(3);
-  });
-});
-
-describe("aggregateSameDayEntries", () => {
-  it("collapses 2+ episodes of the same show+season into a single 'drop' entry", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-08-01"), ep(s, 102, 1, 2, "2026-08-01")];
-
-    const entries = aggregateSameDayEntries(episodes);
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ type: "drop", seasonNumber: 1, count: 2 });
-  });
-
-  it("leaves a single episode as a 'single' entry", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-08-01")];
-
-    const entries = aggregateSameDayEntries(episodes);
-
-    expect(entries).toEqual([{ type: "single", show: s, episode: episodes[0] }]);
-  });
-
-  it("keeps episodes of different shows separate, even with the same season/episode numbers", () => {
-    const s1 = show(1);
-    const s2 = show(2);
-    const episodes = [ep(s1, 101, 1, 1, "2026-08-01"), ep(s2, 201, 1, 1, "2026-08-01")];
-
-    const entries = aggregateSameDayEntries(episodes);
-
-    expect(entries).toHaveLength(2);
-    expect(entries.every((e) => e.type === "single")).toBe(true);
-  });
-
-  it("keeps episodes of the same show but different seasons separate", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-08-01"), ep(s, 201, 2, 1, "2026-08-01")];
-
-    const entries = aggregateSameDayEntries(episodes);
-
-    expect(entries).toHaveLength(2);
-    expect(entries.every((e) => e.type === "single")).toBe(true);
-  });
-
-  it("sorts a drop's episodes in season/episode order regardless of input order", () => {
-    const s = show(1);
-    const episodes = [ep(s, 102, 1, 2, "2026-08-01"), ep(s, 101, 1, 1, "2026-08-01")];
-
-    const entries = aggregateSameDayEntries(episodes);
-
-    expect(entries[0].type === "drop" && entries[0].episodes.map((e) => e.id)).toEqual([101, 102]);
-  });
-});
-
-describe("groupUpcomingByDay", () => {
-  const TODAY = "2026-07-08";
-
-  it("still aggregates same-day, same-season episodes of a show into a 'drop' entry (post-extraction regression check)", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-07-15"), ep(s, 102, 1, 2, "2026-07-15")];
-
-    const groups = groupUpcomingByDay(episodes, TODAY);
-
-    expect(groups).toHaveLength(1);
-    expect(groups[0].entries).toHaveLength(1);
-    expect(groups[0].entries[0]).toMatchObject({ type: "drop", seasonNumber: 1, count: 2 });
-  });
-
-  it("still sorts a day's entries by show title after aggregation", () => {
-    const sBeta = show(2, "Beta");
-    const sAlpha = show(1, "Alpha");
-    const episodes = [ep(sBeta, 201, 1, 1, "2026-07-15"), ep(sAlpha, 101, 1, 1, "2026-07-15")];
-
-    const groups = groupUpcomingByDay(episodes, TODAY);
-
-    expect(groups[0].entries.map((e) => e.show.title)).toEqual(["Alpha", "Beta"]);
-  });
-
-  it("never sets `watched` on drop or single entries (Home's rail is future-only)", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-07-15"), ep(s, 102, 1, 2, "2026-07-15")];
-
-    const groups = groupUpcomingByDay(episodes, TODAY);
-
-    expect(groups[0].entries[0].watched).toBeUndefined();
-  });
-
-  it("excludes episodes at or before today and beyond the window", () => {
-    const s = show(1);
-    const episodes = [
-      ep(s, 100, 1, 1, TODAY), // today, excluded (strictly future only)
-      ep(s, 101, 1, 2, "2026-07-15"), // within window
-      ep(s, 999, 9, 9, "2027-01-01"), // beyond default 90-day window
-    ];
-
-    const groups = groupUpcomingByDay(episodes, TODAY);
-
-    expect(groups).toHaveLength(1);
-    expect(groups[0].date).toBe("2026-07-15");
   });
 });

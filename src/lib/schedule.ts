@@ -60,29 +60,6 @@ export type UpcomingDropEntry = {
   seasonNumber: number;
   episodes: ScheduleEpisode[];
   count: number;
-  /**
-   * Optional "every episode of this drop already watched" flag — mirrors
-   * `UpcomingSingleEntry.watched` (see there for the full rationale). Never
-   * populated by `groupUpcomingByDay` (Home's rail is future-only, so
-   * "watched" never applies there). Only the /calendar timeline
-   * (`buildFlatRows` in `calendar-timeline-rows.ts`) sets this, and only to
-   * `true` when every episode in the drop is watched. Left `undefined` for
-   * every existing Home call site, which keeps `EntryCard`'s "Vu" badge
-   * invisible there.
-   */
-  watched?: boolean;
-  /**
-   * Optional count of already-watched episodes within this drop — a
-   * complement to `watched` (which stays `true` only when the drop is
-   * *entirely* watched), so a partially-watched drop (e.g. 6/8) doesn't
-   * collapse to the exact same "nothing watched" rendering as a 0/8 drop.
-   * Never populated by `groupUpcomingByDay` (Home's rail is future-only, so
-   * watched progress never applies there). Only the /calendar timeline
-   * (`buildFlatRows` in `calendar-timeline-rows.ts`) sets this. Left
-   * `undefined` for every existing Home call site, which keeps
-   * `EntryCard`'s partial-progress chip invisible there.
-   */
-  watchedCount?: number;
 };
 
 export type UpcomingEntry = UpcomingSingleEntry | UpcomingDropEntry;
@@ -120,58 +97,6 @@ export function addDaysToDateString(dateStr: string, n: number): string {
 function byEpisodeOrder(a: ScheduleEpisode, b: ScheduleEpisode) {
   if (a.season_number !== b.season_number) return a.season_number - b.season_number;
   return a.episode_number - b.episode_number;
-}
-
-/**
- * Generic "single vs drop" shape shared by `aggregateSameDayEntries`'s two
- * callers (`groupUpcomingByDay` instantiates it with `ScheduleEpisode`,
- * `buildFlatRows` in `calendar-timeline-rows.ts` instantiates it with
- * `TimelineEpisode`) — deliberately not `UpcomingEntry` itself (which fixes
- * `episode`/`episodes` to plain `ScheduleEpisode`), so that a caller passing
- * `TimelineEpisode[]` in gets `TimelineEpisode`/`TimelineEpisode[]` back out,
- * `watched` flag included, with no unsafe cast needed.
- */
-export type AggregatedEntry<E extends ScheduleEpisode> =
-  | { type: "single"; show: ShowLite; episode: E }
-  | { type: "drop"; show: ShowLite; seasonNumber: number; episodes: E[]; count: number };
-
-/**
- * Groups same-day episodes by show + season, collapsing any group of 2+
- * episodes into a single "drop" entry (season-drop releases, e.g. 8 Netflix
- * episodes landing the same day) while leaving groups of exactly 1 episode as
- * a "single" entry. Callers are responsible for restricting `episodes` to a
- * single calendar day first — this function does not look at `air_date`.
- * Extracted out of `groupUpcomingByDay` (unchanged behavior there) so
- * `/calendar`'s timeline can apply the identical aggregation without
- * duplicating the show+season grouping/sort logic.
- */
-export function aggregateSameDayEntries<E extends ScheduleEpisode>(
-  episodes: E[],
-): AggregatedEntry<E>[] {
-  const bySeasonShow = new Map<string, E[]>();
-  for (const ep of episodes) {
-    const key = `${ep.show.id}:${ep.season_number}`;
-    const arr = bySeasonShow.get(key) ?? [];
-    arr.push(ep);
-    bySeasonShow.set(key, arr);
-  }
-
-  const entries: AggregatedEntry<E>[] = [];
-  for (const group of bySeasonShow.values()) {
-    const sorted = [...group].sort(byEpisodeOrder);
-    if (sorted.length >= 2) {
-      entries.push({
-        type: "drop",
-        show: sorted[0].show,
-        seasonNumber: sorted[0].season_number,
-        episodes: sorted,
-        count: sorted.length,
-      });
-    } else {
-      entries.push({ type: "single", show: sorted[0].show, episode: sorted[0] });
-    }
-  }
-  return entries;
 }
 
 /**
@@ -342,7 +267,29 @@ export function groupUpcomingByDay(
 
   const groups: DayGroup[] = [];
   for (const [date, eps] of byDate) {
-    const entries: UpcomingEntry[] = aggregateSameDayEntries(eps);
+    const bySeasonShow = new Map<string, ScheduleEpisode[]>();
+    for (const ep of eps) {
+      const key = `${ep.show.id}:${ep.season_number}`;
+      const arr = bySeasonShow.get(key) ?? [];
+      arr.push(ep);
+      bySeasonShow.set(key, arr);
+    }
+
+    const entries: UpcomingEntry[] = [];
+    for (const group of bySeasonShow.values()) {
+      const sorted = [...group].sort(byEpisodeOrder);
+      if (sorted.length >= 2) {
+        entries.push({
+          type: "drop",
+          show: sorted[0].show,
+          seasonNumber: sorted[0].season_number,
+          episodes: sorted,
+          count: sorted.length,
+        });
+      } else {
+        entries.push({ type: "single", show: sorted[0].show, episode: sorted[0] });
+      }
+    }
     entries.sort((a, b) => a.show.title.localeCompare(b.show.title));
     groups.push({ date, entries });
   }
