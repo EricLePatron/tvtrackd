@@ -68,27 +68,51 @@ function normalize(s: string) {
     .trim();
 }
 
-export async function searchTv(title: string, year?: number) {
+// Calcule un score de similarité textuelle entre deux titres normalisés.
+// Retourne la meilleure correspondance entre name ET original_name du résultat
+// TMDb, ce qui couvre les titres originaux non-français (ex. "Breaking Bad"
+// trouvé via un export FR dont le titre diffère de l'intitulé localisé).
+function titleScore(target: string, rName: string, rOriginal: string): number {
+  function pairScore(a: string, b: string): number {
+    if (!b) return 0;
+    if (b === a) return 0.6;
+    if (b.includes(a) || a.includes(b)) return 0.35;
+    return 0;
+  }
+  return Math.max(pairScore(target, rName), pairScore(target, rOriginal));
+}
+
+// Retourne le meilleur candidat TMDb avec son score de confiance ET le nombre
+// total de candidats renvoyés par l'API. Ce dernier permet à l'appelant
+// d'ajuster le seuil d'acceptation : un seul candidat = on peut être plus
+// permissif (seuil 0.6 vs 0.7 pour plusieurs candidats).
+export async function searchTv(
+  title: string,
+  year?: number,
+): Promise<{ match: any; confidence: number; candidateCount: number }> {
   const data = await tmdb("/search/tv", {
     query: title,
     ...(year ? { first_air_date_year: String(year) } : {}),
   });
   const results = data.results ?? [];
-  if (!results.length) return { match: null, confidence: 0 };
+  if (!results.length) return { match: null, confidence: 0, candidateCount: 0 };
   const target = normalize(title);
   const scored = results.map((r: any) => {
-    const rTitle = normalize(r.name ?? r.original_name ?? "");
+    const rName = normalize(r.name ?? "");
+    const rOriginal = normalize(r.original_name ?? "");
     const rYear = r.first_air_date ? Number(r.first_air_date.slice(0, 4)) : null;
-    let score = 0;
-    if (rTitle === target) score += 0.6;
-    else if (rTitle.includes(target) || target.includes(rTitle)) score += 0.35;
+    let score = titleScore(target, rName, rOriginal);
     if (year && rYear === year) score += 0.4;
     else if (year && rYear && Math.abs(rYear - year) <= 1) score += 0.2;
     if (!year) score += 0.1;
     return { r, score };
   });
   scored.sort((a: any, b: any) => b.score - a.score);
-  return { match: scored[0].r, confidence: Math.min(1, scored[0].score) };
+  return {
+    match: scored[0].r,
+    confidence: Math.min(1, scored[0].score),
+    candidateCount: results.length,
+  };
 }
 
 export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "movie") {
