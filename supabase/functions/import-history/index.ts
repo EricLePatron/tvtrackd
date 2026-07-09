@@ -173,10 +173,11 @@ Deno.serve(async (req) => {
       let confidence = tmdbId ? 1 : 0;
 
       if (!tmdbId) {
-        const { match, confidence: c, candidateCount } = await searchTv(
-          first.title,
-          year ?? undefined,
-        );
+        const {
+          match,
+          confidence: c,
+          candidateCount,
+        } = await searchTv(first.title, year ?? undefined);
         confidence = c;
         // Seuil abaissé à 0.6 lorsqu'il n'existe qu'un seul candidat TMDb pour
         // ce (titre, année) : moins de risque de faux positif, on accepte une
