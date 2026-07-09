@@ -52,6 +52,39 @@ export type Database = {
           },
         ]
       }
+      import_runs: {
+        Row: {
+          created_at: string
+          followed_shows: number
+          id: number
+          imported_episodes: number
+          source: string
+          unmatched: Json
+          unmatched_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          followed_shows?: number
+          id?: number
+          imported_episodes?: number
+          source?: string
+          unmatched?: Json
+          unmatched_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          followed_shows?: number
+          id?: number
+          imported_episodes?: number
+          source?: string
+          unmatched?: Json
+          unmatched_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -109,7 +142,6 @@ export type Database = {
           genres: string[]
           id: number
           media_type: string
-          networks: Json
           overview: string | null
           poster_path: string | null
           status: string | null
@@ -117,7 +149,6 @@ export type Database = {
           title: string
           tmdb_id: number
           vote_average: number | null
-          watch_providers: Json
         }
         Insert: {
           cached_at?: string
@@ -125,7 +156,6 @@ export type Database = {
           genres?: string[]
           id?: number
           media_type: string
-          networks?: Json
           overview?: string | null
           poster_path?: string | null
           status?: string | null
@@ -133,7 +163,6 @@ export type Database = {
           title: string
           tmdb_id: number
           vote_average?: number | null
-          watch_providers?: Json
         }
         Update: {
           cached_at?: string
@@ -141,7 +170,6 @@ export type Database = {
           genres?: string[]
           id?: number
           media_type?: string
-          networks?: Json
           overview?: string | null
           poster_path?: string | null
           status?: string | null
@@ -149,7 +177,6 @@ export type Database = {
           title?: string
           tmdb_id?: number
           vote_average?: number | null
-          watch_providers?: Json
         }
         Relationships: []
       }

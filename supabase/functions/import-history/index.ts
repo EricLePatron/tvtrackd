@@ -148,6 +148,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const items: Item[] = body.items ?? [];
     const resolutions: Record<string, number> = body.resolutions ?? {}; // key "title|year" -> tmdb_id
+    // Source optionnelle transmise par le frontend (ex. "tvtime", "betaseries")
+    const source: string = body.source ?? "";
 
     // Group by (title, year)
     const groups = new Map<string, Item[]>();
@@ -171,12 +173,21 @@ Deno.serve(async (req) => {
       let confidence = tmdbId ? 1 : 0;
 
       if (!tmdbId) {
-        const { match, confidence: c } = await searchTv(first.title, year ?? undefined);
+        const {
+          match,
+          confidence: c,
+          candidateCount,
+        } = await searchTv(first.title, year ?? undefined);
         confidence = c;
-        if (match && c >= 0.7) tmdbId = match.id;
+        // Seuil abaissé à 0.6 lorsqu'il n'existe qu'un seul candidat TMDb pour
+        // ce (titre, année) : moins de risque de faux positif, on accepte une
+        // correspondance moins parfaite (titres localisés, accents absents…).
+        // Avec plusieurs candidats on reste à 0.7 pour éviter les confusions.
+        const threshold = candidateCount === 1 ? 0.6 : 0.7;
+        if (match && c >= threshold) tmdbId = match.id;
       }
 
-      if (!tmdbId || confidence < 0.7) {
+      if (!tmdbId) {
         unmatched.push({ key, title: first.title, year, occurrences: group.length });
         continue;
       }
@@ -265,11 +276,28 @@ Deno.serve(async (req) => {
           .from("user_shows")
           .update({ manual_override: "archive" })
           .eq("id", existingUs.id);
+      } else {
+        // Ligne user_shows déjà existante (tracking natif ou import antérieur) :
+        // on force un recalcul du statut pour qu'une série précédemment "en_cours"
+        // passe bien en "termine" si l'import vient de compléter l'historique.
+        // apply_computed_status est un no-op si manual_override est défini (gestion
+        // côté SQL) ou si le statut calculé est identique au statut actuel.
+        await admin.rpc("apply_computed_status", {
+          p_show_id: show.id,
+          p_user_id: userId,
+        });
       }
-      // Sinon (ligne vierge, pas de signal d'archivage) : `status` a déjà été
-      // recalculé par le trigger watch_status au fil des inserts ci-dessus,
-      // rien à faire ici.
     }
+
+    // Enregistrement du run d'import pour l'historique (client admin, pas de RLS)
+    await admin.from("import_runs").insert({
+      user_id: userId,
+      source,
+      imported_episodes: imported,
+      followed_shows: followed,
+      unmatched_count: unmatched.length,
+      unmatched,
+    });
 
     return Response.json({ imported, followed, unmatched }, { headers: corsHeaders });
   } catch (err) {

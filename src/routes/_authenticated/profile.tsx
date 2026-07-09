@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Upload, Search as SearchIcon, LogOut, AlertTriangle } from "lucide-react";
+import { Download, Upload, Search as SearchIcon, LogOut, AlertTriangle, History } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { ScreenHeader } from "@/components/screen-header";
@@ -24,6 +24,15 @@ type Unmatched = { key: string; title: string; year: number | null; occurrences:
 function itemKey(item: ImportItem): string {
   return `${item.title.trim().toLowerCase()}|${item.year ?? ""}`;
 }
+
+type ImportRun = {
+  id: number;
+  source: string;
+  imported_episodes: number;
+  followed_shows: number;
+  unmatched_count: number;
+  created_at: string;
+};
 
 function ProfileScreen() {
   const navigate = useNavigate();
@@ -60,6 +69,20 @@ function ProfileScreen() {
         hours: Math.round(minutes / 60),
         days: Math.floor(minutes / (60 * 24)),
       };
+    },
+  });
+
+  // Historique des runs d'import (20 plus récents)
+  const { data: importRuns } = useQuery({
+    queryKey: ["import-runs", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("import_runs")
+        .select("id, source, imported_episodes, followed_shows, unmatched_count, created_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      return (data ?? []) as ImportRun[];
     },
   });
 
@@ -143,6 +166,23 @@ function ProfileScreen() {
           </div>
         </div>
 
+        {/* Historique des imports */}
+        {importRuns && importRuns.length > 0 && (
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-display text-sm uppercase tracking-widest text-foreground">
+                Historique des imports
+              </h3>
+            </div>
+            <div className="mt-3 space-y-2">
+              {importRuns.map((run) => (
+                <ImportRunRow key={run.id} run={run} />
+              ))}
+            </div>
+          </div>
+        )}
+
         <Button
           onClick={signOut}
           variant="outline"
@@ -152,6 +192,48 @@ function ProfileScreen() {
         </Button>
       </div>
     </>
+  );
+}
+
+function ImportRunRow({ run }: { run: ImportRun }) {
+  const date = new Date(run.created_at).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const sourceLabel = run.source
+    ? run.source.charAt(0).toUpperCase() + run.source.slice(1)
+    : "Import";
+
+  return (
+    <div className="flex items-start justify-between rounded-md bg-surface-elevated/50 px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-foreground">{sourceLabel}</p>
+        <p className="mt-0.5 text-[10px] text-muted-foreground">{date}</p>
+      </div>
+      <div className="ml-3 flex shrink-0 gap-3 text-right">
+        <div>
+          <p className="font-counter text-sm text-foreground tabular-nums">
+            {run.imported_episodes}
+          </p>
+          <p className="text-[9px] uppercase tracking-widest text-muted-foreground">épisodes</p>
+        </div>
+        <div>
+          <p className="font-counter text-sm text-foreground tabular-nums">{run.followed_shows}</p>
+          <p className="text-[9px] uppercase tracking-widest text-muted-foreground">séries</p>
+        </div>
+        {run.unmatched_count > 0 && (
+          <div>
+            <p className="font-counter text-sm text-destructive tabular-nums">
+              {run.unmatched_count}
+            </p>
+            <p className="text-[9px] uppercase tracking-widest text-muted-foreground">manqués</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -221,7 +303,7 @@ function ImportPanel() {
         toast.error("Aucune ligne exploitable détectée dans le fichier");
         return;
       }
-      await runImportInBatches(items);
+      await runImportInBatches(items, formats);
     } catch {
       toast.error(
         "Impossible de lire ce fichier — vérifiez qu'il s'agit bien d'un export TV Time ou Betaseries.",
@@ -239,10 +321,11 @@ function ImportPanel() {
   async function callBatch(
     items: ImportItem[],
     res: Record<string, number>,
+    source?: string,
   ): Promise<{ imported: number; followed: number; unmatched: Unmatched[] } | null> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const { data, error } = await supabase.functions.invoke("import-history", {
-        body: { items, resolutions: res },
+        body: { items, resolutions: res, source: source ?? "" },
       });
       if (!error) {
         return data as { imported: number; followed: number; unmatched: Unmatched[] };
@@ -252,11 +335,14 @@ function ImportPanel() {
     return null;
   }
 
-  async function runImportInBatches(items: ImportItem[]) {
+  async function runImportInBatches(items: ImportItem[], formats: string[]) {
     const groups = groupItemsByShow(items);
     const batches = chunkGroups(groups, SERIES_PER_BATCH);
     setProgress({ done: 0, total: groups.length });
     setPendingItems(items);
+
+    // Source déduite du format détecté (premier format, ex. "tvtime", "betaseries")
+    const source = formats[0] ?? "";
 
     const allUnmatched: Unmatched[] = [];
     let totalImported = 0;
@@ -266,7 +352,7 @@ function ImportPanel() {
 
     for (const batch of batches) {
       const seriesInBatch = new Set(batch.map(itemKey)).size;
-      const result = await callBatch(batch, {});
+      const result = await callBatch(batch, {}, source);
       if (result) {
         totalImported += result.imported;
         totalFollowed += result.followed;
