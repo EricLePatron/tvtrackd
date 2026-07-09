@@ -109,7 +109,6 @@ export type Database = {
           genres: string[]
           id: number
           media_type: string
-          networks: Json
           overview: string | null
           poster_path: string | null
           status: string | null
@@ -117,7 +116,6 @@ export type Database = {
           title: string
           tmdb_id: number
           vote_average: number | null
-          watch_providers: Json
         }
         Insert: {
           cached_at?: string
@@ -125,7 +123,6 @@ export type Database = {
           genres?: string[]
           id?: number
           media_type: string
-          networks?: Json
           overview?: string | null
           poster_path?: string | null
           status?: string | null
@@ -133,7 +130,6 @@ export type Database = {
           title: string
           tmdb_id: number
           vote_average?: number | null
-          watch_providers?: Json
         }
         Update: {
           cached_at?: string
@@ -141,7 +137,6 @@ export type Database = {
           genres?: string[]
           id?: number
           media_type?: string
-          networks?: Json
           overview?: string | null
           poster_path?: string | null
           status?: string | null
@@ -149,7 +144,6 @@ export type Database = {
           title?: string
           tmdb_id?: number
           vote_average?: number | null
-          watch_providers?: Json
         }
         Relationships: []
       }
