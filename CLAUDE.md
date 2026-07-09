@@ -89,7 +89,7 @@ Point de vigilance hérité de l'analyse concurrentielle : ne jamais coupler `st
 - Chiffres/compteurs (progression, stats, épisodes) : **IBM Plex Mono** — tous les nombres doivent utiliser cette police pour l'effet "compteur numérique"
 
 ### Élément signature
-Le suivi de progression (saison/épisode) n'est **jamais** une checkbox ou une barre de progression générique. C'est un **compteur mécanique façon bande VHS** : chiffres en Plex Mono dans un module à fond sombre (`--bg-surface-raised`), avec une légère animation d'incrément/défilement quand on marque un épisode vu. C'est le seul risque esthétique assumé du design — tout le reste reste sobre et discipliné autour de cet élément. Ne pas ajouter d'autres effets décoratifs qui diluraient cette signature.
+Le suivi de progression (saison/épisode) n'est **jamais** une checkbox générique. C'est un **compteur mécanique façon bande VHS** : chiffres en Plex Mono dans un module à fond sombre (`--bg-surface-raised`), avec une légère animation d'incrément/défilement quand on marque un épisode vu. C'est le seul risque esthétique assumé du design — tout le reste reste sobre et discipliné autour de cet élément. Ne pas ajouter d'autres effets décoratifs qui diluraient cette signature. Une barre de progression continue reste acceptable en complément du compteur (ex. page fiche série) tant qu'elle reste sobre (fine, sans dégradé) et n'y substitue pas les chiffres Plex Mono.
 
 ### Layout
 - Accueil = hero "Ce soir" : prochain épisode à voir, présenté comme un talon de billet/étiquette de cassette, avec le compteur signature
