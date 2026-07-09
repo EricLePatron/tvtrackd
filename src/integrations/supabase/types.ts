@@ -52,6 +52,39 @@ export type Database = {
           },
         ]
       }
+      import_runs: {
+        Row: {
+          created_at: string
+          followed_shows: number
+          id: number
+          imported_episodes: number
+          source: string
+          unmatched: Json
+          unmatched_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          followed_shows?: number
+          id?: number
+          imported_episodes?: number
+          source?: string
+          unmatched?: Json
+          unmatched_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          followed_shows?: number
+          id?: number
+          imported_episodes?: number
+          source?: string
+          unmatched?: Json
+          unmatched_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
