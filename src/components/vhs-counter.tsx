@@ -81,16 +81,18 @@ export function VhsCounter(props: VhsCounterProps) {
   // render this line in cyan. Do not "restore" cyan on this line thinking
   // it's a regression; it isn't.
   if (isGrid) {
+    const pct = total ? Math.min(100, (display / total) * 100) : 0;
     return (
-      <div className="flex flex-col gap-1 rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-widest">
-        <span className="text-primary">
-          S{pad(seasonNumber)} E{pad(lineOneEpisode)}
-        </span>
-        <span
-          className={`transition-transform ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
-        >
-          {pad(display)}/{pad(total ?? 0)}
-        </span>
+      <div className="flex h-7 flex-col justify-center gap-1 rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-wide leading-none">
+        <span className="text-primary">E{pad(lineOneEpisode)}</span>
+        <div className="h-[2px] w-full overflow-hidden bg-muted-foreground/15">
+          <div
+            className={`h-full transition-[width,background-color] duration-200 ease-out ${
+              bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
     );
   }
@@ -131,7 +133,7 @@ export function VhsCounter(props: VhsCounterProps) {
           {pad(display)}/{pad(detailTotal)}
         </span>
       </div>
-      <div className="mt-2 h-[3px] w-full overflow-hidden rounded-full bg-border">
+      <div className="mt-2 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
         <div
           className="h-full bg-primary transition-[width] duration-300 ease-out"
           style={{ width: `${pct}%` }}

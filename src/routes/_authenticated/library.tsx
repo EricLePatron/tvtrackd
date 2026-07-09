@@ -205,16 +205,17 @@ function LibraryCard({
           />
         )}
       </div>
-      <p className="mt-1.5 line-clamp-2 text-xs text-foreground">{show.title}</p>
+      <p className="mt-1.5 line-clamp-2 h-8 text-xs text-foreground">{show.title}</p>
 
       {showProgress && (
         // Fixed min-height shared by all 4 states (skeleton / chip / "à jour" /
         // no-data) so the card never jumps when the skeleton resolves and
-        // sibling cards stay aligned in the grid — ~42px matches the 2-line
-        // grid VhsCounter chip, the tallest of the 4 states.
-        <div className="mt-1.5 flex min-h-[42px] w-full flex-col justify-center">
+        // sibling cards stay aligned in the grid — 28px (h-7) matches the
+        // 2-line grid VhsCounter chip (label + 2px bar), the tallest of the
+        // 4 states.
+        <div className="mt-1.5 flex min-h-7 w-full flex-col justify-center">
           {showProgress.loading ? (
-            <div className="h-[42px] w-full animate-pulse rounded-md bg-surface-elevated" />
+            <div className="h-7 w-full animate-pulse rounded-md bg-surface-elevated" />
           ) : showProgress.entry ? (
             <VhsCounter
               variant="grid"
@@ -224,11 +225,14 @@ function LibraryCard({
               total={showProgress.entry.seasonTotal}
             />
           ) : showProgress.knownShowIds?.has(show.id) ? (
-            <div className="flex min-h-[42px] items-center justify-center rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              À jour
+            <div className="flex h-7 flex-col justify-center gap-1 rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-wide leading-none">
+              <span className="text-cyan-accent">À jour</span>
+              <div className="h-[2px] w-full overflow-hidden bg-muted-foreground/15">
+                <div className="h-full w-full bg-cyan-accent" />
+              </div>
             </div>
           ) : (
-            <div className="min-h-[42px]" aria-hidden="true" />
+            <div className="min-h-7" aria-hidden="true" />
           )}
         </div>
       )}
