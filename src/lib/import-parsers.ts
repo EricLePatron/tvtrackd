@@ -267,15 +267,31 @@ function lowerKeys(raw: Record<string, unknown>): Record<string, unknown> {
   return lower;
 }
 
-const TITLE_KEYS = ["title", "tv_show_name", "show", "show_name", "series", "name"];
+const TITLE_KEYS = [
+  "title",
+  "tv_show_name",
+  "series_name",
+  "show",
+  "show_name",
+  "series",
+  "name",
+];
 const YEAR_KEYS = ["year", "first_air_year", "release_year"];
-const SEASON_KEYS = ["season", "season_number", "s"];
+const SEASON_KEYS = ["season", "season_number", "episode_season_number", "s"];
 const EPISODE_KEYS = ["episode", "episode_number", "e"];
 const WATCHED_KEYS = ["watched_at", "updated_at", "date", "seen_at", "created_at"];
 // TV Time écrit `entity_type` = "episode" | "movie" | "show" dans son log
-// unifié. On ne garde ici que les épisodes ; les films seront gérés séparément.
-const TYPE_KEYS = ["entity_type", "type", "media_type"];
-const TYPE_EPISODE_VALUES = new Set(["episode", "tv", "tv_episode", "show_episode"]);
+// unifié (tracking-prod-records.csv). Le format v2 utilise plutôt `bulk_type`
+// avec la valeur "season" pour un épisode vu (clé `watch-episode-…`). On
+// accepte les deux et on ignore les autres types (follow, count-watch-movie…).
+const TYPE_KEYS = ["entity_type", "type", "media_type", "bulk_type"];
+const TYPE_EPISODE_VALUES = new Set([
+  "episode",
+  "tv",
+  "tv_episode",
+  "show_episode",
+  "season", // tracking-prod-records-v2 : bulk_type=season pour un watch d'épisode
+]);
 
 function normalizeGranularRow(raw: unknown): GranularImportItem | null {
   if (!raw || typeof raw !== "object") return null;
