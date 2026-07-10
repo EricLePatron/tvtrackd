@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { BottomNav } from "@/components/bottom-nav";
 import { LegalFooter } from "@/components/legal-footer";
+import { FeedbackButton } from "@/components/feedback-button";
 import { useReplayPendingIntent } from "@/hooks/use-replay-pending-intent";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -15,6 +16,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {children}
         <LegalFooter />
       </div>
+      <FeedbackButton />
       <BottomNav />
     </div>
   );
