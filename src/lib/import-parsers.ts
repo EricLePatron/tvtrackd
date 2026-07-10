@@ -31,6 +31,10 @@ export type AggregateImportItem = {
   lastEpisode: number;
   archived: boolean;
   percent: number | null;
+  // Nombre d'épisodes vus déclaré par la source (TV Time user_tv_show_data),
+  // utilisé quand aucun couple (saison, épisode) n'est fourni : le backend
+  // marquera les N premiers épisodes comme vus.
+  episodesSeenCount?: number | null;
 };
 
 export type ImportItem = GranularImportItem | AggregateImportItem;
