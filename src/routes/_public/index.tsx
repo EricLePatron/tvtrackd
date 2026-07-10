@@ -398,7 +398,7 @@ function HeroTicket({
         </div>
       )}
 
-      <div className="relative flex h-full flex-col justify-end p-5">
+      <div className="relative flex h-full flex-col justify-end p-5 pb-14">
         <div className="space-y-1">
           <p
             className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
