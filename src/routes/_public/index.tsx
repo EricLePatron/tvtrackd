@@ -398,14 +398,14 @@ function HeroTicket({
         </div>
       )}
 
-      <div className="relative flex h-full flex-col justify-end p-5">
+      <div className="relative flex h-full flex-col justify-end p-4">
         <div className="space-y-1">
           <p
             className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
           >
             {badge?.label ?? formatReadyLabel(item)}
           </p>
-          <h2 className="font-display text-2xl leading-tight text-foreground line-clamp-2">
+          <h2 className="font-display text-xl leading-tight text-foreground line-clamp-2">
             {show.title}
           </h2>
           <p className="text-sm text-muted-foreground line-clamp-1">
@@ -413,12 +413,12 @@ function HeroTicket({
           </p>
         </div>
 
-        <div className="mt-5 flex items-end justify-between gap-3">
-          <div className="flex items-baseline gap-2 rounded-md border border-border/60 bg-surface-elevated/90 px-3 py-2 backdrop-blur-sm">
+        <div className="mt-4 flex items-end justify-between gap-3">
+          <div className="flex items-baseline gap-2 rounded-md border border-border/60 bg-surface-elevated/90 px-3 py-1.5 backdrop-blur-sm">
             <span className="font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               S{pad(nextEpisode.season_number)}
             </span>
-            <span className="font-counter text-4xl leading-none tracking-tight text-primary">
+            <span className="font-counter text-3xl leading-none tracking-tight text-primary">
               E{pad(nextEpisode.episode_number)}
             </span>
           </div>
@@ -433,7 +433,7 @@ function HeroTicket({
   );
 
   const className =
-    "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[3/4]";
+    "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[16/10]";
 
   if (!interactive) {
     return <div className={className}>{body}</div>;
