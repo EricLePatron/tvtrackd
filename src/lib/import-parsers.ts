@@ -61,6 +61,7 @@ const TVTIME_HISTORY_FILE_HINTS = [
   "watched",
   "history",
   "episodes",
+  "user_tv_show_data", // liste des séries suivies + nb_episodes_seen (statut global)
 ];
 
 function looksLikeTvTimeHistoryFile(name: string): boolean {
