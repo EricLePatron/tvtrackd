@@ -22,6 +22,7 @@ export type EpisodeLite = {
   episode_number: number;
   title: string | null;
   air_date: string | null; // "YYYY-MM-DD" (Postgres date, no time)
+  still_path?: string | null;
 };
 
 export type ScheduleEpisode = EpisodeLite & { show: ShowLite };

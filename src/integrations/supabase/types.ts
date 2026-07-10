@@ -22,6 +22,7 @@ export type Database = {
           overview: string | null
           season_number: number
           show_id: number
+          still_path: string | null
           title: string | null
         }
         Insert: {
@@ -31,6 +32,7 @@ export type Database = {
           overview?: string | null
           season_number: number
           show_id: number
+          still_path?: string | null
           title?: string | null
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           overview?: string | null
           season_number?: number
           show_id?: number
+          still_path?: string | null
           title?: string | null
         }
         Relationships: [

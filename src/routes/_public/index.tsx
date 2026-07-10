@@ -95,7 +95,7 @@ function HomeScreen() {
       const { data: eps } = await supabase
         .from("episodes")
         .select(
-          "id, season_number, episode_number, title, air_date, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
+          "id, season_number, episode_number, title, air_date, still_path, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
         )
         .in("show_id", showIds)
         .not("air_date", "is", null)
@@ -381,7 +381,7 @@ function HeroTicket({
   progress?: { watched: number; total: number };
 }) {
   const { show, nextEpisode } = item;
-  const backdropUrl = show.backdrop_path ?? show.poster_path;
+  const backdropUrl = nextEpisode.still_path ?? show.backdrop_path ?? show.poster_path;
 
   const body = (
     <>

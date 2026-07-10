@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
             title: ep.name ?? null,
             overview: ep.overview ?? null,
             air_date: ep.air_date || null,
+            still_path: ep.still_path ? `${TMDB_BACKDROP}${ep.still_path}` : null,
           }));
           if (episodes.length) {
             const { error: eErr } = await admin.from("episodes").upsert(episodes, {
