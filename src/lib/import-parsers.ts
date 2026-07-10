@@ -188,6 +188,18 @@ function parseCsvSource(text: string): SourceResult | null {
     };
   }
 
+  // TV Time user_tv_show_data.csv : agrégé par série avec nb_episodes_seen —
+  // seule source qui décrit vraiment le statut "suivi / à voir / vu partiellement"
+  // pour l'ensemble de la bibliothèque (les CSV granulaires ne couvrent qu'une
+  // fenêtre d'événements récents).
+  if (isTvTimeShowsHeader(headers)) {
+    const items = rows
+      .map(parseTvTimeShowRow)
+      .filter((r): r is AggregateImportItem => !!r);
+    if (!items.length) return null;
+    return { format: "granular", items, warnings: [] };
+  }
+
   const items = rows.map(normalizeGranularRow).filter((r): r is GranularImportItem => !!r);
   if (!items.length) return null;
   return { format: "granular", items, warnings: [] };
