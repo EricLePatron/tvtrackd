@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ScreenHeader } from "@/components/screen-header";
-import { VhsCounter } from "@/components/vhs-counter";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -398,7 +398,7 @@ function HeroTicket({
         </div>
       )}
 
-      <div className="relative flex h-full flex-col justify-end p-5 pb-14">
+      <div className="relative flex h-full flex-col justify-end p-5">
         <div className="space-y-1">
           <p
             className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
@@ -413,21 +413,21 @@ function HeroTicket({
           </p>
         </div>
 
-        <div className="mt-5">
-          <VhsCounter
-            variant="hero"
-            seasonNumber={nextEpisode.season_number}
-            nextEpisodeNumber={nextEpisode.episode_number}
-            watched={progress?.watched}
-            total={progress?.total}
-          />
+        <div className="mt-5 flex items-end justify-between gap-3">
+          <div className="flex items-baseline gap-2 rounded-md border border-border/60 bg-surface-elevated/90 px-3 py-2 backdrop-blur-sm">
+            <span className="font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              S{pad(nextEpisode.season_number)}
+            </span>
+            <span className="font-counter text-4xl leading-none tracking-tight text-primary">
+              E{pad(nextEpisode.episode_number)}
+            </span>
+          </div>
+          {progress && (
+            <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
+              {pad(progress.watched)}/{pad(progress.total)}
+            </span>
+          )}
         </div>
-      </div>
-
-      <div className="absolute bottom-0 left-0 right-0 border-t border-dashed border-border/60 px-5 py-2">
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          tvtrackd · Ticket #{pad(nextEpisode.id % 100)}
-        </p>
       </div>
     </>
   );
