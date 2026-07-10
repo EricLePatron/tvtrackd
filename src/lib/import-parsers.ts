@@ -31,6 +31,10 @@ export type AggregateImportItem = {
   lastEpisode: number;
   archived: boolean;
   percent: number | null;
+  // Nombre d'épisodes vus déclaré par la source (TV Time user_tv_show_data),
+  // utilisé quand aucun couple (saison, épisode) n'est fourni : le backend
+  // marquera les N premiers épisodes comme vus.
+  episodesSeenCount?: number | null;
 };
 
 export type ImportItem = GranularImportItem | AggregateImportItem;
@@ -57,6 +61,7 @@ const TVTIME_HISTORY_FILE_HINTS = [
   "watched",
   "history",
   "episodes",
+  "user_tv_show_data", // liste des séries suivies + nb_episodes_seen (statut global)
 ];
 
 function looksLikeTvTimeHistoryFile(name: string): boolean {
@@ -183,6 +188,18 @@ function parseCsvSource(text: string): SourceResult | null {
     };
   }
 
+  // TV Time user_tv_show_data.csv : agrégé par série avec nb_episodes_seen —
+  // seule source qui décrit vraiment le statut "suivi / à voir / vu partiellement"
+  // pour l'ensemble de la bibliothèque (les CSV granulaires ne couvrent qu'une
+  // fenêtre d'événements récents).
+  if (isTvTimeShowsHeader(headers)) {
+    const items = rows
+      .map(parseTvTimeShowRow)
+      .filter((r): r is AggregateImportItem => !!r);
+    if (!items.length) return null;
+    return { format: "granular", items, warnings: [] };
+  }
+
   const items = rows.map(normalizeGranularRow).filter((r): r is GranularImportItem => !!r);
   if (!items.length) return null;
   return { format: "granular", items, warnings: [] };
@@ -250,6 +267,36 @@ function parseBetaseriesRow(
     percent,
   };
 }
+
+// ------- TV Time user_tv_show_data.csv (agrégé par série) -------
+
+function isTvTimeShowsHeader(headers: string[]): boolean {
+  return (
+    headers.includes("tv_show_name") &&
+    headers.includes("is_followed") &&
+    headers.includes("nb_episodes_seen")
+  );
+}
+
+function parseTvTimeShowRow(row: Record<string, string>): AggregateImportItem | null {
+  const title = row["tv_show_name"]?.trim();
+  if (!title) return null;
+  // is_followed=0 : série retirée de la bibliothèque TV Time — on n'importe pas.
+  if (row["is_followed"]?.trim() !== "1") return null;
+  const seenRaw = row["nb_episodes_seen"]?.trim();
+  const seen = seenRaw && Number.isFinite(Number(seenRaw)) ? Number(seenRaw) : 0;
+  return {
+    kind: "aggregate",
+    title,
+    year: null,
+    lastSeason: 0,
+    lastEpisode: 0,
+    archived: false,
+    percent: null,
+    episodesSeenCount: seen,
+  };
+}
+
 
 // ------- Format granulaire (TV Time / outils tiers / générique) -------
 
