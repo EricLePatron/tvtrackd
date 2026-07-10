@@ -95,7 +95,7 @@ function HomeScreen() {
       const { data: eps } = await supabase
         .from("episodes")
         .select(
-          "id, season_number, episode_number, title, air_date, show:shows!inner(id, tmdb_id, media_type, title, poster_path)",
+          "id, season_number, episode_number, title, air_date, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
         )
         .in("show_id", showIds)
         .not("air_date", "is", null)
@@ -169,7 +169,8 @@ const DEMO_HERO_ITEM: ReadyItem = {
     tmdb_id: 1396,
     media_type: "tv",
     title: "Breaking Bad",
-    poster_path: "https://image.tmdb.org/t/p/w500/3xnWaLQjelJDDF7LT1WBo6f4BRe.jpg",
+    poster_path: "https://image.tmdb.org/t/p/w500/hVVxgGZFR3JaXmkstnG1IR9Qbt6.jpg",
+    backdrop_path: "https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
   },
   status: "en_cours",
   episodes: [],
@@ -184,7 +185,8 @@ const DEMO_HERO_ITEM: ReadyItem = {
       tmdb_id: 1396,
       media_type: "tv",
       title: "Breaking Bad",
-      poster_path: "https://image.tmdb.org/t/p/w500/3xnWaLQjelJDDF7LT1WBo6f4BRe.jpg",
+      poster_path: "https://image.tmdb.org/t/p/w500/hVVxgGZFR3JaXmkstnG1IR9Qbt6.jpg",
+      backdrop_path: "https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
     },
   },
   extraCount: 0,
@@ -379,64 +381,50 @@ function HeroTicket({
   progress?: { watched: number; total: number };
 }) {
   const { show, nextEpisode } = item;
+  const backdropUrl = show.backdrop_path ?? show.poster_path;
 
   const body = (
     <>
-      {/* Backdrop: the poster itself, blown up and blurred behind the ticket.
-          No extra TMDB fetch — same URL, different treatment. */}
-      {show.poster_path && (
-        <div aria-hidden className="absolute inset-0 overflow-hidden">
+      {/* Full-bleed TMDb backdrop used as the card's atmosphere. */}
+      {backdropUrl && (
+        <div aria-hidden className="absolute inset-0">
           <img
-            src={show.poster_path}
+            src={backdropUrl}
             alt=""
-            className="h-full w-full scale-125 object-cover opacity-40 blur-2xl saturate-150"
+            className="h-full w-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-background/85 via-background/70 to-background/95" />
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30" />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/70 to-transparent" />
         </div>
       )}
 
-      {/* Perforation notches */}
-      <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-background" />
-      <span className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 h-4 w-4 rounded-full bg-background" />
-
-      <div className="relative flex gap-4 p-4">
-        <div className="relative h-32 w-[5.5rem] shrink-0 overflow-hidden rounded-md border border-primary/30 bg-surface-elevated shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,138,61,0.15)]">
-          {show.poster_path && (
-            <img src={show.poster_path} alt={show.title} className="h-full w-full object-cover" />
-          )}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-white/10" />
-        </div>
-        <div className="min-w-0 flex-1">
+      <div className="relative flex h-full flex-col justify-end p-5">
+        <div className="space-y-1">
           <p
             className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
           >
             {badge?.label ?? formatReadyLabel(item)}
           </p>
-          <h2 className="mt-1 font-display text-lg leading-tight text-foreground truncate">
+          <h2 className="font-display text-2xl leading-tight text-foreground line-clamp-2">
             {show.title}
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+          <p className="text-sm text-muted-foreground line-clamp-1">
             {nextEpisode.title ?? "—"}
           </p>
-          <div className="mt-3 flex items-center gap-2">
-            <div className="flex-1">
-              <VhsCounter
-                variant="hero"
-                seasonNumber={nextEpisode.season_number}
-                nextEpisodeNumber={nextEpisode.episode_number}
-                watched={progress?.watched}
-                total={progress?.total}
-              />
-            </div>
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_20px_-6px_rgba(255,138,61,0.7)]">
-              <Play className="h-4 w-4 fill-current" />
-            </span>
-          </div>
+        </div>
+
+        <div className="mt-5">
+          <VhsCounter
+            variant="hero"
+            seasonNumber={nextEpisode.season_number}
+            nextEpisodeNumber={nextEpisode.episode_number}
+            watched={progress?.watched}
+            total={progress?.total}
+          />
         </div>
       </div>
-      <div className="relative border-t border-dashed border-border px-5 py-2">
 
+      <div className="absolute bottom-0 left-0 right-0 border-t border-dashed border-border/60 px-5 py-2">
         <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
           tvtrackd · Ticket #{pad(nextEpisode.id % 100)}
         </p>
@@ -444,7 +432,8 @@ function HeroTicket({
     </>
   );
 
-  const className = "relative block overflow-hidden rounded-xl border border-border bg-card";
+  const className =
+    "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[3/4]";
 
   if (!interactive) {
     return <div className={className}>{body}</div>;
