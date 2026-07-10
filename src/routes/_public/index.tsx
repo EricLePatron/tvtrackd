@@ -433,7 +433,7 @@ function HeroTicket({
   );
 
   const className =
-    "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[3/4]";
+    "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[16/10]";
 
   if (!interactive) {
     return <div className={className}>{body}</div>;
