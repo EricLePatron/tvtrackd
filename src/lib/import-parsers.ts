@@ -268,6 +268,36 @@ function parseBetaseriesRow(
   };
 }
 
+// ------- TV Time user_tv_show_data.csv (agrégé par série) -------
+
+function isTvTimeShowsHeader(headers: string[]): boolean {
+  return (
+    headers.includes("tv_show_name") &&
+    headers.includes("is_followed") &&
+    headers.includes("nb_episodes_seen")
+  );
+}
+
+function parseTvTimeShowRow(row: Record<string, string>): AggregateImportItem | null {
+  const title = row["tv_show_name"]?.trim();
+  if (!title) return null;
+  // is_followed=0 : série retirée de la bibliothèque TV Time — on n'importe pas.
+  if (row["is_followed"]?.trim() !== "1") return null;
+  const seenRaw = row["nb_episodes_seen"]?.trim();
+  const seen = seenRaw && Number.isFinite(Number(seenRaw)) ? Number(seenRaw) : 0;
+  return {
+    kind: "aggregate",
+    title,
+    year: null,
+    lastSeason: 0,
+    lastEpisode: 0,
+    archived: false,
+    percent: null,
+    episodesSeenCount: seen,
+  };
+}
+
+
 // ------- Format granulaire (TV Time / outils tiers / générique) -------
 
 function pick(row: Record<string, unknown>, keys: string[]): string | null {
