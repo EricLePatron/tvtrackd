@@ -13,6 +13,7 @@ export type ShowLite = {
   media_type: string;
   title: string;
   poster_path: string | null;
+  backdrop_path: string | null;
 };
 
 export type EpisodeLite = {

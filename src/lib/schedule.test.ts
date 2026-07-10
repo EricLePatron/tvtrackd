@@ -12,6 +12,7 @@ const show = (id: number, title = `Show ${id}`): ShowLite => ({
   media_type: "tv",
   title,
   poster_path: null,
+  backdrop_path: null,
 });
 
 function ep(
