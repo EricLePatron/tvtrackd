@@ -1,0 +1,1 @@
+ALTER TABLE public.shows ADD COLUMN IF NOT EXISTS watch_providers jsonb DEFAULT '{}'; ALTER TABLE public.shows ADD COLUMN IF NOT EXISTS networks jsonb DEFAULT '[]';
