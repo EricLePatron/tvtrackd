@@ -227,7 +227,27 @@ Deno.serve(async (req) => {
             const inserted = await insertWatchStatusIfMissing(userId, ep.id, nowIso);
             if (inserted) imported += 1;
           }
+        } else {
+          // Pas de couple (S,E) mais nb_episodes_seen fourni (TV Time
+          // user_tv_show_data) : on marque les N premiers épisodes en supposant
+          // un visionnage linéaire. Approximatif mais permet de refléter les
+          // statuts "à voir" (N=0 → juste la ligne user_shows) et "terminé"
+          // (N == total_known → compute_tv_status renverra "termine").
+          const maxSeen = aggItems.reduce(
+            (acc, it) => Math.max(acc, it.episodesSeenCount ?? 0),
+            0,
+          );
+          if (maxSeen > 0) {
+            const episodesOrdered = await getEpisodesInOrder(show.id);
+            const toMark = episodesOrdered.slice(0, maxSeen);
+            const nowIso = new Date().toISOString();
+            for (const ep of toMark) {
+              const inserted = await insertWatchStatusIfMissing(userId, ep.id, nowIso);
+              if (inserted) imported += 1;
+            }
+          }
         }
+
       } else {
         const granularItems = group.filter((it): it is GranularItem => !isAggregate(it));
         for (const it of granularItems) {
