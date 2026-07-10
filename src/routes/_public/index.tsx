@@ -381,7 +381,7 @@ function HeroTicket({
   progress?: { watched: number; total: number };
 }) {
   const { show, nextEpisode } = item;
-  const backdropUrl = show.backdrop_path ?? show.poster_path;
+  const backdropUrl = nextEpisode.still_path ?? show.backdrop_path ?? show.poster_path;
 
   const body = (
     <>
