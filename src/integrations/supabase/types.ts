@@ -137,6 +137,7 @@ export type Database = {
       }
       shows: {
         Row: {
+          backdrop_path: string | null
           cached_at: string
           first_air_date: string | null
           genres: string[]
@@ -151,6 +152,7 @@ export type Database = {
           vote_average: number | null
         }
         Insert: {
+          backdrop_path?: string | null
           cached_at?: string
           first_air_date?: string | null
           genres?: string[]
@@ -165,6 +167,7 @@ export type Database = {
           vote_average?: number | null
         }
         Update: {
+          backdrop_path?: string | null
           cached_at?: string
           first_air_date?: string | null
           genres?: string[]

@@ -1,6 +1,7 @@
 // Shared TMDb helpers for edge functions
 const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY")!;
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const TMDB_BACKDROP = "https://image.tmdb.org/t/p/w1280";
 const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
 const CACHE_MS = 48 * 60 * 60 * 1000;
 
@@ -132,6 +133,7 @@ export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "m
     title: details.title ?? details.name ?? "",
     overview: details.overview ?? "",
     poster_path: details.poster_path ? `${TMDB_IMG}${details.poster_path}` : null,
+    backdrop_path: details.backdrop_path ? `${TMDB_BACKDROP}${details.backdrop_path}` : null,
     first_air_date: details.first_air_date || details.release_date || null,
     status: details.status ?? null,
     genres: (details.genres ?? []).map((g: { name: string }) => g.name),
