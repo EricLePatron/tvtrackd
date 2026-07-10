@@ -66,7 +66,7 @@ export function FeedbackButton() {
         <button
           type="button"
           aria-label="Envoyer un retour"
-          className="fixed bottom-24 right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full border border-primary/40 bg-surface-elevated/95 px-4 font-counter text-[10px] uppercase tracking-widest text-primary shadow-lg backdrop-blur transition-colors hover:bg-primary/15"
+          className="fixed top-4 right-4 z-40 inline-flex h-10 items-center gap-2 rounded-full border border-primary/40 bg-surface-elevated/95 px-3 font-counter text-[10px] uppercase tracking-widest text-primary shadow-lg backdrop-blur transition-colors hover:bg-primary/15"
         >
           <MessageSquarePlus className="h-4 w-4" />
           Feedback
