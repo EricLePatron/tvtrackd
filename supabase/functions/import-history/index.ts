@@ -31,6 +31,10 @@ type AggregateItem = {
   lastEpisode: number;
   archived?: boolean;
   percent?: number | null;
+  // TV Time user_tv_show_data : nombre total d'épisodes vus déclaré par la
+  // source, sans détail S/E. Utilisé quand lastSeason==0 pour marquer les N
+  // premiers épisodes comme vus (hypothèse de visionnage linéaire).
+  episodesSeenCount?: number | null;
 };
 
 type Item = GranularItem | AggregateItem;
