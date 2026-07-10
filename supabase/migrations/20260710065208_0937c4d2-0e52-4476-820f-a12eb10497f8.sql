@@ -1,0 +1,1 @@
+ALTER TABLE public.shows ADD COLUMN IF NOT EXISTS backdrop_path text;
