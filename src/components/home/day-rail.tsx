@@ -142,7 +142,7 @@ export function DayRail({
       )}
       <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
         {entries.map((entry) => (
-          <EntryCard key={entryKey(entry)} entry={entry} saturated={saturated} />
+          <EntryCard key={entryKey(entry)} entry={entry} saturated={saturated} today={today} />
         ))}
         {hiddenCount > 0 && (
           <div className="flex w-32 shrink-0 items-center justify-center">
