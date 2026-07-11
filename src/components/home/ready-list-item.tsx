@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import type { ReadyItem } from "@/lib/schedule";
 import { formatReadyLabel } from "@/lib/schedule";
+import { useMarkWatched } from "@/hooks/use-mark-watched";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -12,6 +14,14 @@ function pad(n: number) {
  */
 export function ReadyListItem({ item }: { item: ReadyItem }) {
   const { show, nextEpisode, extraCount } = item;
+  const markWatched = useMarkWatched();
+
+  const handleMark = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (markWatched.isPending) return;
+    markWatched.mutate({ episodeId: nextEpisode.id, showId: show.id });
+  };
 
   return (
     <Link
@@ -36,13 +46,20 @@ export function ReadyListItem({ item }: { item: ReadyItem }) {
         <h4 className="mt-0.5 truncate text-sm text-foreground">{show.title}</h4>
         <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
           S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
+          {extraCount > 0 && (
+            <span className="ml-2 text-primary">+{extraCount}</span>
+          )}
         </p>
       </div>
-      {extraCount > 0 && (
-        <span className="shrink-0 rounded-full border border-primary/40 bg-primary/10 px-2 py-1 font-counter text-[10px] uppercase tracking-widest text-primary">
-          +{extraCount} disponibles
-        </span>
-      )}
+      <button
+        type="button"
+        onClick={handleMark}
+        disabled={markWatched.isPending}
+        aria-label="Marquer comme vu"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
+      >
+        <Check className="h-5 w-5" />
+      </button>
     </Link>
   );
 }
