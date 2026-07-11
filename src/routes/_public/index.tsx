@@ -384,6 +384,14 @@ function HeroTicket({
 }) {
   const { show, nextEpisode } = item;
   const backdropUrl = nextEpisode.still_path ?? show.backdrop_path ?? show.poster_path;
+  const markWatched = useMarkWatched();
+
+  const handleMark = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (markWatched.isPending) return;
+    markWatched.mutate({ episodeId: nextEpisode.id, showId: show.id });
+  };
 
   const body = (
     <>
@@ -424,11 +432,24 @@ function HeroTicket({
               E{pad(nextEpisode.episode_number)}
             </span>
           </div>
-          {progress && (
-            <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
-              {pad(progress.watched)}/{pad(progress.total)}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {progress && (
+              <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
+                {pad(progress.watched)}/{pad(progress.total)}
+              </span>
+            )}
+            {interactive && (
+              <button
+                type="button"
+                onClick={handleMark}
+                disabled={markWatched.isPending}
+                aria-label="Marquer comme vu"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/15 text-cyan-accent backdrop-blur-sm transition-colors hover:bg-cyan-accent/25 disabled:opacity-50"
+              >
+                <Check className="h-5 w-5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>
