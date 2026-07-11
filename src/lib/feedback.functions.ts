@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const NOTION_DATABASE_ID = "399a22c5-4be2-8055-b5b4-000b130effb8";
+const NOTION_DATABASE_ID = "399a22c5-4be2-8067-b6f5-f222e272a51d";
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/notion/v1";
 
 const feedbackSchema = z.object({
