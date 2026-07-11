@@ -56,9 +56,9 @@ export function ReadyListItem({ item }: { item: ReadyItem }) {
         onClick={handleMark}
         disabled={markWatched.isPending}
         aria-label="Marquer comme vu"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
       >
-        <Check className="h-5 w-5" />
+        <Check className="h-3.5 w-3.5" />
       </button>
     </Link>
   );
