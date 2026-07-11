@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import type { DayGroup, UpcomingEntry } from "@/lib/schedule";
 import { formatUpcomingDayLabel } from "@/lib/schedule";
+import { useMarkWatched } from "@/hooks/use-mark-watched";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -14,12 +15,40 @@ function entryKey(entry: UpcomingEntry) {
     : `single-${entry.episode.id}`;
 }
 
-function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: boolean }) {
+function EntryCard({
+  entry,
+  saturated,
+  today,
+}: {
+  entry: UpcomingEntry;
+  saturated: boolean;
+  today: string;
+}) {
   const show = entry.show;
   const sub =
     entry.type === "drop"
       ? `S${pad(entry.seasonNumber)} · +${entry.count} épisodes`
       : `S${pad(entry.episode.season_number)}E${pad(entry.episode.episode_number)}`;
+
+  // Le bouton "1-clic vu" n'apparaît que sur un épisode unitaire, déjà
+  // diffusé (aujourd'hui inclus) et non encore vu — le calendrier /calendar
+  // est la seule surface où `air_date <= today` peut arriver (la Home filtre
+  // le futur strict), donc c'est bien ce cas là qui l'affiche.
+  const canMarkWatched =
+    entry.type === "single" &&
+    !entry.watched &&
+    !!entry.episode.air_date &&
+    entry.episode.air_date <= today;
+
+  const markWatched = useMarkWatched();
+
+  const handleMark = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canMarkWatched || markWatched.isPending) return;
+    if (entry.type !== "single") return;
+    markWatched.mutate({ episodeId: entry.episode.id, showId: show.id });
+  };
 
   return (
     <Link
@@ -48,6 +77,17 @@ function EntryCard({ entry, saturated }: { entry: UpcomingEntry; saturated: bool
             <Check className="h-3 w-3" />
             Vu
           </span>
+        )}
+        {canMarkWatched && (
+          <button
+            type="button"
+            onClick={handleMark}
+            disabled={markWatched.isPending}
+            aria-label="Marquer comme vu"
+            className="absolute bottom-1 right-1 flex h-8 w-8 items-center justify-center rounded-full border border-cyan-accent/50 bg-background/85 text-cyan-accent backdrop-blur-sm transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
+          >
+            <Check className="h-4 w-4" />
+          </button>
         )}
       </div>
       <p className="mt-1.5 line-clamp-1 text-sm text-foreground">{show.title}</p>
