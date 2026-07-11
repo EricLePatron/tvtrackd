@@ -6,6 +6,12 @@ const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_BACKDROP = "https://image.tmdb.org/t/p/w1280";
 const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
 const CACHE_MS = 48 * 60 * 60 * 1000;
+// TTL court dédié aux watch_providers, distinct du TTL 48h de la fiche : la
+// disponibilité streaming change plus vite que le reste des métadonnées
+// (titres récents où TMDb a déjà la dispo FR mais où notre cache restait
+// figé sur un instantané vide jusqu'à 48h). `networks` reste sur CACHE_MS
+// (les chaînes de diffusion ne changent quasiment jamais).
+const PROVIDERS_TTL_MS = 8 * 60 * 60 * 1000;
 
 const admin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -66,6 +72,11 @@ function extractNetworks(
   }));
 }
 
+function providersStale(row: { providers_cached_at: string | null }): boolean {
+  if (!row.providers_cached_at) return true;
+  return Date.now() - new Date(row.providers_cached_at).getTime() >= PROVIDERS_TTL_MS;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -105,6 +116,9 @@ Deno.serve(async (req) => {
         watch_providers: extractWatchProviders(details),
         networks: extractNetworks(details),
         cached_at: new Date().toISOString(),
+        // Providers déjà fetchés dans le même appel (append_to_response) :
+        // pas de raison de les considérer périmés juste après.
+        providers_cached_at: new Date().toISOString(),
       };
       const { data: upserted, error: upErr } = await admin
         .from("shows")
@@ -149,6 +163,23 @@ Deno.serve(async (req) => {
           }
         }
       }
+    } else if (providersStale(cached)) {
+      // Fiche fraîche (TTL 48h) mais watch_providers périmés (TTL 8h) : un
+      // seul appel léger dédié, pas de refetch complet ni de saisons. `FR`
+      // absent -> `{}` + `providers_cached_at` quand même mis à jour, pour ne
+      // pas retaper l'API à chaque vue tant que le TTL n'est pas repassé.
+      const providersResponse = await tmdb(`/${media_type}/${tmdb_id}/watch/providers`);
+      const { data: updated, error: updErr } = await admin
+        .from("shows")
+        .update({
+          watch_providers: extractWatchProviders({ "watch/providers": providersResponse }),
+          providers_cached_at: new Date().toISOString(),
+        })
+        .eq("id", cached.id)
+        .select()
+        .single();
+      if (updErr) throw updErr;
+      showRow = updated;
     }
 
     // Load full nested structure

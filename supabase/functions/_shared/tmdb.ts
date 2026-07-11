@@ -142,6 +142,14 @@ export async function cacheShow(admin: any, tmdbId: number, mediaType: "tv" | "m
     watch_providers: extractWatchProviders(details),
     networks: extractNetworks(details),
     cached_at: new Date().toISOString(),
+    // Providers déjà fetchés dans le même appel (append_to_response) : pas de
+    // raison de les considérer périmés juste après. Note : `cacheShow` (import
+    // CSV/JSON) n'implémente volontairement PAS le refetch léger périodique
+    // de `get-show-details` — l'écran d'import n'affiche pas "Où regarder",
+    // et taper l'API à chaque import sur des dizaines de séries n'a pas de
+    // valeur. Seule la page série (via get-show-details) rafraîchit les
+    // providers entre deux refetch complets.
+    providers_cached_at: new Date().toISOString(),
   };
   const { data: show } = await admin
     .from("shows")

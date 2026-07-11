@@ -1,74 +1,19 @@
 import { useState } from "react";
 
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import {
+  buildCategories,
+  MAX_VISIBLE_PER_CATEGORY,
+  providerInitials,
+  type Category,
+  type NetworkRef,
+  type WatchProvider,
+  type WatchProviders,
+} from "@/lib/watch-providers";
 
-export type WatchProvider = {
-  provider_id: number;
-  provider_name: string;
-  logo_path: string | null;
-};
-
-export type WatchProviders = {
-  link?: string | null;
-  flatrate?: WatchProvider[];
-  rent?: WatchProvider[];
-  buy?: WatchProvider[];
-  ads?: WatchProvider[];
-  free?: WatchProvider[];
-};
-
-export type NetworkRef = {
-  id: number;
-  name: string;
-  logo_path: string | null;
-};
-
-const MAX_VISIBLE_PER_CATEGORY = 6;
-
-const CATEGORY_LABELS = {
-  flatrate: "Abonnement",
-  free: "Gratuit",
-  rent: "Location",
-  buy: "Achat",
-} as const;
-
-type CategoryKey = keyof typeof CATEGORY_LABELS;
-const CATEGORY_ORDER: CategoryKey[] = ["flatrate", "free", "rent", "buy"];
-
-type Category = { key: CategoryKey; label: string; providers: WatchProvider[] };
-
-function dedupeProviders(providers: WatchProvider[]): WatchProvider[] {
-  const seen = new Set<number>();
-  const out: WatchProvider[] = [];
-  for (const p of providers) {
-    if (seen.has(p.provider_id)) continue;
-    seen.add(p.provider_id);
-    out.push(p);
-  }
-  return out;
-}
-
-export function buildCategories(watchProviders: WatchProviders | null): Category[] {
-  if (!watchProviders) return [];
-  const byCategory: Record<CategoryKey, WatchProvider[] | undefined> = {
-    flatrate: watchProviders.flatrate,
-    // "Gratuit" fusionne les catégories TMDb `free` (gratuit avec compte) et
-    // `ads` (gratuit avec publicité) : la distinction n'est pas utile pour
-    // l'utilisateur au P0, cf. spec design.
-    free: dedupeProviders([...(watchProviders.free ?? []), ...(watchProviders.ads ?? [])]),
-    rent: watchProviders.rent,
-    buy: watchProviders.buy,
-  };
-  return CATEGORY_ORDER.filter((key) => (byCategory[key]?.length ?? 0) > 0).map((key) => ({
-    key,
-    label: CATEGORY_LABELS[key],
-    providers: byCategory[key]!,
-  }));
-}
-
-function providerInitials(providerName: string): string {
-  return providerName.trim().slice(0, 2).toUpperCase();
-}
+// La route `show.$mediaType.$tmdbId.tsx` importe `WatchProviders`/`NetworkRef`
+// depuis ce module : ré-exportés ici pour ne pas avoir à toucher la route.
+export type { WatchProviders, NetworkRef } from "@/lib/watch-providers";
 
 function ProviderTile({
   provider,
@@ -159,9 +104,10 @@ function JustWatchAttribution({ link }: { link?: string | null }) {
 
 /**
  * Bloc "Où regarder" de la page série/film : offres de streaming FR
- * (abonnement / gratuit / location / achat), issues de TMDb (motorisé par
- * JustWatch, attribution obligatoire). Tuiles non cliquables au P0 (pas de
- * deep-link), à l'exception de la tuile "+N" qui ouvre un drawer listant
+ * (abonnement / gratuit uniquement — Location/Achat volontairement exclus,
+ * cf. CATEGORY_LABELS dans `@/lib/watch-providers`), issues de TMDb (motorisé
+ * par JustWatch, attribution obligatoire). Tuiles non cliquables au P0 (pas
+ * de deep-link), à l'exception de la tuile "+N" qui ouvre un drawer listant
  * toutes les offres groupées par catégorie.
  */
 export function WhereToWatch({
