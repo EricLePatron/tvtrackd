@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { SimilarRail } from "@/components/show/similar-rail";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   component: ShowDetail,
@@ -725,6 +726,10 @@ function ShowDetail() {
           })}
         </div>
       )}
+
+      <div className="mx-5 pb-24">
+        <SimilarRail tmdbId={tmdbId} mediaType={mediaType} />
+      </div>
     </>
   );
 }
