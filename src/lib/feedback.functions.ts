@@ -1,9 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const NOTION_DATABASE_ID = "399a22c5-4be2-8067-b6f5-f222e272a51d";
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/notion/v1";
-
 const feedbackSchema = z.object({
   type: z.enum(["Bug", "Improvement"]),
   message: z.string().trim().min(5, "Message trop court").max(2000),
@@ -13,6 +10,8 @@ const feedbackSchema = z.object({
 export const submitFeedback = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => feedbackSchema.parse(input))
   .handler(async ({ data }) => {
+    const NOTION_DATABASE_ID = "399a22c5-4be2-8067-b6f5-f222e272a51d";
+    const GATEWAY_URL = "https://connector-gateway.lovable.dev/notion/v1";
     const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
     const NOTION_API_KEY = process.env.NOTION_API_KEY;
     if (!LOVABLE_API_KEY || !NOTION_API_KEY) {
