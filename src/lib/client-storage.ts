@@ -114,3 +114,24 @@ export function hasShownRecurrentBanner(): boolean {
 export function markRecurrentBannerShown(): void {
   safeSet(localStore, RECURRENT_BANNER_SHOWN_KEY, "true");
 }
+
+// --- /calendar view preference (Agenda vs Semaine) ----------------------
+
+export type CalendarViewPreference = "agenda" | "semaine";
+
+const CALENDAR_VIEW_KEY = "calendar_view";
+
+/**
+ * Per-device default for the /calendar screen's Agenda/Semaine toggle. Only
+ * ever consulted client-side (the route is SSR'd, so the first paint always
+ * falls back to "agenda" — see calendar.tsx) and only when the URL doesn't
+ * already carry an explicit `?view=` override.
+ */
+export function getCalendarViewPreference(): CalendarViewPreference | null {
+  const value = safeGet(localStore, CALENDAR_VIEW_KEY);
+  return value === "agenda" || value === "semaine" ? value : null;
+}
+
+export function setCalendarViewPreference(view: CalendarViewPreference): void {
+  safeSet(localStore, CALENDAR_VIEW_KEY, view);
+}

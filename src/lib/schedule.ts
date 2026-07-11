@@ -470,3 +470,67 @@ export function buildTimelineDayGroups(
   groups.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return groups;
 }
+
+/**
+ * --- /calendar "Semaine" grid view ---
+ *
+ * Unlike `buildTimelineDayGroups` (vertical list: omits empty non-today days,
+ * force-inserts an empty "today" group even outside the queried window), the
+ * week grid renders a FIXED 7-column layout — every day of the week must be
+ * present, empty or not, and a day outside the displayed week (e.g. "today"
+ * while browsing a different week) must never sneak in. Hence a dedicated
+ * builder rather than reusing `buildTimelineDayGroups` with post-filtering.
+ */
+
+/** Monday (ISO/FR week start) of the week containing `dateStr`. */
+export function getMondayOfWeek(dateStr: string): string {
+  const date = toUtcDate(dateStr);
+  // getUTCDay(): 0 = Sunday .. 6 = Saturday. Distance back to Monday: Sunday
+  // is 6 days after the previous Monday, every other day is (dow - 1).
+  const dow = date.getUTCDay();
+  const offsetFromMonday = dow === 0 ? 6 : dow - 1;
+  return addDaysToDateString(dateStr, -offsetFromMonday);
+}
+
+/** The 7 calendar dates of the week starting at `weekStart` (Monday..Sunday). */
+export function getWeekDates(weekStart: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDaysToDateString(weekStart, i));
+}
+
+/**
+ * Groups episodes into exactly 7 day-columns (Monday..Sunday) for the week
+ * starting at `weekStart` — every date in `getWeekDates(weekStart)` gets a
+ * group, empty or not, in date order. `episodes` is expected to already be
+ * scoped to this week by the caller (the data layer fetches a bounded
+ * [weekStart, weekStart+6] window); any episode outside that range is
+ * ignored defensively rather than trusted to shape the output. Same
+ * episode-level granularity as the Agenda timeline — never aggregates
+ * same-day/same-season episodes into a "drop" summary.
+ */
+export function buildWeekDayGroups(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  weekStart: string,
+  today: string,
+): TimelineDayGroup[] {
+  const weekDates = getWeekDates(weekStart);
+  const weekDateSet = new Set(weekDates);
+
+  const byDate = new Map<string, ScheduleEpisode[]>();
+  for (const ep of episodes) {
+    if (!ep.air_date || !weekDateSet.has(ep.air_date)) continue;
+    const arr = byDate.get(ep.air_date) ?? [];
+    arr.push(ep);
+    byDate.set(ep.air_date, arr);
+  }
+
+  return weekDates.map((date) => {
+    const sorted = [...(byDate.get(date) ?? [])].sort(byShowTitleThenEpisodeOrder);
+    return {
+      date,
+      isToday: date === today,
+      isPastOrToday: date <= today,
+      episodes: sorted.map((e) => ({ ...e, watched: watchedEpisodeIds.has(e.id) })),
+    };
+  });
+}

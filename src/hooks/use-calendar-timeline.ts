@@ -16,7 +16,7 @@ const FUTURE_WINDOW_DAYS = 90;
 /** Size of each backward page once the user scrolls past the initial window. */
 const PAST_PAGE_WINDOW_DAYS = 30;
 
-type WindowParam = { start: string; end: string };
+export type WindowParam = { start: string; end: string };
 
 type EpisodePage = {
   start: string;
@@ -37,7 +37,14 @@ async function fetchWatchedIds(userId: string, episodeIds: number[]): Promise<nu
   return (data ?? []).map((w) => w.episode_id);
 }
 
-async function fetchEpisodePage(
+/**
+ * Fetches one bounded [start, end] window of episodes (+ which of the
+ * past/today ones are watched) for a set of shows. Exported so
+ * `use-calendar-week.ts` can fetch its own single-week window through the
+ * exact same query shape as the Agenda's infinite-scroll pages, without
+ * duplicating the Supabase query.
+ */
+export async function fetchEpisodePage(
   userId: string,
   showIds: number[],
   today: string,
@@ -79,23 +86,26 @@ export type CalendarTimeline = {
   hasFollowedShows: boolean;
 };
 
+export type FollowedShowsData = {
+  showIds: number[];
+  earliestDate: string | null;
+};
+
 /**
- * Data layer for the full /calendar timeline: fixed 90-day future window
- * loaded upfront in one shot, plus unlimited backward pagination by 30-day
- * windows as the user scrolls up, bounded by the earliest cached episode
- * among the user's followed (a_voir/en_cours) shows — never an arbitrary
- * symmetric cutoff. Reads exclusively from the shared Supabase cache
- * (`episodes`/`shows`), no TMDb calls.
+ * Followed (a_voir/en_cours) show ids + the earliest cached episode air_date
+ * among them — shared data layer for BOTH /calendar views (Agenda's
+ * backward-pagination bound and Semaine's per-week episode fetch). Extracted
+ * from `useCalendarTimeline` so the two hooks hit the exact same React Query
+ * cache entry (`queryKey` below is unchanged) instead of each firing this
+ * query independently when the user switches views.
  */
-export function useCalendarTimeline(): CalendarTimeline {
+export function useCalendarFollowedShows() {
   const { user } = useAuth();
-  // Computed once per mount so the window doesn't drift across a long session.
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const followed = useQuery({
     queryKey: ["calendar-timeline-followed", user?.id],
     enabled: !!user,
-    queryFn: async () => {
+    queryFn: async (): Promise<FollowedShowsData> => {
       const { data, error } = await supabase
         .from("user_shows")
         .select("show_id")
@@ -129,12 +139,31 @@ export function useCalendarTimeline(): CalendarTimeline {
   });
 
   // Sorted defensively (belt-and-suspenders on top of the `ORDER BY` above)
-  // so the derived queryKey below never changes unless the *set* of followed
-  // shows actually changes.
+  // so any derived queryKey never changes unless the *set* of followed shows
+  // actually changes.
   const showIds = useMemo(
     () => [...(followed.data?.showIds ?? [])].sort((a, b) => a - b),
     [followed.data],
   );
+
+  return { ...followed, showIds };
+}
+
+/**
+ * Data layer for the full /calendar timeline: fixed 90-day future window
+ * loaded upfront in one shot, plus unlimited backward pagination by 30-day
+ * windows as the user scrolls up, bounded by the earliest cached episode
+ * among the user's followed (a_voir/en_cours) shows — never an arbitrary
+ * symmetric cutoff. Reads exclusively from the shared Supabase cache
+ * (`episodes`/`shows`), no TMDb calls.
+ */
+export function useCalendarTimeline(): CalendarTimeline {
+  const { user } = useAuth();
+  // Computed once per mount so the window doesn't drift across a long session.
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const followed = useCalendarFollowedShows();
+  const showIds = followed.showIds;
   const earliestDate = followed.data?.earliestDate ?? null;
 
   const initialStart = addDaysToDateString(today, -INITIAL_PAST_DAYS);

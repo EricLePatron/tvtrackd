@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLibraryProgress,
+  buildWeekDayGroups,
   getDayLabelParts,
+  getMondayOfWeek,
+  getWeekDates,
   type ScheduleEpisode,
   type ShowLite,
 } from "./schedule";
@@ -225,5 +228,104 @@ describe("getDayLabelParts", () => {
 
     expect(parts.dayNumber).toBe("6");
     expect(parts.dayNumber).not.toBe("06");
+  });
+});
+
+describe("getMondayOfWeek", () => {
+  it("returns the same date when it is already a Monday", () => {
+    expect(getMondayOfWeek("2026-07-06")).toBe("2026-07-06"); // a Monday
+  });
+
+  it("returns the preceding Monday for a mid-week date", () => {
+    expect(getMondayOfWeek("2026-07-08")).toBe("2026-07-06"); // Wednesday -> Monday
+  });
+
+  it("returns the preceding Monday for a Sunday (does not roll to the next week)", () => {
+    expect(getMondayOfWeek("2026-07-12")).toBe("2026-07-06"); // Sunday -> Monday of the same ISO week
+  });
+
+  it("returns the preceding Monday for a Saturday", () => {
+    expect(getMondayOfWeek("2026-07-11")).toBe("2026-07-06"); // Saturday
+  });
+});
+
+describe("getWeekDates", () => {
+  it("returns the 7 consecutive dates Monday through Sunday", () => {
+    expect(getWeekDates("2026-07-06")).toEqual([
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
+      "2026-07-12",
+    ]);
+  });
+});
+
+describe("buildWeekDayGroups", () => {
+  const WEEK_START = "2026-07-06"; // Monday
+  const TODAY = "2026-07-08"; // Wednesday, within the week
+
+  it("always returns exactly 7 groups, one per day of the week, in order", () => {
+    const groups = buildWeekDayGroups([], new Set(), WEEK_START, TODAY);
+
+    expect(groups.map((g) => g.date)).toEqual(getWeekDates(WEEK_START));
+  });
+
+  it("marks isToday/isPastOrToday correctly relative to `today`", () => {
+    const groups = buildWeekDayGroups([], new Set(), WEEK_START, TODAY);
+
+    const byDate = new Map(groups.map((g) => [g.date, g]));
+    expect(byDate.get("2026-07-06")?.isToday).toBe(false);
+    expect(byDate.get("2026-07-06")?.isPastOrToday).toBe(true);
+    expect(byDate.get("2026-07-08")?.isToday).toBe(true);
+    expect(byDate.get("2026-07-08")?.isPastOrToday).toBe(true);
+    expect(byDate.get("2026-07-09")?.isToday).toBe(false);
+    expect(byDate.get("2026-07-09")?.isPastOrToday).toBe(false);
+  });
+
+  it("groups episodes onto their matching day and marks watched state", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 1, 1, 1, "2026-07-07"),
+      ep(s, 2, 1, 2, "2026-07-07"),
+      ep(s, 3, 1, 3, "2026-07-09"),
+    ];
+    const watched = new Set([1]);
+
+    const groups = buildWeekDayGroups(episodes, watched, WEEK_START, TODAY);
+    const byDate = new Map(groups.map((g) => [g.date, g]));
+
+    expect(byDate.get("2026-07-07")?.episodes.map((e) => e.id)).toEqual([1, 2]);
+    expect(byDate.get("2026-07-07")?.episodes.find((e) => e.id === 1)?.watched).toBe(true);
+    expect(byDate.get("2026-07-07")?.episodes.find((e) => e.id === 2)?.watched).toBe(false);
+    expect(byDate.get("2026-07-09")?.episodes.map((e) => e.id)).toEqual([3]);
+  });
+
+  it("ignores episodes whose air_date falls outside the requested week", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 1, 1, 1, "2026-07-05"), // the Sunday before this week
+      ep(s, 2, 1, 2, "2026-07-13"), // the Monday after this week
+    ];
+
+    const groups = buildWeekDayGroups(episodes, new Set(), WEEK_START, TODAY);
+
+    expect(groups.every((g) => g.episodes.length === 0)).toBe(true);
+  });
+
+  it("never aggregates same-day/same-season episodes into a drop summary — every episode stays individual", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 1, 2, 1, "2026-07-07"),
+      ep(s, 2, 2, 2, "2026-07-07"),
+      ep(s, 3, 2, 3, "2026-07-07"),
+    ];
+
+    const groups = buildWeekDayGroups(episodes, new Set(), WEEK_START, TODAY);
+    const day = groups.find((g) => g.date === "2026-07-07");
+
+    expect(day?.episodes).toHaveLength(3);
   });
 });
