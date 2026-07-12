@@ -22,6 +22,7 @@ import { Route as PublicSearchRouteImport } from './routes/_public/search'
 import { Route as PublicCalendarRouteImport } from './routes/_public/calendar'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
+import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/show.$mediaType.$tmdbId'
 
@@ -88,6 +89,11 @@ const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
   path: '/library',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedImportRoute = AuthenticatedImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/legal': typeof LegalRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/import': typeof AuthenticatedImportRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/calendar': typeof PublicCalendarRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByTo {
   '/legal': typeof LegalRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/import': typeof AuthenticatedImportRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/calendar': typeof PublicCalendarRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/_public': typeof PublicRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/import': typeof AuthenticatedImportRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_public/calendar': typeof PublicCalendarRoute
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/auth'
     | '/admin'
+    | '/import'
     | '/library'
     | '/profile'
     | '/calendar'
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/auth'
     | '/admin'
+    | '/import'
     | '/library'
     | '/profile'
     | '/calendar'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/_public'
     | '/auth'
     | '/_authenticated/admin'
+    | '/_authenticated/import'
     | '/_authenticated/library'
     | '/_authenticated/profile'
     | '/_public/calendar'
@@ -298,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLibraryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/import': {
+      id: '/_authenticated/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof AuthenticatedImportRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin': {
       id: '/_authenticated/admin'
       path: '/admin'
@@ -317,12 +336,14 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedImportRoute: typeof AuthenticatedImportRoute
   AuthenticatedLibraryRoute: typeof AuthenticatedLibraryRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedImportRoute: AuthenticatedImportRoute,
   AuthenticatedLibraryRoute: AuthenticatedLibraryRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
 }
