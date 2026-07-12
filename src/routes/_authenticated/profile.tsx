@@ -17,12 +17,6 @@ const MAX_VISIBLE_WARNINGS = 5;
 
 type Unmatched = { key: string; title: string; year: number | null; occurrences: number };
 
-// Doit répliquer exactement la clé de groupement `(title, year)` utilisée côté
-// edge function (`import-history/index.ts`) pour pouvoir isoler les items d'un
-// groupe précis lors d'une résolution manuelle.
-function itemKey(item: ImportItem): string {
-  return `${item.title.trim().toLowerCase()}|${item.year ?? ""}`;
-}
 
 type ImportRun = {
   id: number;
