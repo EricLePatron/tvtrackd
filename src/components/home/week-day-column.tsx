@@ -21,7 +21,7 @@ function pad(n: number) {
  * the visual language stays identical, just at a reduced size — no new
  * color or effect introduced.
  */
-function WeekEntryCard({ episode }: { episode: TimelineEpisode }) {
+function WeekEntryCard({ episode, saturated }: { episode: TimelineEpisode; saturated: boolean }) {
   const show = episode.show;
 
   return (
@@ -30,13 +30,17 @@ function WeekEntryCard({ episode }: { episode: TimelineEpisode }) {
       params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
       className="block"
     >
-      <div className="relative aspect-[2/3] w-12 overflow-hidden rounded-md border border-border bg-surface-elevated">
+      <div
+        className={`relative aspect-[2/3] w-12 overflow-hidden rounded-md border border-border bg-surface-elevated md:w-full ${
+          saturated ? "" : "opacity-60"
+        }`}
+      >
         {show.poster_path && (
           <img
             src={show.poster_path}
             alt={show.title}
             loading="lazy"
-            className="h-full w-full object-cover"
+            className={`h-full w-full object-cover ${saturated ? "" : "grayscale-[35%]"}`}
           />
         )}
         {episode.watched && (
@@ -48,8 +52,8 @@ function WeekEntryCard({ episode }: { episode: TimelineEpisode }) {
           </span>
         )}
       </div>
-      <p className="mt-1 line-clamp-1 text-[9px] text-foreground">{show.title}</p>
-      <p className="font-counter text-[9px] uppercase tracking-widest text-muted-foreground">
+      <p className="mt-1 line-clamp-1 text-[10px] text-foreground">{show.title}</p>
+      <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
         S{pad(episode.season_number)}E{pad(episode.episode_number)}
       </p>
     </Link>
@@ -72,14 +76,18 @@ export function WeekDayColumn({ group, today }: { group: TimelineDayGroup; today
       <CalendarDayHeader date={group.date} today={today} compact />
       <div className="mt-3 space-y-2">
         {visible.map((episode) => (
-          <WeekEntryCard key={episode.id} episode={episode} />
+          <WeekEntryCard key={episode.id} episode={episode} saturated={group.isPastOrToday} />
         ))}
         {hiddenCount > 0 && (
-          <p className="font-counter text-[9px] uppercase tracking-widest text-muted-foreground">
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             +{hiddenCount}
           </p>
         )}
-        {group.episodes.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+        {group.episodes.length === 0 && (
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            —
+          </p>
+        )}
       </div>
     </div>
   );

@@ -16,7 +16,7 @@ const FUTURE_WINDOW_DAYS = 90;
 /** Size of each backward page once the user scrolls past the initial window. */
 const PAST_PAGE_WINDOW_DAYS = 30;
 
-export type WindowParam = { start: string; end: string };
+type WindowParam = { start: string; end: string };
 
 type EpisodePage = {
   start: string;
@@ -86,7 +86,7 @@ export type CalendarTimeline = {
   hasFollowedShows: boolean;
 };
 
-export type FollowedShowsData = {
+type FollowedShowsData = {
   showIds: number[];
   earliestDate: string | null;
 };

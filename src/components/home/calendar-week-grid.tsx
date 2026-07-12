@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CalendarWeek } from "@/hooks/use-calendar-week";
+import { getWeekDates } from "@/lib/schedule";
 import { WeekDayColumn } from "./week-day-column";
 
 function formatWeekRangeLabel(weekStart: string, weekDates: string[]): string {
@@ -20,7 +21,7 @@ function formatWeekRangeLabel(weekStart: string, weekDates: string[]): string {
 }
 
 const navButtonClass =
-  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary";
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /**
  * Grid view for the /calendar "Semaine" toggle: a Prev/Today/Next nav row
@@ -43,7 +44,10 @@ export function CalendarWeekGrid({
   onNextWeek: () => void;
   onToday: () => void;
 }) {
-  const weekDates = week.dayGroups.map((g) => g.date);
+  // Derived from `weekStart` (always populated), not from `week.dayGroups`
+  // (empty while loading/on error) — otherwise the range label would
+  // disappear and reappear on every navigation/prev-next tap.
+  const weekDates = getWeekDates(week.weekStart);
 
   return (
     <div>
@@ -74,7 +78,7 @@ export function CalendarWeekGrid({
         <button
           type="button"
           onClick={onToday}
-          className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-transparent px-3 font-counter text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary"
+          className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-transparent px-3 font-counter text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           Auj.
         </button>
@@ -92,13 +96,13 @@ export function CalendarWeekGrid({
           </div>
         </div>
       ) : week.isLoading ? (
-        <div className="mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 md:grid md:grid-cols-7 md:overflow-visible">
+        <div className="mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 md:grid md:grid-cols-7 md:snap-none md:overflow-visible">
           {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-[104px] shrink-0 md:w-auto md:shrink" />
           ))}
         </div>
       ) : (
-        <div className="mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 md:grid md:grid-cols-7 md:overflow-visible">
+        <div className="mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 md:grid md:grid-cols-7 md:snap-none md:overflow-visible">
           {week.dayGroups.map((group) => (
             <WeekDayColumn key={group.date} group={group} today={today} />
           ))}
