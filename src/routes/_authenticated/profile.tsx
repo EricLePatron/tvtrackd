@@ -144,10 +144,20 @@ function ProfileScreen() {
             Historique
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Récupérez votre historique TV Time (.zip) ou Betaseries (.csv). Export JSON à tout moment.
+            Récupérez vos années de tracking depuis TV Time ou Betaseries, avec un guide pas à
+            pas. Export JSON dispo à tout moment.
           </p>
           <div className="mt-4 space-y-2">
-            <ImportPanel />
+            <Link
+              to="/import"
+              className="flex h-11 w-full items-center justify-between gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <span className="flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                Importer mes séries (guide pas à pas)
+              </span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
             <Button
               onClick={handleExport}
               variant="outline"
@@ -158,6 +168,7 @@ function ProfileScreen() {
             </Button>
           </div>
         </div>
+
 
         {/* Historique des imports */}
         {importRuns && importRuns.length > 0 && (
