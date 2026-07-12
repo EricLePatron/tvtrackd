@@ -1,13 +1,12 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Upload, Search as SearchIcon, LogOut, AlertTriangle, History } from "lucide-react";
+import { Download, Upload, LogOut, History, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { ScreenHeader } from "@/components/screen-header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { parseImportFile, FORMAT_LABELS, type ImportItem } from "@/lib/import-parsers";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfileScreen,
