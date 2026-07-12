@@ -314,6 +314,8 @@ Deno.serve(async (req) => {
     }
 
     // Enregistrement du run d'import pour l'historique (client admin, pas de RLS)
+    // total_groups = dénominateur du taux de matching TMDb (dashboard admin) :
+    // groups.size est déjà calculé plus haut, aucun calcul supplémentaire ici.
     await admin.from("import_runs").insert({
       user_id: userId,
       source,
@@ -321,6 +323,7 @@ Deno.serve(async (req) => {
       followed_shows: followed,
       unmatched_count: unmatched.length,
       unmatched,
+      total_groups: groups.size,
     });
 
     return Response.json({ imported, followed, unmatched }, { headers: corsHeaders });
