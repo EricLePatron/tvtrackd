@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CalendarWeek } from "@/hooks/use-calendar-week";
 import { WeekDayColumn } from "./week-day-column";
@@ -73,16 +74,27 @@ export function CalendarWeekGrid({
         <button
           type="button"
           onClick={onToday}
-          className="rounded-md border border-border bg-transparent px-3 py-1.5 font-counter text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary"
+          className="inline-flex h-8 items-center justify-center rounded-md border border-border bg-transparent px-3 font-counter text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary/60 hover:text-primary"
         >
           Auj.
         </button>
       </div>
 
-      {week.isLoading ? (
-        <div className="mt-5 flex gap-3 px-5">
+      {week.isError ? (
+        <div className="mt-5 flex justify-center px-5">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pl-3 pr-1.5">
+            <p className="font-counter text-[10px] uppercase tracking-widest text-destructive">
+              Erreur de chargement
+            </p>
+            <Button variant="outline" size="sm" onClick={week.refetch}>
+              Réessayer
+            </Button>
+          </div>
+        </div>
+      ) : week.isLoading ? (
+        <div className="mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 md:grid md:grid-cols-7 md:overflow-visible">
           {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 w-[104px] shrink-0 md:w-full" />
+            <Skeleton key={i} className="h-40 w-[104px] shrink-0 md:w-auto md:shrink" />
           ))}
         </div>
       ) : (

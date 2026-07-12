@@ -40,12 +40,16 @@ function WeekEntryCard({ episode }: { episode: TimelineEpisode }) {
           />
         )}
         {episode.watched && (
-          <span className="absolute right-0.5 top-0.5 flex items-center gap-0.5 rounded-full bg-background/85 px-1 py-0.5 text-cyan-accent">
-            <Check className="h-2.5 w-2.5" />
+          <span
+            aria-label="Vu"
+            className="absolute right-0.5 top-0.5 flex items-center gap-0.5 rounded-full bg-background/85 px-1 py-0.5 text-cyan-accent"
+          >
+            <Check aria-hidden="true" className="h-2.5 w-2.5" />
           </span>
         )}
       </div>
-      <p className="mt-1 font-counter text-[9px] uppercase tracking-widest text-muted-foreground">
+      <p className="mt-1 line-clamp-1 text-[9px] text-foreground">{show.title}</p>
+      <p className="font-counter text-[9px] uppercase tracking-widest text-muted-foreground">
         S{pad(episode.season_number)}E{pad(episode.episode_number)}
       </p>
     </Link>
@@ -64,7 +68,7 @@ export function WeekDayColumn({ group, today }: { group: TimelineDayGroup; today
   const hiddenCount = group.episodes.length - visible.length;
 
   return (
-    <div className="w-[104px] shrink-0 snap-start md:w-full">
+    <div className="w-[104px] shrink-0 snap-start md:w-full md:shrink md:snap-none">
       <CalendarDayHeader date={group.date} today={today} compact />
       <div className="mt-3 space-y-2">
         {visible.map((episode) => (

@@ -9,9 +9,11 @@ export type CalendarWeek = {
   /** Always exactly 7 entries (Monday..Sunday), empty or not. */
   dayGroups: TimelineDayGroup[];
   isLoading: boolean;
+  /** A page fetch (followed shows or the week's episode window) failed. */
   isError: boolean;
-  /** False once followed shows have resolved and the user follows zero a_voir/en_cours shows. */
-  hasFollowedShows: boolean;
+  /** Retries whichever fetch failed — the episode window (the followed-shows
+   *  query has no dedicated retry surface here, same as `useCalendarTimeline`). */
+  refetch: () => void;
 };
 
 /**
@@ -57,6 +59,6 @@ export function useCalendarWeek(
     dayGroups,
     isLoading: !!user && enabled && (followed.isLoading || episodesQuery.isLoading),
     isError: episodesQuery.isError || followed.isError,
-    hasFollowedShows: followed.data ? followed.data.showIds.length > 0 : true,
+    refetch: () => void episodesQuery.refetch(),
   };
 }
