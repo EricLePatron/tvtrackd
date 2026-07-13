@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   addDaysToDateString,
   bucketUpcoming,
+  buildLastWatchedAtByShow,
   buildReadyItems,
   countUpcomingEntries,
   groupUpcomingByDay,
@@ -110,17 +111,23 @@ function HomeScreen() {
 
       const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
       const epIds = episodes.map((e) => e.id);
+      // `watched_at` is fetched alongside `episode_id` (no extra round-trip)
+      // to derive a per-show "last watched" recency signal — see
+      // `buildLastWatchedAtByShow` and its use in `selectHero`'s 60j hero
+      // guard.
       const { data: watched } = epIds.length
         ? await supabase
             .from("watch_status")
-            .select("episode_id")
+            .select("episode_id, watched_at")
             .eq("user_id", user!.id)
             .in("episode_id", epIds)
         : { data: [] };
-      const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
+      const watchedRows = watched ?? [];
+      const watchedSet = new Set(watchedRows.map((w) => w.episode_id));
+      const lastWatchedAtByShowId = buildLastWatchedAtByShow(episodes, watchedRows);
 
       const ready = buildReadyItems(episodes, watchedSet, showStatusByShowId, today);
-      const { hero, reprendre, nouveau } = selectHero(ready);
+      const { hero, reprendre, nouveau } = selectHero(ready, today, lastWatchedAtByShowId);
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
       const countdown = nextCountdown(episodes, today);

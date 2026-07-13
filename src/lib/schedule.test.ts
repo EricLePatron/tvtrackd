@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLastWatchedAtByShow,
   buildLibraryProgress,
+  buildReadyItems,
   formatReadyLabel,
   getDayLabelParts,
+  selectHero,
+  type ActiveStatus,
   type ScheduleEpisode,
   type ShowLite,
 } from "./schedule";
@@ -257,5 +261,170 @@ describe("formatReadyLabel", () => {
   it("returns null (no label at all) at the 30j boundary and beyond", () => {
     expect(formatReadyLabel({ isLate: true, lateDays: 30 })).toBeNull();
     expect(formatReadyLabel({ isLate: true, lateDays: 90 })).toBeNull();
+  });
+});
+
+describe("buildLastWatchedAtByShow", () => {
+  it("picks the max watched_at per show, not the first/last row in insertion order", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
+    const watchedRows = [
+      { episode_id: 101, watched_at: "2026-01-05T10:00:00.000Z" },
+      { episode_id: 102, watched_at: "2026-06-01T10:00:00.000Z" }, // more recent, inserted last
+    ];
+
+    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+
+    expect(result.get(1)).toBe("2026-06-01T10:00:00.000Z");
+  });
+
+  it("compares timestamps as instants, not as strings, across differing fractional-second precision", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
+    // A naive lexicographic string comparison would rank the shorter string
+    // ("...T10:00:01Z", no fractional seconds) BEFORE "...T10:00:00.500Z"
+    // (fractional seconds present) because "1" > "." in ASCII — even though
+    // 10:00:01 is chronologically LATER than 10:00:00.5. This must resolve
+    // to the true later instant.
+    const watchedRows = [
+      { episode_id: 101, watched_at: "2026-01-05T10:00:00.500Z" },
+      { episode_id: 102, watched_at: "2026-01-05T10:00:01Z" },
+    ];
+
+    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+
+    expect(result.get(1)).toBe("2026-01-05T10:00:01Z");
+  });
+
+  it("skips rows whose episode isn't part of the given episodes list", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
+    const watchedRows = [
+      { episode_id: 101, watched_at: "2026-01-05T10:00:00.000Z" },
+      { episode_id: 999, watched_at: "2026-06-01T10:00:00.000Z" }, // unknown episode
+    ];
+
+    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+
+    expect(result.size).toBe(1);
+    expect(result.get(1)).toBe("2026-01-05T10:00:00.000Z");
+  });
+
+  it("keeps shows independent — one show's watch rows never leak into another's", () => {
+    const s1 = show(1);
+    const s2 = show(2);
+    const episodes = [ep(s1, 101, 1, 1, "2026-01-01"), ep(s2, 201, 1, 1, "2026-01-01")];
+    const watchedRows = [
+      { episode_id: 101, watched_at: "2026-01-05T10:00:00.000Z" },
+      { episode_id: 201, watched_at: "2026-06-01T10:00:00.000Z" },
+    ];
+
+    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+
+    expect(result.get(1)).toBe("2026-01-05T10:00:00.000Z");
+    expect(result.get(2)).toBe("2026-06-01T10:00:00.000Z");
+  });
+
+  it("returns an empty map when there are no watched rows at all", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
+
+    const result = buildLastWatchedAtByShow(episodes, []);
+
+    expect(result.size).toBe(0);
+  });
+});
+
+describe("selectHero", () => {
+  // Builds one ReadyItem per show via the real buildReadyItems (rather than
+  // hand-rolling ReadyItem literals) so earliestAirDate/lateDays/isLate stay
+  // internally consistent with how the app actually produces them.
+  function readyItems(
+    shows: { showRef: ShowLite; status: ActiveStatus; episodes: ScheduleEpisode[] }[],
+  ) {
+    const allEpisodes = shows.flatMap((s) => s.episodes);
+    const statusByShowId = new Map<number, ActiveStatus>(
+      shows.map((s) => [s.showRef.id, s.status]),
+    );
+    return buildReadyItems(allEpisodes, new Set(), statusByShowId, TODAY);
+  }
+
+  it("prefers a fresh en_cours show over a stale (60j+) one for the hero slot, even with an older backlog", () => {
+    const stale = show(1, "Stale Show"); // earliest backlog episode, but abandoned
+    const fresh = show(2, "Fresh Show");
+    const items = readyItems([
+      { showRef: stale, status: "en_cours", episodes: [ep(stale, 101, 1, 1, "2026-01-01")] },
+      { showRef: fresh, status: "en_cours", episodes: [ep(fresh, 201, 1, 1, "2026-06-01")] },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-04-01T00:00:00.000Z"], // ~98j before TODAY (2026-07-08) -> stale
+      [2, "2026-07-01T00:00:00.000Z"], // ~7j before TODAY -> fresh
+    ]);
+
+    const { hero, reprendre } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2);
+    expect(reprendre.map((i) => i.show.id)).toEqual([1]);
+  });
+
+  it("treats a show with no watch_status row at all (lastWatchedAt unknown) as NOT stale", () => {
+    const neverWatched = show(1, "Never Watched"); // e.g. just marked en_cours, no watch yet
+    const items = readyItems([
+      {
+        showRef: neverWatched,
+        status: "en_cours",
+        episodes: [ep(neverWatched, 101, 1, 1, "2026-01-01")],
+      },
+    ]);
+
+    const { hero } = selectHero(items, TODAY, new Map());
+
+    expect(hero?.show.id).toBe(1);
+  });
+
+  it("falls back to the oldest a_voir show when every en_cours candidate is stale", () => {
+    const staleEnCours = show(1, "Stale");
+    const aVoir = show(2, "A Voir");
+    const items = readyItems([
+      {
+        showRef: staleEnCours,
+        status: "en_cours",
+        episodes: [ep(staleEnCours, 101, 1, 1, "2026-01-01")],
+      },
+      { showRef: aVoir, status: "a_voir", episodes: [ep(aVoir, 201, 1, 1, "2026-01-01")] },
+    ]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-01-01T00:00:00.000Z"]]); // way past 60j
+
+    const { hero, reprendre, nouveau } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2);
+    // The stale en_cours show doesn't disappear — it just isn't the hero.
+    expect(reprendre.map((i) => i.show.id)).toEqual([1]);
+    expect(nouveau).toEqual([]);
+  });
+
+  it("never leaves hero null when readyItems is non-empty: falls back to the stale en_cours itself if nothing else qualifies", () => {
+    const onlyStaleShow = show(1, "Alone And Stale");
+    const items = readyItems([
+      {
+        showRef: onlyStaleShow,
+        status: "en_cours",
+        episodes: [ep(onlyStaleShow, 101, 1, 1, "2026-01-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-01-01T00:00:00.000Z"]]); // way past 60j, no other candidate
+
+    const { hero, reprendre } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(1);
+    expect(reprendre).toEqual([]); // hero isn't duplicated into reprendre
+  });
+
+  it("returns hero: null only when readyItems itself is empty", () => {
+    const { hero, reprendre, nouveau } = selectHero([], TODAY, new Map());
+
+    expect(hero).toBeNull();
+    expect(reprendre).toEqual([]);
+    expect(nouveau).toEqual([]);
   });
 });
