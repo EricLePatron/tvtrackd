@@ -314,8 +314,7 @@ function HomeContent({ data }: { data: HomeData }) {
               {data.reprendre.length > REPRENDRE_VISIBLE_COUNT && (
                 <Link
                   to="/library"
-                  // TODO(commit 4): filter to the "en_cours" tab once
-                  // /library exposes a `status` search-param (see plan step 4).
+                  search={{ status: "en_cours" }}
                   className="font-counter text-[10px] uppercase tracking-widest text-primary"
                 >
                   Voir tout · +{data.reprendre.length - REPRENDRE_VISIBLE_COUNT} à reprendre ›
