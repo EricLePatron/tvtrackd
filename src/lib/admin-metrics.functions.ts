@@ -54,6 +54,8 @@ export type AdminMetrics = {
   topShowsAVoir: TopShow[];
   topShowsEnCours: TopShow[];
   importStats: ImportStats;
+  /** Count all-time sur import_runs, sans borne de date — complète importStats.totalRuns (fenêtré 14j). */
+  importsTotalAllTime: number;
 };
 
 // Supabase RPC call typed as `any` because `has_role` / `admin_watch_activity`
@@ -97,8 +99,9 @@ export const getAdminMetrics = createServerFn({ method: "GET" })
     const totalUsers = (usersPage1 as any)?.total ?? 0;
 
     // Un seul fetch listUsers couvre à la fois la vue 30j (existante) et la
-    // vue horaire 72j fixe (item 4) : la fenêtre de bascule (10/07 -> 17/07)
-    // est entièrement contenue dans les 30 derniers jours vus depuis le 12/07.
+    // vue horaire fixe de 7 jours / 168h (item 4, fenêtre 10/07 -> 17/07) :
+    // cette fenêtre est entièrement contenue dans les 30 derniers jours vus
+    // depuis le 12/07.
     const since30 = new Date();
     since30.setDate(since30.getDate() - 29);
     since30.setHours(0, 0, 0, 0);
@@ -176,15 +179,21 @@ export const getAdminMetrics = createServerFn({ method: "GET" })
       splitShowsByStatus(userShowStatusRows);
 
     // Bloc "Imports" : runs par source/jour, taux d'échec, volume moyen
-    // (runs réussis uniquement), taux de matching TMDb pondéré.
+    // (runs réussis uniquement), taux de matching TMDb pondéré — fenêtré 14j.
+    // + un compteur all-time séparé (importsTotalAllTime), simple count exact
+    // sur un index déjà existant (import_runs_user_created), sans re-fetch des
+    // lignes : garde une visibilité "depuis toujours" à côté du fenêtré.
     const sinceImportStats = new Date();
     sinceImportStats.setDate(sinceImportStats.getDate() - IMPORT_STATS_WINDOW_DAYS);
-    const { data: importRunsRaw } = await admin
-      .from("import_runs")
-      .select(
-        "source, imported_episodes, followed_shows, unmatched_count, total_groups, created_at",
-      )
-      .gte("created_at", sinceImportStats.toISOString());
+    const [{ data: importRunsRaw }, { count: importsTotalAllTime }] = await Promise.all([
+      admin
+        .from("import_runs")
+        .select(
+          "source, imported_episodes, followed_shows, unmatched_count, total_groups, created_at",
+        )
+        .gte("created_at", sinceImportStats.toISOString()),
+      supabaseAdmin.from("import_runs").select("id", { count: "exact", head: true }),
+    ]);
     const importStats = computeImportStats((importRunsRaw ?? []) as ImportRunRaw[]);
 
     return {
@@ -207,5 +216,6 @@ export const getAdminMetrics = createServerFn({ method: "GET" })
       topShowsAVoir,
       topShowsEnCours,
       importStats,
+      importsTotalAllTime: importsTotalAllTime ?? 0,
     };
   });

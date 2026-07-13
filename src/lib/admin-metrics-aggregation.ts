@@ -119,10 +119,14 @@ function isFailedRun(run: ImportRunRaw): boolean {
  *   runs only (failures excluded) — a run that matched nothing shouldn't
  *   drag down "average history volume recovered" for runs that did work.
  * - `matchRate` is a WEIGHTED aggregate — sum(matched) / sum(total_groups)
- *   across runs where `total_groups` is known — rather than an average of
- *   per-run rates, so a run with 500 groups isn't diluted to the same
- *   weight as a run with 2 groups. Runs with `total_groups === null`
- *   (created before that column existed) are excluded, not treated as 0/0;
+ *   across runs where `total_groups` is known and usable — rather than an
+ *   average of per-run rates, so a run with 500 groups isn't diluted to the
+ *   same weight as a run with 2 groups. Two cases are excluded from the
+ *   denominator, not treated as 0/0:
+ *     - `total_groups === null` (run created before that column existed —
+ *       non calculable rétroactivement)
+ *     - `total_groups === 0` (a run with literally nothing to match has no
+ *       matching signal to contribute, positive or negative)
  *   `runsWithMatchData` exposes how many runs fed the rate so the UI can be
  *   transparent about partial historical coverage.
  */

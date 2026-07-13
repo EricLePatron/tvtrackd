@@ -154,6 +154,15 @@ describe("computeImportStats", () => {
     expect(stats.runsWithMatchData).toBe(0);
   });
 
+  it("excludes runs with total_groups = 0 from matchRate, same as null (not 0/0)", () => {
+    const stats = computeImportStats([
+      run({ total_groups: 0, unmatched_count: 0, imported_episodes: 0, followed_shows: 0 }),
+      run({ total_groups: 10, unmatched_count: 2, imported_episodes: 8, followed_shows: 1 }),
+    ]);
+    expect(stats.matchRate).toBeCloseTo(8 / 10, 10);
+    expect(stats.runsWithMatchData).toBe(1);
+  });
+
   it("groups run counts by day and source, defaulting empty source to 'inconnu'", () => {
     const stats = computeImportStats([
       run({ source: "granular", created_at: "2026-07-12T08:00:00.000Z" }),

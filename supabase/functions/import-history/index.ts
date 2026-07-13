@@ -82,7 +82,20 @@ function prefixUpTo<T extends { season_number: number; episode_number: number }>
 // Utilisé par la branche granulaire : chaque item représente un visionnage
 // explicite de la source (TV Time / outils tiers), donc un rewatch détecté doit
 // bien incrémenter watch_count et mettre à jour la date.
-async function upsertGranularWatchStatus(userId: string, episodeId: number, watchedAt: string) {
+//
+// `isApproximate` doit refléter si `watchedAt` vient réellement de la source
+// importée ou si c'est un fallback `now()` faute de date reconnue (voir appel
+// plus bas) : sans ce paramètre, une ligne sans date source retombait sur
+// `watched_at_approximate = false` en dur, alors qu'elle n'a rien de plus fiable
+// qu'un import agrégé — biaisant le DAU/WAU/MAU du dashboard admin exactement
+// comme les lignes agrégées (cf. admin_watch_activity / migration
+// 20260712090000_watch_status_activity_rpc.sql).
+async function upsertGranularWatchStatus(
+  userId: string,
+  episodeId: number,
+  watchedAt: string,
+  isApproximate: boolean,
+) {
   const { data: existing } = await admin
     .from("watch_status")
     .select("id, watch_count")
@@ -95,7 +108,7 @@ async function upsertGranularWatchStatus(userId: string, episodeId: number, watc
       .update({
         watch_count: (existing.watch_count ?? 1) + 1,
         watched_at: watchedAt,
-        watched_at_approximate: false,
+        watched_at_approximate: isApproximate,
       })
       .eq("id", existing.id);
   } else {
@@ -104,7 +117,7 @@ async function upsertGranularWatchStatus(userId: string, episodeId: number, watc
       episode_id: episodeId,
       watch_count: 1,
       watched_at: watchedAt,
-      watched_at_approximate: false,
+      watched_at_approximate: isApproximate,
     });
   }
 }
@@ -260,7 +273,17 @@ Deno.serve(async (req) => {
             .eq("episode_number", it.episode)
             .maybeSingle();
           if (!ep) continue;
-          await upsertGranularWatchStatus(userId, ep.id, it.watched_at ?? new Date().toISOString());
+          // Pas de date source reconnue (it.watched_at absent/null, cf.
+          // normalizeGranularRow dans src/lib/import-parsers.ts) : fallback sur
+          // now(), donc marquée approximative comme un import agrégé — jamais
+          // comptée comme activité réelle par le dashboard admin.
+          const hasSourceDate = it.watched_at != null;
+          await upsertGranularWatchStatus(
+            userId,
+            ep.id,
+            it.watched_at ?? new Date().toISOString(),
+            !hasSourceDate,
+          );
           imported += 1;
         }
       }

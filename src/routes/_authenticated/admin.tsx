@@ -62,17 +62,30 @@ function KpiCard({
   label,
   value,
   muted = false,
+  surface = false,
 }: {
   label: string;
   value: number | string;
   /** Cards mirroring import "noise" rather than real user activity — visually de-emphasized. */
   muted?: boolean;
+  /**
+   * Renders the container on the real design-system tokens (bg-surface /
+   * border-border) instead of the default ad-hoc bg-white/5 / border-white/10.
+   * Opt-in only, scoped to sections built fresh on tokens (e.g. "Imports") —
+   * the default (false) keeps every pre-existing call site byte-for-byte
+   * identical, deliberately not touching that inherited styling here.
+   */
+  surface?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col gap-1">
+    <div
+      className={`rounded-xl border p-4 flex flex-col gap-1 ${
+        surface ? "border-border bg-surface" : "border-white/10 bg-white/5"
+      }`}
+    >
       <span className="font-body text-xs text-white/50 uppercase tracking-widest">{label}</span>
       <span
-        className={`font-mono text-2xl font-bold leading-none ${muted ? "text-white/40" : "text-white"}`}
+        className={`font-mono text-2xl font-bold leading-none ${muted ? "text-muted-foreground" : "text-white"}`}
       >
         {typeof value === "number" ? value.toLocaleString("fr-FR") : value}
       </span>
@@ -117,51 +130,64 @@ function Sparkline({
     markerIndex != null && markerIndex >= 0 && data.length > 1
       ? (markerIndex / (data.length - 1)) * W
       : null;
+  // Label rendu en HTML (pas en <text> SVG) : le viewBox n'est pas carré et
+  // preserveAspectRatio="none" étire le SVG pour remplir son conteneur, ce
+  // qui déforme un glyphe de texte SVG (contrairement à la ligne, protégée
+  // par vectorEffect="non-scaling-stroke"). Un <span> positionné en % au-dessus
+  // du SVG n'est jamais soumis à cet étirement.
+  const markerXPercent = markerX != null ? (markerX / W) * 100 : null;
+  const markerNearRightEdge = markerX != null && markerX > W - 12;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full" aria-hidden>
-      <defs>
-        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#sg)" />
-      <polyline
-        points={polyline}
-        fill="none"
-        stroke="#a78bfa"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      {markerX != null && (
-        <g className="text-primary">
+    <div className="relative h-full w-full">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="h-full w-full"
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill="url(#sg)" />
+        <polyline
+          points={polyline}
+          fill="none"
+          stroke="#a78bfa"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {markerX != null && (
           <line
             x1={markerX}
             y1={0}
             x2={markerX}
             y2={H}
+            className="text-primary"
             stroke="currentColor"
             strokeWidth="0.75"
             strokeDasharray="2,1.5"
             vectorEffect="non-scaling-stroke"
           />
-          {markerLabel && (
-            <text
-              x={markerX}
-              y={7}
-              fontSize="6"
-              textAnchor={markerX > W - 12 ? "end" : "start"}
-              fill="currentColor"
-              className="font-mono"
-            >
-              {markerLabel}
-            </text>
-          )}
-        </g>
+        )}
+      </svg>
+      {markerXPercent != null && markerLabel && (
+        <span
+          className="font-counter absolute top-0.5 text-[9px] whitespace-nowrap text-primary"
+          style={{
+            left: `${markerXPercent}%`,
+            transform: markerNearRightEdge ? "translateX(-100%)" : "translateX(0)",
+          }}
+          aria-hidden
+        >
+          {markerLabel}
+        </span>
       )}
-    </svg>
+    </div>
   );
 }
 
@@ -266,7 +292,7 @@ function AdminDashboard() {
               markerLabel="15/07"
             />
           </div>
-          <div className="mt-2 flex justify-between font-mono text-[10px] text-muted-foreground">
+          <div className="mt-2 flex justify-between font-counter text-[10px] text-muted-foreground">
             <span>{m.signupsSeriesHourly[0]?.hourIso?.slice(0, 10)}</span>
             <span>
               {m.signupsSeriesHourly[m.signupsSeriesHourly.length - 1]?.hourIso?.slice(0, 10)}
@@ -275,45 +301,54 @@ function AdminDashboard() {
         </div>
       </section>
 
-      {/* Imports */}
+      {/* Imports — cette section rend entièrement sur les tokens design system
+          (bg-surface/border-border), y compris les KpiCard (prop `surface`),
+          pour ne pas créer de couture visible avec la table sœur. */}
       <section>
         <h2 className="font-body text-xs text-white/40 uppercase tracking-widest mb-3">
           Imports — 14 derniers jours
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-3">
-          <KpiCard label="Taux d'échec" value={formatPercent(m.importStats.failureRate)} />
+          <KpiCard label="Imports (total)" value={m.importsTotalAllTime} surface />
+          <KpiCard label="Taux d'échec" value={formatPercent(m.importStats.failureRate)} surface />
           <KpiCard
             label="Moy. épisodes importés"
             value={formatAvg(m.importStats.avgImportedEpisodes)}
+            surface
           />
-          <KpiCard label="Moy. séries suivies" value={formatAvg(m.importStats.avgFollowedShows)} />
+          <KpiCard
+            label="Moy. séries suivies"
+            value={formatAvg(m.importStats.avgFollowedShows)}
+            surface
+          />
           <KpiCard
             label="Taux de matching TMDb"
             value={m.importStats.matchRate == null ? "—" : formatPercent(m.importStats.matchRate)}
+            surface
           />
         </div>
         {m.importStats.matchRate != null && (
           <p className="font-body text-xs text-muted-foreground mb-3">
             Calculé sur{" "}
-            <span className="font-mono text-foreground">{m.importStats.runsWithMatchData}</span> /{" "}
-            <span className="font-mono text-foreground">{m.importStats.totalRuns}</span> runs
+            <span className="font-counter text-foreground">{m.importStats.runsWithMatchData}</span>{" "}
+            / <span className="font-counter text-foreground">{m.importStats.totalRuns}</span> runs
             (colonne <span className="font-mono">total_groups</span> absente sur les runs plus
             anciens, non calculable rétroactivement).
           </p>
         )}
-        <div className="rounded-xl border border-border bg-surface divide-y divide-white/5 overflow-hidden">
+        <div className="rounded-xl border border-border bg-surface divide-y divide-border overflow-hidden">
           {m.importStats.bySourceDay.length === 0 ? (
             <p className="px-4 py-3 font-body text-sm text-muted-foreground">Aucun import récent</p>
           ) : (
             [...m.importStats.bySourceDay].reverse().map((row) => (
               <div key={`${row.date}|${row.source}`} className="flex items-center gap-4 px-4 py-3">
-                <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">
+                <span className="font-counter text-xs text-muted-foreground w-20 shrink-0">
                   {row.date.slice(5)}
                 </span>
                 <span className="font-body text-sm text-foreground flex-1 truncate capitalize">
                   {row.source}
                 </span>
-                <span className="font-mono text-sm text-cyan-accent shrink-0">
+                <span className="font-counter text-sm text-cyan-accent shrink-0">
                   {row.runs.toLocaleString("fr-FR")}
                 </span>
               </div>
