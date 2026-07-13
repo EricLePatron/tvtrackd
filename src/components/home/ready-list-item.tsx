@@ -9,12 +9,15 @@ function pad(n: number) {
 }
 
 /**
- * Compact row used for the "Reprendre" / "Nouveau" lists under the hero
- * ticket. Never the "list item per episode" — one row per followed show.
+ * Compact row used for the "Reprendre" list under the hero ticket. Never the
+ * "list item per episode" — one row per followed show. ("À commencer" no
+ * longer uses this row — it renders as a horizontal poster rail instead, see
+ * `start-rail.tsx`.)
  */
 export function ReadyListItem({ item }: { item: ReadyItem }) {
   const { show, nextEpisode, extraCount } = item;
   const markWatched = useMarkWatched();
+  const label = formatReadyLabel(item);
 
   const handleMark = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -40,25 +43,27 @@ export function ReadyListItem({ item }: { item: ReadyItem }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-counter text-[10px] uppercase tracking-widest text-primary">
-          {formatReadyLabel(item)}
-        </p>
+        {/* formatReadyLabel returns null once the backlog is 30j+ old — omit
+            the line entirely rather than rendering an empty eyebrow. */}
+        {label && (
+          <p className="font-counter text-[10px] uppercase tracking-widest text-primary">{label}</p>
+        )}
         <h4 className="mt-0.5 truncate text-sm text-foreground">{show.title}</h4>
         <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
           S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-          {extraCount > 0 && (
-            <span className="ml-2 text-primary">+{extraCount}</span>
-          )}
+          {extraCount > 0 && <span className="ml-2 text-primary">+{extraCount}</span>}
         </p>
       </div>
+      {/* 44px tap target (WCAG 2.5.5) — the visible icon stays small (~16px),
+          only the hitbox grows, matching the hero ticket's own check button. */}
       <button
         type="button"
         onClick={handleMark}
         disabled={markWatched.isPending}
         aria-label="Marquer comme vu"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
       >
-        <Check className="h-3.5 w-3.5" />
+        <Check className="h-4 w-4" />
       </button>
     </Link>
   );

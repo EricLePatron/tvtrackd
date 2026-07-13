@@ -160,6 +160,58 @@ export function buildReadyItems(
 }
 
 /**
+ * Watched/total tally for one show's one season — used to feed the hero
+ * ticket's optional progress fraction (`HeroTicket`'s `progress` prop in
+ * src/routes/_public/index.tsx). Mirrors the season-tally formula already
+ * inline in `buildLibraryProgress` below (filter by `season_number`, count
+ * watched vs length), extracted as its own tiny helper rather than reusing
+ * `buildLibraryProgress` itself — that function is scoped to "next episode
+ * across the whole show", which the hero already knows independently
+ * (`ReadyItem.nextEpisode`), and its existing, well-tested behavior is left
+ * untouched here to avoid any risk of regressing the library grid.
+ */
+export function computeSeasonTally(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  showId: number,
+  seasonNumber: number,
+): { watched: number; total: number } {
+  const seasonEpisodes = episodes.filter(
+    (e) => e.show.id === showId && e.season_number === seasonNumber,
+  );
+  const watched = seasonEpisodes.filter((e) => watchedEpisodeIds.has(e.id)).length;
+  return { watched, total: seasonEpisodes.length };
+}
+
+/**
+ * Whether a `computeSeasonTally` result can be trusted as a *complete*
+ * season total — guards against the hero ticket's progress bar looking
+ * falsely close to 100% for a long-hiatus season. The Home screen's
+ * `episodes` fetch caps the future at J+90 (see index.tsx), so a season
+ * still airing with episodes announced further out than that would have its
+ * `total` silently undercounted by `computeSeasonTally` (which only ever
+ * sees what got fetched). `officialEpisodeCount` is TMDb's own per-season
+ * count (the `seasons.episode_count` cache column, fetched separately —
+ * see index.tsx — only for the hero's own season, a single cheap row
+ * lookup): the tally is only reliable once it has caught up to that
+ * official count. `null`/`undefined` (not yet known, or the season row
+ * isn't cached) is treated as unreliable — fail safe, never fail loud.
+ * `0` is treated the same way: a season legitimately has at least one
+ * episode by the time a hero ticket can point at it, so `episode_count = 0`
+ * only ever means "not populated yet" in the `seasons` cache, never a real
+ * zero-episode season — trusting it would have let a tally of `{ total: 0 }`
+ * through as "reliable" by pure coincidence (`0 >= 0`).
+ */
+export function isSeasonTallyReliable(
+  tally: { total: number },
+  officialEpisodeCount: number | null | undefined,
+): boolean {
+  return (
+    officialEpisodeCount != null && officialEpisodeCount > 0 && tally.total >= officialEpisodeCount
+  );
+}
+
+/**
  * Per-show progress data for the library grid ("En cours" tab): next episode
  * to watch + a tally scoped to that episode's SEASON only (not the whole
  * series). Deliberately NOT built on top of `buildReadyItems` (which needs a
@@ -234,26 +286,115 @@ function byEarliestAirDate(a: ReadyItem, b: ReadyItem) {
 }
 
 /**
- * Hero selection rule: an `en_cours` show with a ready episode always wins the
- * hero slot over any `a_voir` show, no matter how much older the `a_voir`
- * show's backlog is. Falls back to the oldest `a_voir` item only when there is
- * no `en_cours` candidate at all.
+ * Aggregates `watch_status.watched_at` into "most recent watch per show".
+ * Takes rows that already carry `show_id` directly (resolved server-side via
+ * a join — see the home screen's dedicated recency query in
+ * src/routes/_public/index.tsx) rather than resolving `episode_id -> show_id`
+ * through the (air_date-scoped) `episodes` array: an earlier version did the
+ * latter, which silently dropped any watched episode whose cached `air_date`
+ * is unknown (NULL) — common right after a CSV/Betaseries import that has no
+ * per-episode date — making a show watched yesterday look "dormant" simply
+ * because the episode that proves it has no known air date. Decoupling from
+ * `air_date` entirely fixes this at the root instead of patching around it.
  */
-export function selectHero(readyItems: ReadyItem[]): {
+export function buildLastWatchedAtByShow(
+  watchedRows: ReadonlyArray<{ show_id: number; watched_at: string }>,
+): ReadonlyMap<number, string> {
+  const result = new Map<number, string>();
+  for (const row of watchedRows) {
+    const prev = result.get(row.show_id);
+    // Compared as actual instants, not strings — Postgres/Supabase can
+    // serialize timestamptz with varying fractional-second precision, which
+    // would break a naive lexicographic string comparison.
+    if (!prev || new Date(row.watched_at).getTime() > new Date(prev).getTime()) {
+      result.set(row.show_id, row.watched_at);
+    }
+  }
+  return result;
+}
+
+/** A show with no `watch_status` row at all reads as "not stale" (no negative signal), never as "60j+/30j+ dormant". */
+function daysSinceLastWatch(
+  showId: number,
+  today: string,
+  lastWatchedAtByShowId: ReadonlyMap<number, string>,
+): number | null {
+  const lastWatchedAt = lastWatchedAtByShowId.get(showId);
+  if (!lastWatchedAt) return null;
+  return daysBetween(lastWatchedAt.slice(0, 10), today);
+}
+
+/** An `en_cours` show untouched for this many days can no longer win the hero slot (see `selectHero`). */
+export const HERO_STALE_DAYS = 60;
+
+/** An `en_cours` show untouched for this many days drops out of the visible "Reprendre" rows into `reprendreDormant` (see `selectHero`). */
+export const LIST_STALE_DAYS = 30;
+
+/**
+ * Hero selection rule: among `en_cours` shows not stale for the hero slot
+ * (see `HERO_STALE_DAYS`), the one with the oldest ready backlog always wins
+ * over any `a_voir` show, no matter how much older the `a_voir` show's
+ * backlog is. Falls back to the oldest `a_voir` item when there is no fresh
+ * `en_cours` candidate, and — only when neither exists — falls back to the
+ * oldest `en_cours` item even if it IS stale, rather than ever leaving
+ * `hero` null while `readyItems` is non-empty: the 60j guard is a
+ * *preference* for a fresher show, never an absolute exclusion that could
+ * leave Zone A completely blank.
+ *
+ * Beyond the hero, the remaining `en_cours` shows split into `reprendre`
+ * (last watched < `LIST_STALE_DAYS`) and `reprendreDormant` (>=
+ * `LIST_STALE_DAYS`) — the Home screen only ever renders `reprendre`
+ * (capped to 3 rows + a "Voir tout" link), `reprendreDormant` is only
+ * reachable through the library. A show with no watch history at all is
+ * never dormant, same reasoning as the hero guard. Note the two thresholds
+ * are independent: a hero picked from the 30-59j band is still fresh enough
+ * to win the hero slot, it just wouldn't also show up in `reprendre` if it
+ * *hadn't* won hero — no double-counting either way since the hero is
+ * always excluded from both `reprendre` and `reprendreDormant`.
+ */
+export function selectHero(
+  readyItems: ReadyItem[],
+  today: string,
+  lastWatchedAtByShowId: ReadonlyMap<number, string>,
+): {
   hero: ReadyItem | null;
   reprendre: ReadyItem[];
+  reprendreDormant: ReadyItem[];
   nouveau: ReadyItem[];
 } {
   const enCours = readyItems.filter((i) => i.status === "en_cours").sort(byEarliestAirDate);
   const aVoir = readyItems.filter((i) => i.status === "a_voir").sort(byEarliestAirDate);
 
-  if (enCours.length) {
-    return { hero: enCours[0], reprendre: enCours.slice(1), nouveau: aVoir };
+  const daysSince = (item: ReadyItem) =>
+    daysSinceLastWatch(item.show.id, today, lastWatchedAtByShowId);
+  const isHeroStale = (item: ReadyItem) => {
+    const days = daysSince(item);
+    return days !== null && days >= HERO_STALE_DAYS;
+  };
+  const freshEnCours = enCours.filter((i) => !isHeroStale(i));
+
+  let hero: ReadyItem | null = null;
+  if (freshEnCours.length) {
+    hero = freshEnCours[0];
+  } else if (aVoir.length) {
+    hero = aVoir[0];
+  } else if (enCours.length) {
+    hero = enCours[0]; // last-resort fallback — see doc comment above.
   }
-  if (aVoir.length) {
-    return { hero: aVoir[0], reprendre: [], nouveau: aVoir.slice(1) };
+
+  const reprendre: ReadyItem[] = [];
+  const reprendreDormant: ReadyItem[] = [];
+  for (const item of enCours) {
+    if (item.show.id === hero?.show.id) continue; // never duplicate the hero into either list
+    const days = daysSince(item);
+    if (days !== null && days >= LIST_STALE_DAYS) reprendreDormant.push(item);
+    else reprendre.push(item);
   }
-  return { hero: null, reprendre: [], nouveau: [] };
+
+  const nouveau =
+    hero?.status === "a_voir" ? aVoir.filter((i) => i.show.id !== hero!.show.id) : aVoir;
+
+  return { hero, reprendre, reprendreDormant, nouveau };
 }
 
 /**
@@ -361,10 +502,23 @@ export function resolveHomeState(input: {
   return "normal";
 }
 
-/** "En retard · Nj" / "Ce soir" — never the word "à voir" (reserved for the library status). */
-export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): string {
+/**
+ * "En retard · Nj" / "Ce soir" — never the word "à voir" (reserved for the
+ * library status). Degrades as the backlog ages rather than staying in days
+ * forever: 1-6j shows the day count, 7-29j switches to a week count, and
+ * 30j+ shows nothing at all (no "Prêt", no filler word — callers must treat
+ * `null` as "omit this line entirely"). Whatever the bucket, the caller's
+ * styling stays amber (`text-primary`), never red — this function only
+ * decides the text, never a color.
+ */
+export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): string | null {
   if (!item.isLate || item.lateDays === 0) return "Ce soir";
-  return `En retard · ${item.lateDays}j`;
+  if (item.lateDays < 7) return `En retard · ${item.lateDays}j`;
+  if (item.lateDays < 30) {
+    const weeks = Math.max(1, Math.floor(item.lateDays / 7));
+    return `En retard · ${weeks} sem`;
+  }
+  return null;
 }
 
 /** "Aujourd'hui" / "Demain" or a short "Lun. 14 juil" style label, computed in UTC to match `today`. */

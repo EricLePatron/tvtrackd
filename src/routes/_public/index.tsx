@@ -1,18 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
+import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
   addDaysToDateString,
   bucketUpcoming,
+  buildLastWatchedAtByShow,
   buildReadyItems,
+  computeSeasonTally,
   countUpcomingEntries,
   groupUpcomingByDay,
+  isSeasonTallyReliable,
   nextCountdown,
   resolveHomeState,
   selectHero,
@@ -23,6 +27,7 @@ import {
   type ScheduleEpisode,
 } from "@/lib/schedule";
 import { ReadyListItem } from "@/components/home/ready-list-item";
+import { StartRail } from "@/components/home/start-rail";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
 import {
@@ -58,10 +63,15 @@ function pad(n: number) {
   return n.toString().padStart(2, "0");
 }
 
+/** Rows shown before "Reprendre" collapses into a "Voir tout" link. */
+const REPRENDRE_VISIBLE_COUNT = 3;
+
 type HomeData = {
   today: string;
   followedActiveCount: number;
   hero: ReadyItem | null;
+  /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
+  heroProgress: { watched: number; total: number } | null;
   reprendre: ReadyItem[];
   nouveau: ReadyItem[];
   readyCount: number;
@@ -100,6 +110,7 @@ function HomeScreen() {
           today,
           followedActiveCount: 0,
           hero: null,
+          heroProgress: null,
           reprendre: [],
           nouveau: [],
           readyCount: 0,
@@ -112,15 +123,39 @@ function HomeScreen() {
       // No lower bound on the past — a followed show can be arbitrarily late.
       const future = addDaysToDateString(today, 90);
 
-      const { data: eps } = await supabase
-        .from("episodes")
-        .select(
-          "id, season_number, episode_number, title, air_date, still_path, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
-        )
-        .in("show_id", showIds)
-        .not("air_date", "is", null)
-        .lte("air_date", future)
-        .order("air_date", { ascending: true });
+      // The `episodes` fetch and the recency query below are independent of
+      // each other (neither's inputs depend on the other's output — both
+      // only need `showIds`), so they run in parallel rather than as a
+      // waterfall. The `watched_status` (readiness) query further down still
+      // has to wait on `episodes` (it needs `epIds`), so it stays sequential.
+      const [{ data: eps }, { data: recencyRows }] = await Promise.all([
+        supabase
+          .from("episodes")
+          .select(
+            "id, season_number, episode_number, title, air_date, still_path, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
+          )
+          .in("show_id", showIds)
+          .not("air_date", "is", null)
+          .lte("air_date", future)
+          .order("air_date", { ascending: true }),
+        // Dedicated recency query for `selectHero`'s hero/Reprendre freshness
+        // signal — deliberately NOT derived from `episodes`/`watched` below,
+        // which are scoped to `air_date IS NOT NULL` (needed for scheduling,
+        // irrelevant here): a watched episode with no cached air_date (common
+        // right after a CSV/Betaseries import with no per-episode dates) would
+        // otherwise be invisible to the recency signal, making a show watched
+        // yesterday look dormant. Joins straight to `episodes.show_id` so
+        // this is filtered server-side by show id — the response itself is
+        // one row per *watched* episode of a followed show (bounded by the
+        // user's total watch history on followed shows, not by how many
+        // shows they follow), same order of magnitude as the `watched` query
+        // below, not a "potentially huge episode-id list" cost.
+        supabase
+          .from("watch_status")
+          .select("watched_at, episode:episodes!inner(show_id)")
+          .eq("user_id", user!.id)
+          .in("episode.show_id", showIds),
+      ]);
 
       const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
       const epIds = episodes.map((e) => e.id);
@@ -133,8 +168,41 @@ function HomeScreen() {
         : { data: [] };
       const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
 
+      const lastWatchedAtByShowId = buildLastWatchedAtByShow(
+        (
+          (recencyRows ?? []) as unknown as { watched_at: string; episode: { show_id: number } }[]
+        ).map((r) => ({ show_id: r.episode.show_id, watched_at: r.watched_at })),
+      );
+
       const ready = buildReadyItems(episodes, watchedSet, showStatusByShowId, today);
-      const { hero, reprendre, nouveau } = selectHero(ready);
+      // `reprendreDormant` isn't consumed by the UI this lot — dormant shows
+      // are only reachable through /library — but the split itself already
+      // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
+      const { hero, reprendre, nouveau } = selectHero(ready, today, lastWatchedAtByShowId);
+
+      let heroProgress: { watched: number; total: number } | null = null;
+      if (hero) {
+        const tally = computeSeasonTally(
+          episodes,
+          watchedSet,
+          hero.show.id,
+          hero.nextEpisode.season_number,
+        );
+        // One cheap single-row lookup (unique-indexed on show_id+season_number)
+        // for the hero's own season only — never for every followed show —
+        // to know the season's OFFICIAL episode count and confirm `tally`
+        // isn't undercounted by the 90-day future cap above. See
+        // `isSeasonTallyReliable` for why an unreliable tally hides the
+        // fraction/bar entirely rather than risking a falsely-~100% bar.
+        const { data: seasonRow } = await supabase
+          .from("seasons")
+          .select("episode_count")
+          .eq("show_id", hero.show.id)
+          .eq("season_number", hero.nextEpisode.season_number)
+          .maybeSingle();
+        heroProgress = isSeasonTallyReliable(tally, seasonRow?.episode_count) ? tally : null;
+      }
+
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
       const countdown = nextCountdown(episodes, today);
@@ -143,6 +211,7 @@ function HomeScreen() {
         today,
         followedActiveCount: showIds.length,
         hero,
+        heroProgress,
         reprendre,
         nouveau,
         readyCount: ready.length,
@@ -216,9 +285,12 @@ const DEMO_HERO_ITEM: ReadyItem = {
 };
 
 function AnonymousHome() {
-  // Animate the VHS counter's bump once on mount, purely for demo effect —
-  // reuses VhsCounter's own increment logic (triggered by a `watched` prop
-  // change), not a new animation mechanism.
+  // Animate the hero ticket's bump once on mount, purely for demo effect —
+  // reuses HeroTicket's own bump/tween effect (triggered by a `progress.watched`
+  // prop change, the same "compteur mécanique" logic as `VhsCounter`'s bump,
+  // duplicated locally in HeroTicket rather than routed through the shared
+  // `VhsCounter` component — see D2/the "hero" variant removal note in
+  // vhs-counter.tsx), not a new animation mechanism.
   const [demoWatched, setDemoWatched] = useState(2);
   useEffect(() => {
     const id = setTimeout(() => setDemoWatched(3), 600);
@@ -296,15 +368,56 @@ function HomeContent({ data }: { data: HomeData }) {
     <>
       {/* Zone A — À voir maintenant */}
       <div className="mx-5">
-        {data.hero && <HeroTicket item={data.hero} />}
+        {data.hero && (
+          // `key` on show id + season number: forces a fresh mount (so
+          // HeroTicket's local bump/tween state resets instantly) not only
+          // when the hero rotates to a different show, but also when the
+          // SAME show's hero moves to its next season (e.g. marking the
+          // season finale watched from the hero button) — `heroProgress`
+          // resets to a smaller watched/total pair in that case, and without
+          // the season in the key, the tween would animate a misleading
+          // countdown (full bar -> emptying) right as the S/E label already
+          // shows the new season. See also HeroTicket's own defensive guard
+          // for the same scenario, in case this key ever fails to change.
+          <HeroTicket
+            key={`${data.hero.show.id}-${data.hero.nextEpisode.season_number}`}
+            item={data.hero}
+            progress={data.heroProgress ?? undefined}
+          />
+        )}
 
         {data.reprendre.length > 0 && (
           <div className="mt-5">
-            <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              Reprendre
-            </p>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+              <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+                Reprendre
+              </p>
+              {/* "Reprendre" is capped to 3 visible rows — the rest is only
+                  reachable through the library, filtered on the en_cours tab
+                  via the shared status search-param (see library.tsx).
+                  Deliberately worded "+N actives" rather than "+N à
+                  reprendre": the count here only ever includes active
+                  (<30j) shows (never the dormant ones, by design — see
+                  `selectHero`'s LIST_STALE_DAYS split), but the destination
+                  /library?status=en_cours tab shows EVERY en_cours show
+                  (hero + active + dormant + not-yet-ready ones too) — a
+                  strictly larger set. Naming the badge "actives" sets the
+                  right expectation instead of implying it previews the
+                  library tab's exact count. `flex-wrap` + shorter wording
+                  both guard against this row overflowing on narrow (~360px)
+                  viewports. */}
+              {data.reprendre.length > REPRENDRE_VISIBLE_COUNT && (
+                <Link
+                  to="/library"
+                  search={{ status: "en_cours" }}
+                  className="font-counter text-[10px] uppercase tracking-widest text-primary"
+                >
+                  Voir tout · +{data.reprendre.length - REPRENDRE_VISIBLE_COUNT} actives ›
+                </Link>
+              )}
+            </div>
             <div className="space-y-2">
-              {data.reprendre.map((item) => (
+              {data.reprendre.slice(0, REPRENDRE_VISIBLE_COUNT).map((item) => (
                 <ReadyListItem key={item.show.id} item={item} />
               ))}
             </div>
@@ -314,13 +427,9 @@ function HomeContent({ data }: { data: HomeData }) {
         {data.nouveau.length > 0 && (
           <div className="mt-5">
             <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              Nouveau
+              À commencer
             </p>
-            <div className="space-y-2">
-              {data.nouveau.map((item) => (
-                <ReadyListItem key={item.show.id} item={item} />
-              ))}
-            </div>
+            <StartRail items={data.nouveau} />
           </div>
         )}
       </div>
@@ -393,16 +502,113 @@ function HeroTicket({
   /** `false` renders a static `div` instead of a `Link` — the anonymous demo hero isn't navigable. */
   interactive?: boolean;
   /**
-   * Fabricated season watched/total fraction — only the anonymous demo hero
-   * supplies this (to demonstrate VhsCounter's bump animation). The real,
-   * signed-in hero has no season-progress data fetched yet, so it omits
-   * this and `VhsCounter` renders a single line.
+   * Season watched/total fraction. The anonymous demo hero supplies a
+   * fabricated pair (to demonstrate the bump animation); the real,
+   * signed-in hero supplies `heroProgress`, computed via `computeSeasonTally`
+   * (see `HomeScreen`'s queryFn) from data already fetched for the Home
+   * schedule — no extra request. Left `undefined` only when there's no hero
+   * at all (nothing to compute a tally for); a real hero always has at
+   * least its own `nextEpisode` in that season, so `total` is never 0 once
+   * `progress` is supplied.
    */
   progress?: { watched: number; total: number };
 }) {
   const { show, nextEpisode } = item;
   const backdropUrl = nextEpisode.still_path ?? show.backdrop_path ?? show.poster_path;
   const markWatched = useMarkWatched();
+  // `formatReadyLabel` returns null once the backlog is 30j+ old — the badge
+  // override (demo hero's "Exemple") always wins when supplied, otherwise
+  // omit the eyebrow line entirely rather than rendering nothing/empty.
+  const eyebrowLabel = badge?.label ?? formatReadyLabel(item);
+
+  // Signature "compteur mécanique" bump: ticks `display` up to the new
+  // `progress.watched` in a few steps (rather than jumping instantly) and
+  // flashes cyan + a slight scale while it does, for ~240ms — the exact same
+  // math as `VhsCounter`'s own bump effect, duplicated here on purpose: the
+  // hero ticket's sober markup is hand-rolled (see the removed dead "hero"
+  // variant note in vhs-counter.tsx), not routed through the shared
+  // component, so this keeps the *visual* signature consistent without
+  // merging the two. Callers rely on the parent giving this component a
+  // fresh `key` (see `HomeContent`) whenever the underlying show OR season
+  // changes, so a hero rotation never gets misread as "just watched one more
+  // episode".
+  const [display, setDisplay] = useState(progress?.watched ?? 0);
+  const [bump, setBump] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  // Last {watched, total} pair this effect has seen — the backstop below
+  // compares against this rather than the (possibly still-tweening)
+  // `display` state, so the comparison is stable regardless of where a
+  // previous tween had gotten to.
+  const prevProgressRef = useRef(progress);
+  useEffect(() => {
+    if (progress === undefined) return;
+    const prev = prevProgressRef.current;
+    prevProgressRef.current = progress;
+
+    if (display === progress.watched) return;
+
+    // Defensive backstop — the composite `key={show.id}-${season_number}`
+    // on the parent call site (HomeContent) is the PRIMARY fix for a season
+    // rollover on the SAME hero show (e.g. the season finale just got
+    // marked watched from this very ticket): it forces a fresh mount
+    // whenever the season changes, so in practice this effect never even
+    // runs across that transition. This is only a secondary safety net for
+    // if that key were ever to fail to change.
+    //
+    // Detects a genuine context reset by comparing `total` against the
+    // previous render, not by the magnitude/direction of the `watched`
+    // change — magnitude alone can't tell a large-but-legitimate
+    // multi-episode increment or rollback WITHIN the same season (which
+    // must always keep animating, however big the jump) apart from an
+    // actual rollover to a different season/show (e.g. S1 10/10 -> S2
+    // 0/13: a naive "did display shrink past the new total" check misses
+    // this, since 10 is not > 13). `total` is scoped to one specific
+    // season and, in practice, doesn't shift mid-season on its own — so
+    // "same total as last time" is treated as proof of "still the same
+    // season", and any `watched` change within it (up or down, any size)
+    // is safe to animate normally; "different total" is treated as proof
+    // of a context change, and jumps instantly with no tween/bump.
+    const contextReset = prev !== undefined && progress.total !== prev.total;
+    if (contextReset) {
+      setDisplay(progress.watched);
+      return;
+    }
+
+    if (prefersReducedMotion) {
+      // No tween, no scale — jump straight to the new value. The cyan color
+      // cue (via `bump`, applied below without `scale-110`) is kept: a color
+      // swap isn't the kind of motion `prefers-reduced-motion` is meant to
+      // suppress.
+      setDisplay(progress.watched);
+      setBump(true);
+      const timeoutId = setTimeout(() => setBump(false), 200);
+      return () => clearTimeout(timeoutId);
+    }
+
+    setBump(true);
+    const target = progress.watched;
+    const diff = target - display;
+    const steps = Math.min(Math.abs(diff), 6);
+    const step = diff / (steps || 1);
+    let i = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const intervalId = setInterval(() => {
+      i += 1;
+      setDisplay((d) => (i >= steps ? target : Math.round(d + step)));
+      if (i >= steps) {
+        clearInterval(intervalId);
+        timeoutId = setTimeout(() => setBump(false), 200);
+      }
+    }, 40);
+    return () => {
+      clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress?.watched, progress?.total, prefersReducedMotion]);
+
+  const displayTotal = progress?.total ?? 0;
+  const pct = displayTotal > 0 ? Math.min(100, (display / displayTotal) * 100) : 0;
 
   const handleMark = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -416,11 +622,7 @@ function HeroTicket({
       {/* Full-bleed TMDb backdrop used as the card's atmosphere. */}
       {backdropUrl && (
         <div aria-hidden className="absolute inset-0">
-          <img
-            src={backdropUrl}
-            alt=""
-            className="h-full w-full object-cover"
-          />
+          <img src={backdropUrl} alt="" className="h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 to-transparent" />
         </div>
@@ -428,46 +630,70 @@ function HeroTicket({
 
       <div className="relative flex h-full flex-col justify-end p-4">
         <div className="space-y-1">
-          <p
-            className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
-          >
-            {badge?.label ?? formatReadyLabel(item)}
-          </p>
+          {eyebrowLabel && (
+            <p
+              className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
+            >
+              {eyebrowLabel}
+            </p>
+          )}
           <h2 className="font-display text-xl leading-tight text-foreground line-clamp-2">
             {show.title}
           </h2>
-          <p className="text-sm text-muted-foreground line-clamp-1">
-            {nextEpisode.title ?? "—"}
-          </p>
+          <p className="text-sm text-muted-foreground line-clamp-1">{nextEpisode.title ?? "—"}</p>
         </div>
 
         <div className="mt-4 flex items-end justify-between gap-3">
-          <div className="flex items-baseline gap-2 rounded-md border border-border/60 bg-surface-elevated/90 px-3 py-1.5 backdrop-blur-sm">
-            <span className="font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              S{pad(nextEpisode.season_number)}
-            </span>
-            <span className="font-counter text-3xl leading-none tracking-tight text-primary">
-              E{pad(nextEpisode.episode_number)}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {progress && (
-              <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
-                {pad(progress.watched)}/{pad(progress.total)}
+          {/*
+            Sober mechanical counter: one uniform-size mono line (no boxed
+            pastille, no S-vs-E size mismatch), a discreet fraction on the
+            right (only when season-progress data is available), and a thin
+            2px amber bar underneath — never a bordered/backdrop-blur box.
+          */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-3">
+              {/* Deliberately `text-foreground` (white), not `text-primary`
+                  (amber): unlike `VhsCounter`'s S/E line (always amber, see
+                  its own comment), the hero's S/E is the validated sober
+                  design — amber is reserved for the progress bar below, the
+                  S/E line itself stays neutral. Do not "fix" this to match
+                  VhsCounter's amber convention; it's an intentional,
+                  validated divergence for this specific ticket. */}
+              <span className="font-counter text-base uppercase tracking-widest text-foreground">
+                S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
               </span>
-            )}
-            {interactive && (
-              <button
-                type="button"
-                onClick={handleMark}
-                disabled={markWatched.isPending}
-                aria-label="Marquer comme vu"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/15 text-cyan-accent backdrop-blur-sm transition-colors hover:bg-cyan-accent/25 disabled:opacity-50"
-              >
-                <Check className="h-5 w-5" />
-              </button>
+              {progress && (
+                <span
+                  className={`font-counter text-xs uppercase tracking-widest transition-transform ${
+                    bump ? "text-cyan-accent" : "text-muted-foreground"
+                  } ${bump && !prefersReducedMotion ? "scale-110" : ""}`}
+                >
+                  {pad(display)} / {pad(progress.total)}
+                </span>
+              )}
+            </div>
+            {progress && (
+              <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
+                <div
+                  className={`h-full transition-[width,background-color] duration-300 ease-out ${
+                    bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
+                  }`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
             )}
           </div>
+          {interactive && (
+            <button
+              type="button"
+              onClick={handleMark}
+              disabled={markWatched.isPending}
+              aria-label="Marquer comme vu"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/15 text-cyan-accent backdrop-blur-sm transition-colors hover:bg-cyan-accent/25 disabled:opacity-50"
+            >
+              <Check className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
     </>

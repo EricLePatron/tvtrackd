@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
 
 type VhsCounterProps =
   | {
@@ -21,31 +22,19 @@ type VhsCounterProps =
       nextEpisodeNumber: number;
       watched: number;
       total: number;
-    }
-  | {
-      /**
-       * Enlarged pastille for the Home "Ce soir" hero ticket (real hero and
-       * anonymous demo hero alike). Line 1 = next episode to watch, same
-       * semantics as "grid". `watched`/`total` are deliberately optional: the
-       * signed-in hero currently has no season-progress data fetched into
-       * `ReadyItem`, so it renders a single line (SxxExx only). The
-       * anonymous demo hero supplies fabricated `watched`/`total` to show
-       * the full two-line fraction + bump animation — the app's signature
-       * "compteur mécanique" — right on the first screen.
-       */
-      variant: "hero";
-      seasonNumber: number;
-      nextEpisodeNumber: number;
-      watched?: number;
-      total?: number;
     };
+// NB: there used to be a third "hero" variant here (an enlarged pastille
+// meant for the Home "Ce soir" ticket). It was removed as dead code — the
+// hero ticket (`HeroTicket` in src/routes/_public/index.tsx) never actually
+// consumed it; it has always hand-rolled its own markup, which now
+// implements the same sober mono-line + bump animation independently (see
+// that file's `HeroTicket` component for the equivalent tween logic).
 
 export function VhsCounter(props: VhsCounterProps) {
   const { seasonNumber, watched, total } = props;
   const isGrid = props.variant === "grid";
-  const isHero = props.variant === "hero";
-  const lineOneEpisode = isGrid || isHero ? props.nextEpisodeNumber : props.lastEpisode;
-  const showFraction = watched !== undefined && total !== undefined;
+  const lineOneEpisode = isGrid ? props.nextEpisodeNumber : props.lastEpisode;
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const [display, setDisplay] = useState(watched ?? 0);
   const [bump, setBump] = useState(false);
@@ -53,33 +42,46 @@ export function VhsCounter(props: VhsCounterProps) {
   useEffect(() => {
     if (watched === undefined) return;
     if (display === watched) return;
+
+    if (prefersReducedMotion) {
+      // No tween, no scale — jump straight to the new value. The cyan color
+      // cue (via `bump`, applied in the JSX below without `scale-110`) is
+      // kept: a color swap isn't the kind of motion `prefers-reduced-motion`
+      // is meant to suppress.
+      setDisplay(watched);
+      setBump(true);
+      const timeoutId = setTimeout(() => setBump(false), 200);
+      return () => clearTimeout(timeoutId);
+    }
+
     setBump(true);
     const diff = watched - display;
     const steps = Math.min(Math.abs(diff), 6);
     const step = diff / (steps || 1);
     let i = 0;
-    const id = setInterval(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const intervalId = setInterval(() => {
       i += 1;
       setDisplay((d) => (i >= steps ? watched : Math.round(d + step)));
       if (i >= steps) {
-        clearInterval(id);
-        setTimeout(() => setBump(false), 200);
+        clearInterval(intervalId);
+        timeoutId = setTimeout(() => setBump(false), 200);
       }
     }, 40);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watched]);
+  }, [watched, prefersReducedMotion]);
 
   const pad = (n: number) => n.toString().padStart(2, "0");
 
-  // S/E line color — deliberately `text-primary` (amber) across all three
+  // S/E line color — deliberately `text-primary` (amber) across both
   // variants, never `text-cyan-accent`. Amber = action/CTA/"en cours" per
   // the design system; cyan is reserved for "vu"/success. The S/E line
   // always names the *next episode to watch*, not one already watched, so
-  // amber is the semantically correct choice here — including on the "hero"
-  // variant, even though the hand-rolled pastille it replaced happened to
-  // render this line in cyan. Do not "restore" cyan on this line thinking
-  // it's a regression; it isn't.
+  // amber is the semantically correct choice here.
   if (isGrid) {
     const pct = total ? Math.min(100, (display / total) * 100) : 0;
     return (
@@ -97,26 +99,7 @@ export function VhsCounter(props: VhsCounterProps) {
     );
   }
 
-  if (isHero) {
-    return (
-      <div className="flex items-center justify-between rounded-md bg-surface-elevated px-3 py-1.5 font-counter text-sm uppercase tracking-widest">
-        {/* Amber, not cyan — see the note above this if/else chain. */}
-        <span className="text-primary">
-          S{pad(seasonNumber)} E{pad(lineOneEpisode)}
-        </span>
-        {showFraction && (
-          <span
-            className={`transition-transform ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
-          >
-            {pad(display)}/{pad(total ?? 0)}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  // Only "detail" (the default) reaches here — its type guarantees
-  // `watched`/`total` are required numbers, unlike "hero"'s optional pair.
+  // Only "detail" (the default) reaches here.
   const detailWatched = watched as number;
   const detailTotal = total as number;
   const pct = detailTotal ? Math.min(100, (detailWatched / detailTotal) * 100) : 0;
@@ -128,11 +111,19 @@ export function VhsCounter(props: VhsCounterProps) {
           S{pad(seasonNumber)} E{pad(lineOneEpisode)}
         </span>
         <span
-          className={`transition-transform ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
+          className={`transition-transform ${bump ? "text-cyan-accent" : "text-foreground"} ${
+            bump && !prefersReducedMotion ? "scale-110" : ""
+          }`}
         >
           {pad(display)}/{pad(detailTotal)}
         </span>
       </div>
+      {/* Unlike "grid"'s bar (above), this one is deliberately always
+          `bg-primary`, never flashing cyan on bump — a pre-existing,
+          intentional divergence (only the fraction text flashes here), left
+          as-is: this is the show detail page, a separate screen from the
+          library grid/Home hero, and changing its bar treatment now would
+          be an unrelated risk on a screen this pass isn't touching. */}
       <div className="mt-2 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
         <div
           className="h-full bg-primary transition-[width] duration-300 ease-out"
