@@ -160,6 +160,30 @@ export function buildReadyItems(
 }
 
 /**
+ * Watched/total tally for one show's one season — used to feed the hero
+ * ticket's optional progress fraction (`HeroTicket`'s `progress` prop in
+ * src/routes/_public/index.tsx). Mirrors the season-tally formula already
+ * inline in `buildLibraryProgress` below (filter by `season_number`, count
+ * watched vs length), extracted as its own tiny helper rather than reusing
+ * `buildLibraryProgress` itself — that function is scoped to "next episode
+ * across the whole show", which the hero already knows independently
+ * (`ReadyItem.nextEpisode`), and its existing, well-tested behavior is left
+ * untouched here to avoid any risk of regressing the library grid.
+ */
+export function computeSeasonTally(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  showId: number,
+  seasonNumber: number,
+): { watched: number; total: number } {
+  const seasonEpisodes = episodes.filter(
+    (e) => e.show.id === showId && e.season_number === seasonNumber,
+  );
+  const watched = seasonEpisodes.filter((e) => watchedEpisodeIds.has(e.id)).length;
+  return { watched, total: seasonEpisodes.length };
+}
+
+/**
  * Per-show progress data for the library grid ("En cours" tab): next episode
  * to watch + a tally scoped to that episode's SEASON only (not the whole
  * series). Deliberately NOT built on top of `buildReadyItems` (which needs a
@@ -280,6 +304,9 @@ function daysSinceLastWatch(
 /** An `en_cours` show untouched for this many days can no longer win the hero slot (see `selectHero`). */
 export const HERO_STALE_DAYS = 60;
 
+/** An `en_cours` show untouched for this many days drops out of the visible "Reprendre" rows into `reprendreDormant` (see `selectHero`). */
+export const LIST_STALE_DAYS = 30;
+
 /**
  * Hero selection rule: among `en_cours` shows not stale for the hero slot
  * (see `HERO_STALE_DAYS`), the one with the oldest ready backlog always wins
@@ -290,6 +317,17 @@ export const HERO_STALE_DAYS = 60;
  * `hero` null while `readyItems` is non-empty: the 60j guard is a
  * *preference* for a fresher show, never an absolute exclusion that could
  * leave Zone A completely blank.
+ *
+ * Beyond the hero, the remaining `en_cours` shows split into `reprendre`
+ * (last watched < `LIST_STALE_DAYS`) and `reprendreDormant` (>=
+ * `LIST_STALE_DAYS`) — the Home screen only ever renders `reprendre`
+ * (capped to 3 rows + a "Voir tout" link), `reprendreDormant` is only
+ * reachable through the library. A show with no watch history at all is
+ * never dormant, same reasoning as the hero guard. Note the two thresholds
+ * are independent: a hero picked from the 30-59j band is still fresh enough
+ * to win the hero slot, it just wouldn't also show up in `reprendre` if it
+ * *hadn't* won hero — no double-counting either way since the hero is
+ * always excluded from both `reprendre` and `reprendreDormant`.
  */
 export function selectHero(
   readyItems: ReadyItem[],
@@ -298,13 +336,16 @@ export function selectHero(
 ): {
   hero: ReadyItem | null;
   reprendre: ReadyItem[];
+  reprendreDormant: ReadyItem[];
   nouveau: ReadyItem[];
 } {
   const enCours = readyItems.filter((i) => i.status === "en_cours").sort(byEarliestAirDate);
   const aVoir = readyItems.filter((i) => i.status === "a_voir").sort(byEarliestAirDate);
 
+  const daysSince = (item: ReadyItem) =>
+    daysSinceLastWatch(item.show.id, today, lastWatchedAtByShowId);
   const isHeroStale = (item: ReadyItem) => {
-    const days = daysSinceLastWatch(item.show.id, today, lastWatchedAtByShowId);
+    const days = daysSince(item);
     return days !== null && days >= HERO_STALE_DAYS;
   };
   const freshEnCours = enCours.filter((i) => !isHeroStale(i));
@@ -318,11 +359,19 @@ export function selectHero(
     hero = enCours[0]; // last-resort fallback — see doc comment above.
   }
 
-  const reprendre = enCours.filter((i) => i.show.id !== hero?.show.id);
+  const reprendre: ReadyItem[] = [];
+  const reprendreDormant: ReadyItem[] = [];
+  for (const item of enCours) {
+    if (item.show.id === hero?.show.id) continue; // never duplicate the hero into either list
+    const days = daysSince(item);
+    if (days !== null && days >= LIST_STALE_DAYS) reprendreDormant.push(item);
+    else reprendre.push(item);
+  }
+
   const nouveau =
     hero?.status === "a_voir" ? aVoir.filter((i) => i.show.id !== hero!.show.id) : aVoir;
 
-  return { hero, reprendre, nouveau };
+  return { hero, reprendre, reprendreDormant, nouveau };
 }
 
 /**

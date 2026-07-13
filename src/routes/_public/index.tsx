@@ -12,6 +12,7 @@ import {
   bucketUpcoming,
   buildLastWatchedAtByShow,
   buildReadyItems,
+  computeSeasonTally,
   countUpcomingEntries,
   groupUpcomingByDay,
   nextCountdown,
@@ -49,6 +50,8 @@ type HomeData = {
   today: string;
   followedActiveCount: number;
   hero: ReadyItem | null;
+  /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
+  heroProgress: { watched: number; total: number } | null;
   reprendre: ReadyItem[];
   nouveau: ReadyItem[];
   readyCount: number;
@@ -87,6 +90,7 @@ function HomeScreen() {
           today,
           followedActiveCount: 0,
           hero: null,
+          heroProgress: null,
           reprendre: [],
           nouveau: [],
           readyCount: 0,
@@ -127,7 +131,13 @@ function HomeScreen() {
       const lastWatchedAtByShowId = buildLastWatchedAtByShow(episodes, watchedRows);
 
       const ready = buildReadyItems(episodes, watchedSet, showStatusByShowId, today);
+      // `reprendreDormant` isn't consumed by the UI this lot — dormant shows
+      // are only reachable through /library — but the split itself already
+      // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
       const { hero, reprendre, nouveau } = selectHero(ready, today, lastWatchedAtByShowId);
+      const heroProgress = hero
+        ? computeSeasonTally(episodes, watchedSet, hero.show.id, hero.nextEpisode.season_number)
+        : null;
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
       const countdown = nextCountdown(episodes, today);
@@ -136,6 +146,7 @@ function HomeScreen() {
         today,
         followedActiveCount: showIds.length,
         hero,
+        heroProgress,
         reprendre,
         nouveau,
         readyCount: ready.length,
@@ -289,7 +300,7 @@ function HomeContent({ data }: { data: HomeData }) {
     <>
       {/* Zone A — À voir maintenant */}
       <div className="mx-5">
-        {data.hero && <HeroTicket item={data.hero} />}
+        {data.hero && <HeroTicket item={data.hero} progress={data.heroProgress ?? undefined} />}
 
         {data.reprendre.length > 0 && (
           <div className="mt-5">
@@ -397,10 +408,14 @@ function HeroTicket({
   /** `false` renders a static `div` instead of a `Link` — the anonymous demo hero isn't navigable. */
   interactive?: boolean;
   /**
-   * Fabricated season watched/total fraction — only the anonymous demo hero
-   * supplies this (to demonstrate VhsCounter's bump animation). The real,
-   * signed-in hero has no season-progress data fetched yet, so it omits
-   * this and `VhsCounter` renders a single line.
+   * Season watched/total fraction. The anonymous demo hero supplies a
+   * fabricated pair (to demonstrate the bump animation); the real,
+   * signed-in hero supplies `heroProgress`, computed via `computeSeasonTally`
+   * (see `HomeScreen`'s queryFn) from data already fetched for the Home
+   * schedule — no extra request. Left `undefined` only when there's no hero
+   * at all (nothing to compute a tally for); a real hero always has at
+   * least its own `nextEpisode` in that season, so `total` is never 0 once
+   * `progress` is supplied.
    */
   progress?: { watched: number; total: number };
 }) {

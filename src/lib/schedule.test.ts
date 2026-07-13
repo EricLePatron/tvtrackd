@@ -3,6 +3,7 @@ import {
   buildLastWatchedAtByShow,
   buildLibraryProgress,
   buildReadyItems,
+  computeSeasonTally,
   formatReadyLabel,
   getDayLabelParts,
   selectHero,
@@ -361,10 +362,14 @@ describe("selectHero", () => {
       [2, "2026-07-01T00:00:00.000Z"], // ~7j before TODAY -> fresh
     ]);
 
-    const { hero, reprendre } = selectHero(items, TODAY, lastWatchedAtByShowId);
+    const { hero, reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
 
     expect(hero?.show.id).toBe(2);
-    expect(reprendre.map((i) => i.show.id)).toEqual([1]);
+    // The stale show is also >=30j dormant here, so it lands in
+    // reprendreDormant rather than the visible reprendre list — it doesn't
+    // vanish, it's just not one of the 3 visible "Reprendre" rows.
+    expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
   });
 
   it("treats a show with no watch_status row at all (lastWatchedAt unknown) as NOT stale", () => {
@@ -395,11 +400,17 @@ describe("selectHero", () => {
     ]);
     const lastWatchedAtByShowId = new Map([[1, "2026-01-01T00:00:00.000Z"]]); // way past 60j
 
-    const { hero, reprendre, nouveau } = selectHero(items, TODAY, lastWatchedAtByShowId);
+    const { hero, reprendre, reprendreDormant, nouveau } = selectHero(
+      items,
+      TODAY,
+      lastWatchedAtByShowId,
+    );
 
     expect(hero?.show.id).toBe(2);
-    // The stale en_cours show doesn't disappear — it just isn't the hero.
-    expect(reprendre.map((i) => i.show.id)).toEqual([1]);
+    // The stale en_cours show doesn't disappear — it's also >=30j dormant,
+    // so it lands in reprendreDormant rather than the visible reprendre list.
+    expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
     expect(nouveau).toEqual([]);
   });
 
@@ -426,5 +437,109 @@ describe("selectHero", () => {
     expect(hero).toBeNull();
     expect(reprendre).toEqual([]);
     expect(nouveau).toEqual([]);
+  });
+
+  it("splits non-hero en_cours shows into active reprendre (<30j) and reprendreDormant (>=30j)", () => {
+    // Distinct air_dates (heroShow earliest) so hero selection isn't left to
+    // the show-title tie-break — it must unambiguously be the show with the
+    // oldest ready backlog among the fresh (<60j) candidates.
+    const heroShow = show(1, "Hero");
+    const active = show(2, "Active");
+    const dormant = show(3, "Dormant");
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2025-12-01")] },
+      { showRef: active, status: "en_cours", episodes: [ep(active, 201, 1, 1, "2026-01-15")] },
+      { showRef: dormant, status: "en_cours", episodes: [ep(dormant, 301, 1, 1, "2026-02-01")] },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // 1j — freshest, wins hero
+      [2, "2026-06-20T00:00:00.000Z"], // ~18j — active
+      [3, "2026-05-01T00:00:00.000Z"], // ~68j — dormant
+    ]);
+
+    const { hero, reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(1);
+    expect(reprendre.map((i) => i.show.id)).toEqual([2]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([3]);
+  });
+
+  it("treats the 30j boundary itself as dormant (>=, not >)", () => {
+    const heroShow = show(1, "Hero");
+    const boundary = show(2, "Boundary");
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2025-12-01")] },
+      {
+        showRef: boundary,
+        status: "en_cours",
+        episodes: [ep(boundary, 201, 1, 1, "2026-01-15")],
+      },
+    ]);
+    // Exactly 30 days before TODAY (2026-07-08).
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"],
+      [2, "2026-06-08T00:00:00.000Z"],
+    ]);
+
+    const { reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([2]);
+  });
+
+  it("never counts a show with no watch history at all as dormant", () => {
+    const heroShow = show(1, "Hero");
+    const neverWatched = show(2, "Never Watched");
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2025-12-01")] },
+      {
+        showRef: neverWatched,
+        status: "en_cours",
+        episodes: [ep(neverWatched, 201, 1, 1, "2026-01-15")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-07-07T00:00:00.000Z"]]); // show 2 absent entirely
+
+    const { reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(reprendre.map((i) => i.show.id)).toEqual([2]);
+    expect(reprendreDormant).toEqual([]);
+  });
+});
+
+describe("computeSeasonTally", () => {
+  it("scopes watched/total to the given show + season only", () => {
+    const s1 = show(1);
+    const s2 = show(2);
+    const episodes = [
+      ep(s1, 101, 1, 1, "2026-01-01"),
+      ep(s1, 102, 1, 2, "2026-01-08"),
+      ep(s1, 201, 2, 1, "2026-02-01"), // different season, same show — excluded
+      ep(s2, 901, 1, 1, "2026-01-01"), // different show, same season number — excluded
+    ];
+    const watched = new Set([101, 201, 901]);
+
+    const result = computeSeasonTally(episodes, watched, 1, 1);
+
+    expect(result).toEqual({ watched: 1, total: 2 });
+  });
+
+  it("returns { watched: 0, total: 0 } when the show/season combination isn't present", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
+
+    const result = computeSeasonTally(episodes, new Set(), 1, 99);
+
+    expect(result).toEqual({ watched: 0, total: 0 });
+  });
+
+  it("ignores rewatch magnitude — set membership alone counts an episode as watched", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
+    const watched = new Set([101]);
+
+    const result = computeSeasonTally(episodes, watched, 1, 1);
+
+    expect(result).toEqual({ watched: 1, total: 2 });
   });
 });
