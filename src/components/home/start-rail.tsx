@@ -35,13 +35,21 @@ export function StartRail({ items }: { items: ReadyItem[] }) {
       {hiddenCount > 0 && (
         // Clickable — parity with "Reprendre"'s own "Voir tout" overflow
         // link, filtered to the a_voir tab (this rail's own status).
+        // Deliberately styled `text-primary` + a trailing chevron (matching
+        // "Voir tout" exactly) rather than DayRail's inert `+N` treatment —
+        // that one is never clickable, so reusing its muted, chevron-less
+        // look here would read as a dead-end rather than an affordance.
+        // `snap-start` matches the poster cards before it (`StartCard`
+        // below); it was missing initially, which let this card sit outside
+        // the rail's scroll-snap rhythm.
         <Link
           to="/library"
           search={{ status: "a_voir" }}
-          className="flex w-32 shrink-0 items-center justify-center"
+          aria-label={`Voir toutes les séries à commencer (+${hiddenCount})`}
+          className="flex w-32 shrink-0 snap-start items-center justify-center"
         >
-          <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-            +{hiddenCount}
+          <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
+            +{hiddenCount} ›
           </span>
         </Link>
       )}
