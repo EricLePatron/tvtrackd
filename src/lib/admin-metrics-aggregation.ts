@@ -8,6 +8,66 @@ export type SignupDay = { date: string; count: number };
 export type SignupHour = { hourIso: string; count: number };
 export type TopShow = { title: string; followers: number };
 
+// ─── Signups pagination (Supabase Admin listUsers) ───────────────────────
+
+export type ListUsersPage = {
+  users: { created_at: string | null }[];
+  /** Whether another page exists — mirrors `data.nextPage != null` from supabase-js's listUsers(). */
+  hasNextPage: boolean;
+};
+
+export type ListUsersPageFetcher = (page: number, perPage: number) => Promise<ListUsersPage>;
+
+/**
+ * Walks `supabase.auth.admin.listUsers` page by page (via the injected
+ * `fetchPage`, so this stays testable without a live Supabase client) and
+ * returns every `created_at` for users created on/after `sinceIso`.
+ *
+ * Replaces a previous single-page `listUsers({ perPage: 1000 })` call, which
+ * silently under-counted signups (and therefore DAU-adjacent series/totals)
+ * past 1000 total users — exactly the failure mode a TV Time migration
+ * signup spike would trigger.
+ *
+ * Stops early once a page yields a user older than `sinceIso`: GoTrue's
+ * `/admin/users` endpoint sorts by `created_at DESC` by default (confirmed
+ * in supabase/auth, internal/api/admin.go — `sort(r, ..., []models.SortField
+ * {{Name: CreatedAt, Dir: Descending}})`), and neither this codebase nor the
+ * supabase-js client override that default here, so once one user is older
+ * than the window every subsequent user (rest of the page + all later pages)
+ * is guaranteed older too. If that ordering assumption were ever wrong, this
+ * would under-, not over-, count — same class of bug as the one being fixed,
+ * so if GoTrue's default sort ever changes, this needs revisiting alongside it.
+ */
+export async function paginateSignupsSince(
+  fetchPage: ListUsersPageFetcher,
+  sinceIso: string,
+  options?: { perPage?: number; maxPages?: number },
+): Promise<string[]> {
+  const perPage = options?.perPage ?? 1000;
+  // Safety valve against a runaway loop (e.g. a broken `hasNextPage`) — never
+  // hit in practice at current/expected scale, just a bound.
+  const maxPages = options?.maxPages ?? 200;
+  const since = new Date(sinceIso).getTime();
+  const result: string[] = [];
+
+  let page = 1;
+  while (page <= maxPages) {
+    const { users, hasNextPage } = await fetchPage(page, perPage);
+    let crossedWindowBoundary = false;
+    for (const u of users) {
+      if (!u.created_at) continue;
+      if (new Date(u.created_at).getTime() < since) {
+        crossedWindowBoundary = true;
+        break;
+      }
+      result.push(u.created_at);
+    }
+    if (crossedWindowBoundary || !hasNextPage) break;
+    page += 1;
+  }
+  return result;
+}
+
 // ─── Signups bucketing ───────────────────────────────────────────────────
 
 /**

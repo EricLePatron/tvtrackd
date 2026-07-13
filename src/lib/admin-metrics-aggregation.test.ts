@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   bucketSignupsByDay,
   bucketSignupsByHour,
   computeImportStats,
   findHourMarkerIndex,
+  paginateSignupsSince,
   splitShowsByStatus,
   type ImportRunRaw,
+  type ListUsersPage,
   type UserShowStatusRow,
 } from "./admin-metrics-aggregation";
 
@@ -86,6 +88,85 @@ describe("findHourMarkerIndex", () => {
   it("returns null when the marker falls outside the bucketed range", () => {
     const hours = bucketSignupsByHour([], "2026-07-10T00:00:00.000Z", "2026-07-17T00:00:00.000Z");
     expect(findHourMarkerIndex(hours, "2026-08-01T00:00:00.000Z")).toBeNull();
+  });
+});
+
+describe("paginateSignupsSince", () => {
+  const SINCE = "2026-07-01T00:00:00.000Z";
+
+  function page(createdAtList: (string | null)[], hasNextPage: boolean): ListUsersPage {
+    return { users: createdAtList.map((created_at) => ({ created_at })), hasNextPage };
+  }
+
+  it("paginates past a single page (>1000-users style) and collects every user across pages", async () => {
+    // Regression case for the reported bug: a single listUsers({ perPage: 1000 })
+    // call silently under-counted past 1000 users. Simulate 2 pages of 2 —
+    // small numbers, same mechanism as 1000+ users over multiple pages.
+    const pages: ListUsersPage[] = [
+      page(["2026-07-10T00:00:00.000Z", "2026-07-09T00:00:00.000Z"], true),
+      page(["2026-07-08T00:00:00.000Z", "2026-07-07T00:00:00.000Z"], false),
+    ];
+    const fetchPage = vi.fn(async (pageNum: number) => pages[pageNum - 1]);
+
+    const result = await paginateSignupsSince(fetchPage, SINCE, { perPage: 2 });
+
+    expect(result).toEqual([
+      "2026-07-10T00:00:00.000Z",
+      "2026-07-09T00:00:00.000Z",
+      "2026-07-08T00:00:00.000Z",
+      "2026-07-07T00:00:00.000Z",
+    ]);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops paginating as soon as a page crosses the `since` window boundary", async () => {
+    // GoTrue sorts created_at DESC by default: once one user in a page is
+    // older than `since`, every later user (rest of page + all further
+    // pages) is guaranteed older too — no further pages should be fetched.
+    const pages: ListUsersPage[] = [
+      page(
+        [
+          "2026-07-15T00:00:00.000Z", // within window
+          "2026-07-05T00:00:00.000Z", // within window
+          "2026-06-20T00:00:00.000Z", // BEFORE `since` — boundary crossed here
+          "2026-06-01T00:00:00.000Z", // would be within this page but after the boundary
+        ],
+        true,
+      ),
+      page(["2026-05-01T00:00:00.000Z"], false), // must never be fetched
+    ];
+    const fetchPage = vi.fn(async (pageNum: number) => pages[pageNum - 1]);
+
+    const result = await paginateSignupsSince(fetchPage, SINCE, { perPage: 4 });
+
+    expect(result).toEqual(["2026-07-15T00:00:00.000Z", "2026-07-05T00:00:00.000Z"]);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops after the last page (hasNextPage: false) without over-fetching", async () => {
+    const fetchPage = vi.fn(async () => page(["2026-07-10T00:00:00.000Z"], false));
+
+    const result = await paginateSignupsSince(fetchPage, SINCE, { perPage: 1000 });
+
+    expect(result).toEqual(["2026-07-10T00:00:00.000Z"]);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips users with a null created_at without breaking the boundary scan", async () => {
+    const fetchPage = vi.fn(async () => page([null, "2026-07-10T00:00:00.000Z", null], false));
+
+    const result = await paginateSignupsSince(fetchPage, SINCE, { perPage: 1000 });
+
+    expect(result).toEqual(["2026-07-10T00:00:00.000Z"]);
+  });
+
+  it("respects the maxPages safety valve instead of looping forever", async () => {
+    const fetchPage = vi.fn(async () => page(["2026-07-10T00:00:00.000Z"], true));
+
+    const result = await paginateSignupsSince(fetchPage, SINCE, { perPage: 1, maxPages: 3 });
+
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+    expect(result).toHaveLength(3);
   });
 });
 

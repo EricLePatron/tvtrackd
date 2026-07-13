@@ -5,6 +5,7 @@ import {
   bucketSignupsByHour,
   computeImportStats,
   findHourMarkerIndex,
+  paginateSignupsSince,
   splitShowsByStatus,
   type ImportRunRaw,
   type SignupDay,
@@ -90,30 +91,39 @@ export const getAdminMetrics = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as AnySupabase;
 
-    // totalUsers — listUsers returns { users, aud, total? } depending on version
+    // totalUsers — le total exact vient du header x-total-count exposé par
+    // GoTrue (lu par supabase-js dans data.total), pas d'un comptage de lignes
+    // paginées : fiable même très au-delà de 1000 utilisateurs, une seule
+    // requête (perPage: 1) suffit à le lire.
     const { data: usersPage1 } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
       perPage: 1,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const totalUsers = (usersPage1 as any)?.total ?? 0;
+    // listUsers' declared return type is a union: the happy path carries
+    // Pagination (`total`, `nextPage`, ...), the error path degrades to just
+    // `{ users: [] }` — narrow with `in` rather than casting to `any`.
+    const totalUsers = usersPage1 && "total" in usersPage1 ? usersPage1.total : 0;
 
-    // Un seul fetch listUsers couvre à la fois la vue 30j (existante) et la
-    // vue horaire fixe de 7 jours / 168h (item 4, fenêtre 10/07 -> 17/07) :
-    // cette fenêtre est entièrement contenue dans les 30 derniers jours vus
-    // depuis le 12/07.
+    // Un seul fetch paginé couvre à la fois la vue 30j (existante) et la vue
+    // horaire fixe de 7 jours / 168h (item 4, fenêtre 10/07 -> 17/07) : cette
+    // fenêtre est entièrement contenue dans les 30 derniers jours vus depuis
+    // le 12/07.
     const since30 = new Date();
     since30.setDate(since30.getDate() - 29);
     since30.setHours(0, 0, 0, 0);
 
-    const { data: recentUsersData } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-    const recentUsers = (recentUsersData?.users ?? []).filter(
-      (u) => u.created_at && new Date(u.created_at) >= since30,
-    );
-    const recentCreatedAt = recentUsers.map((u) => u.created_at!);
+    // Pagine jusqu'à épuisement (ou jusqu'à sortir de la fenêtre 30j — voir
+    // paginateSignupsSince) au lieu d'une seule page de 1000 : au-delà de
+    // 1000 inscrits, l'ancien code sous-comptait silencieusement totalUsers,
+    // signupsSeries et signupsSeriesHourly — précisément pendant le pic
+    // d'inscriptions TV Time que ce dashboard doit surveiller.
+    const recentCreatedAt = await paginateSignupsSince(async (page, perPage) => {
+      const { data } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      return {
+        users: (data?.users ?? []).map((u) => ({ created_at: u.created_at ?? null })),
+        hasNextPage: !!data && "nextPage" in data && data.nextPage != null,
+      };
+    }, since30.toISOString());
 
     const signupsSeries = bucketSignupsByDay(recentCreatedAt, since30.toISOString(), 30);
     const signupsSeriesHourly = bucketSignupsByHour(
