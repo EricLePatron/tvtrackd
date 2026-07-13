@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
 
 type VhsCounterProps =
   | {
@@ -33,6 +34,7 @@ export function VhsCounter(props: VhsCounterProps) {
   const { seasonNumber, watched, total } = props;
   const isGrid = props.variant === "grid";
   const lineOneEpisode = isGrid ? props.nextEpisodeNumber : props.lastEpisode;
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const [display, setDisplay] = useState(watched ?? 0);
   const [bump, setBump] = useState(false);
@@ -40,22 +42,38 @@ export function VhsCounter(props: VhsCounterProps) {
   useEffect(() => {
     if (watched === undefined) return;
     if (display === watched) return;
+
+    if (prefersReducedMotion) {
+      // No tween, no scale — jump straight to the new value. The cyan color
+      // cue (via `bump`, applied in the JSX below without `scale-110`) is
+      // kept: a color swap isn't the kind of motion `prefers-reduced-motion`
+      // is meant to suppress.
+      setDisplay(watched);
+      setBump(true);
+      const timeoutId = setTimeout(() => setBump(false), 200);
+      return () => clearTimeout(timeoutId);
+    }
+
     setBump(true);
     const diff = watched - display;
     const steps = Math.min(Math.abs(diff), 6);
     const step = diff / (steps || 1);
     let i = 0;
-    const id = setInterval(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const intervalId = setInterval(() => {
       i += 1;
       setDisplay((d) => (i >= steps ? watched : Math.round(d + step)));
       if (i >= steps) {
-        clearInterval(id);
-        setTimeout(() => setBump(false), 200);
+        clearInterval(intervalId);
+        timeoutId = setTimeout(() => setBump(false), 200);
       }
     }, 40);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watched]);
+  }, [watched, prefersReducedMotion]);
 
   const pad = (n: number) => n.toString().padStart(2, "0");
 
@@ -93,11 +111,19 @@ export function VhsCounter(props: VhsCounterProps) {
           S{pad(seasonNumber)} E{pad(lineOneEpisode)}
         </span>
         <span
-          className={`transition-transform ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
+          className={`transition-transform ${bump ? "text-cyan-accent" : "text-foreground"} ${
+            bump && !prefersReducedMotion ? "scale-110" : ""
+          }`}
         >
           {pad(display)}/{pad(detailTotal)}
         </span>
       </div>
+      {/* Unlike "grid"'s bar (above), this one is deliberately always
+          `bg-primary`, never flashing cyan on bump — a pre-existing,
+          intentional divergence (only the fraction text flashes here), left
+          as-is: this is the show detail page, a separate screen from the
+          library grid/Home hero, and changing its bar treatment now would
+          be an unrelated risk on a screen this pass isn't touching. */}
       <div className="mt-2 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
         <div
           className="h-full bg-primary transition-[width] duration-300 ease-out"
