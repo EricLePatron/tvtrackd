@@ -62,6 +62,7 @@ export type Database = {
           id: number
           imported_episodes: number
           source: string
+          total_groups: number | null
           unmatched: Json
           unmatched_count: number
           user_id: string
@@ -72,6 +73,7 @@ export type Database = {
           id?: number
           imported_episodes?: number
           source?: string
+          total_groups?: number | null
           unmatched?: Json
           unmatched_count?: number
           user_id: string
@@ -82,6 +84,7 @@ export type Database = {
           id?: number
           imported_episodes?: number
           source?: string
+          total_groups?: number | null
           unmatched?: Json
           unmatched_count?: number
           user_id?: string
@@ -255,6 +258,7 @@ export type Database = {
           user_id: string
           watch_count: number
           watched_at: string
+          watched_at_approximate: boolean
         }
         Insert: {
           episode_id: number
@@ -262,6 +266,7 @@ export type Database = {
           user_id: string
           watch_count?: number
           watched_at?: string
+          watched_at_approximate?: boolean
         }
         Update: {
           episode_id?: number
@@ -269,6 +274,7 @@ export type Database = {
           user_id?: string
           watch_count?: number
           watched_at?: string
+          watched_at_approximate?: boolean
         }
         Relationships: [
           {
@@ -285,6 +291,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_watch_activity: {
+        Args: { _now?: string }
+        Returns: {
+          distinct_users: number
+          episode_count: number
+          is_approximate: boolean
+          window_label: string
+        }[]
+      }
       apply_computed_status: {
         Args: {
           p_new_watch_event?: boolean
