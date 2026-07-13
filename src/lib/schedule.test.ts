@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLibraryProgress,
+  formatReadyLabel,
   getDayLabelParts,
   type ScheduleEpisode,
   type ShowLite,
@@ -226,5 +227,35 @@ describe("getDayLabelParts", () => {
 
     expect(parts.dayNumber).toBe("6");
     expect(parts.dayNumber).not.toBe("06");
+  });
+});
+
+describe("formatReadyLabel", () => {
+  it("returns 'Ce soir' when the item isn't late at all", () => {
+    expect(formatReadyLabel({ isLate: false, lateDays: 0 })).toBe("Ce soir");
+  });
+
+  it("returns 'Ce soir' when isLate is true but lateDays is 0 (defensive, shouldn't happen in practice)", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 0 })).toBe("Ce soir");
+  });
+
+  it("shows a day count for 1-6j late", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 1 })).toBe("En retard · 1j");
+    expect(formatReadyLabel({ isLate: true, lateDays: 6 })).toBe("En retard · 6j");
+  });
+
+  it("switches to a week count at the 7j boundary", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 7 })).toBe("En retard · 1 sem");
+  });
+
+  it("floors to whole weeks within the 7-29j range", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 13 })).toBe("En retard · 1 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 14 })).toBe("En retard · 2 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 29 })).toBe("En retard · 4 sem");
+  });
+
+  it("returns null (no label at all) at the 30j boundary and beyond", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 30 })).toBeNull();
+    expect(formatReadyLabel({ isLate: true, lateDays: 90 })).toBeNull();
   });
 });

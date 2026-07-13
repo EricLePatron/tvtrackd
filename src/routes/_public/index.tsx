@@ -23,6 +23,7 @@ import {
   type ScheduleEpisode,
 } from "@/lib/schedule";
 import { ReadyListItem } from "@/components/home/ready-list-item";
+import { StartRail } from "@/components/home/start-rail";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
 import {
@@ -39,6 +40,9 @@ export const Route = createFileRoute("/_public/")({
 function pad(n: number) {
   return n.toString().padStart(2, "0");
 }
+
+/** Rows shown before "Reprendre" collapses into a "Voir tout" link. */
+const REPRENDRE_VISIBLE_COUNT = 3;
 
 type HomeData = {
   today: string;
@@ -282,11 +286,26 @@ function HomeContent({ data }: { data: HomeData }) {
 
         {data.reprendre.length > 0 && (
           <div className="mt-5">
-            <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              Reprendre
-            </p>
+            <div className="mb-2 flex items-baseline justify-between">
+              <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+                Reprendre
+              </p>
+              {/* "Reprendre" is capped to 3 visible rows — the rest is only
+                  reachable through the library, filtered on the en_cours tab
+                  via the shared status search-param (see library.tsx). */}
+              {data.reprendre.length > REPRENDRE_VISIBLE_COUNT && (
+                <Link
+                  to="/library"
+                  // TODO(commit 4): filter to the "en_cours" tab once
+                  // /library exposes a `status` search-param (see plan step 4).
+                  className="font-counter text-[10px] uppercase tracking-widest text-primary"
+                >
+                  Voir tout · +{data.reprendre.length - REPRENDRE_VISIBLE_COUNT} à reprendre ›
+                </Link>
+              )}
+            </div>
             <div className="space-y-2">
-              {data.reprendre.map((item) => (
+              {data.reprendre.slice(0, REPRENDRE_VISIBLE_COUNT).map((item) => (
                 <ReadyListItem key={item.show.id} item={item} />
               ))}
             </div>
@@ -296,13 +315,9 @@ function HomeContent({ data }: { data: HomeData }) {
         {data.nouveau.length > 0 && (
           <div className="mt-5">
             <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              Nouveau
+              À commencer
             </p>
-            <div className="space-y-2">
-              {data.nouveau.map((item) => (
-                <ReadyListItem key={item.show.id} item={item} />
-              ))}
-            </div>
+            <StartRail items={data.nouveau} />
           </div>
         )}
       </div>
@@ -385,6 +400,12 @@ function HeroTicket({
   const { show, nextEpisode } = item;
   const backdropUrl = nextEpisode.still_path ?? show.backdrop_path ?? show.poster_path;
   const markWatched = useMarkWatched();
+  // `formatReadyLabel` returns null once the backlog is 30j+ old — the badge
+  // override (demo hero's "Exemple") always wins when supplied, otherwise
+  // omit the eyebrow line entirely rather than rendering nothing/empty.
+  const eyebrowLabel = badge?.label ?? formatReadyLabel(item);
+  const pct =
+    progress && progress.total > 0 ? Math.min(100, (progress.watched / progress.total) * 100) : 0;
 
   const handleMark = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -398,11 +419,7 @@ function HeroTicket({
       {/* Full-bleed TMDb backdrop used as the card's atmosphere. */}
       {backdropUrl && (
         <div aria-hidden className="absolute inset-0">
-          <img
-            src={backdropUrl}
-            alt=""
-            className="h-full w-full object-cover"
-          />
+          <img src={backdropUrl} alt="" className="h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 to-transparent" />
         </div>
@@ -410,46 +427,57 @@ function HeroTicket({
 
       <div className="relative flex h-full flex-col justify-end p-4">
         <div className="space-y-1">
-          <p
-            className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
-          >
-            {badge?.label ?? formatReadyLabel(item)}
-          </p>
+          {eyebrowLabel && (
+            <p
+              className={`font-counter text-[10px] uppercase tracking-[0.25em] ${badge?.className ?? "text-primary"}`}
+            >
+              {eyebrowLabel}
+            </p>
+          )}
           <h2 className="font-display text-xl leading-tight text-foreground line-clamp-2">
             {show.title}
           </h2>
-          <p className="text-sm text-muted-foreground line-clamp-1">
-            {nextEpisode.title ?? "—"}
-          </p>
+          <p className="text-sm text-muted-foreground line-clamp-1">{nextEpisode.title ?? "—"}</p>
         </div>
 
         <div className="mt-4 flex items-end justify-between gap-3">
-          <div className="flex items-baseline gap-2 rounded-md border border-border/60 bg-surface-elevated/90 px-3 py-1.5 backdrop-blur-sm">
-            <span className="font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              S{pad(nextEpisode.season_number)}
-            </span>
-            <span className="font-counter text-3xl leading-none tracking-tight text-primary">
-              E{pad(nextEpisode.episode_number)}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {progress && (
-              <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
-                {pad(progress.watched)}/{pad(progress.total)}
+          {/*
+            Sober mechanical counter: one uniform-size mono line (no boxed
+            pastille, no S-vs-E size mismatch), a discreet fraction on the
+            right (only when season-progress data is available), and a thin
+            2px amber bar underneath — never a bordered/backdrop-blur box.
+          */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-counter text-base uppercase tracking-widest text-foreground">
+                S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
               </span>
-            )}
-            {interactive && (
-              <button
-                type="button"
-                onClick={handleMark}
-                disabled={markWatched.isPending}
-                aria-label="Marquer comme vu"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/15 text-cyan-accent backdrop-blur-sm transition-colors hover:bg-cyan-accent/25 disabled:opacity-50"
-              >
-                <Check className="h-5 w-5" />
-              </button>
+              {progress && (
+                <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
+                  {pad(progress.watched)} / {pad(progress.total)}
+                </span>
+              )}
+            </div>
+            {progress && (
+              <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
+                <div
+                  className="h-full bg-primary transition-[width] duration-300 ease-out"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
             )}
           </div>
+          {interactive && (
+            <button
+              type="button"
+              onClick={handleMark}
+              disabled={markWatched.isPending}
+              aria-label="Marquer comme vu"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-accent/40 bg-cyan-accent/15 text-cyan-accent backdrop-blur-sm transition-colors hover:bg-cyan-accent/25 disabled:opacity-50"
+            >
+              <Check className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
     </>

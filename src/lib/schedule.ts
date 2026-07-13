@@ -361,10 +361,23 @@ export function resolveHomeState(input: {
   return "normal";
 }
 
-/** "En retard · Nj" / "Ce soir" — never the word "à voir" (reserved for the library status). */
-export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): string {
+/**
+ * "En retard · Nj" / "Ce soir" — never the word "à voir" (reserved for the
+ * library status). Degrades as the backlog ages rather than staying in days
+ * forever: 1-6j shows the day count, 7-29j switches to a week count, and
+ * 30j+ shows nothing at all (no "Prêt", no filler word — callers must treat
+ * `null` as "omit this line entirely"). Whatever the bucket, the caller's
+ * styling stays amber (`text-primary`), never red — this function only
+ * decides the text, never a color.
+ */
+export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): string | null {
   if (!item.isLate || item.lateDays === 0) return "Ce soir";
-  return `En retard · ${item.lateDays}j`;
+  if (item.lateDays < 7) return `En retard · ${item.lateDays}j`;
+  if (item.lateDays < 30) {
+    const weeks = Math.max(1, Math.floor(item.lateDays / 7));
+    return `En retard · ${weeks} sem`;
+  }
+  return null;
 }
 
 /** "Aujourd'hui" / "Demain" or a short "Lun. 14 juil" style label, computed in UTC to match `today`. */
