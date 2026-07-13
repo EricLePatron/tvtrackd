@@ -7,6 +7,24 @@ import { NoShowsPanel } from "@/components/home/empty-states";
 
 export const Route = createFileRoute("/_public/calendar")({
   component: CalendarScreen,
+  head: () => ({
+    meta: [
+      { title: "Calendrier des sorties — tvtrackd" },
+      {
+        name: "description",
+        content:
+          "Le calendrier des prochains épisodes de vos séries et des sorties films à venir, jour par jour. Suivi complet sur tvtrackd.",
+      },
+      { property: "og:title", content: "Calendrier des sorties — tvtrackd" },
+      {
+        property: "og:description",
+        content:
+          "Le calendrier des prochains épisodes de vos séries et des sorties films à venir, jour par jour.",
+      },
+      { property: "og:url", content: "https://tvtrackd.com/calendar" },
+    ],
+    links: [{ rel: "canonical", href: "https://tvtrackd.com/calendar" }],
+  }),
 });
 
 function CalendarScreen() {
