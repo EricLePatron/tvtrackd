@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
@@ -517,22 +517,41 @@ function HeroTicket({
   const [display, setDisplay] = useState(progress?.watched ?? 0);
   const [bump, setBump] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
+  // Last {watched, total} pair this effect has seen — the backstop below
+  // compares against this rather than the (possibly still-tweening)
+  // `display` state, so the comparison is stable regardless of where a
+  // previous tween had gotten to.
+  const prevProgressRef = useRef(progress);
   useEffect(() => {
     if (progress === undefined) return;
+    const prev = prevProgressRef.current;
+    prevProgressRef.current = progress;
+
     if (display === progress.watched) return;
 
-    // Defensive backstop: the `key` on the parent call site (HomeContent) is
-    // the primary fix for a season rollover on the SAME hero show (e.g. the
-    // season finale just got marked watched from this very ticket) — it
-    // forces a fresh mount so this effect never even runs across the
-    // transition. But if that key ever fails to catch a context change for
-    // any reason, a stale `display` left over from the PREVIOUS season can
-    // be larger than the new season's `total` — tweening down from it would
-    // render a misleading "descending" animation (full bar emptying out)
-    // right as the S/E label already shows the new season. Jump straight to
-    // the new value instead, no tween, no bump flash (this isn't a "you just
-    // watched one more" event).
-    if (display > progress.total) {
+    // Defensive backstop — the composite `key={show.id}-${season_number}`
+    // on the parent call site (HomeContent) is the PRIMARY fix for a season
+    // rollover on the SAME hero show (e.g. the season finale just got
+    // marked watched from this very ticket): it forces a fresh mount
+    // whenever the season changes, so in practice this effect never even
+    // runs across that transition. This is only a secondary safety net for
+    // if that key were ever to fail to change.
+    //
+    // Detects a genuine context reset by comparing `total` against the
+    // previous render, not by the magnitude/direction of the `watched`
+    // change — magnitude alone can't tell a large-but-legitimate
+    // multi-episode increment or rollback WITHIN the same season (which
+    // must always keep animating, however big the jump) apart from an
+    // actual rollover to a different season/show (e.g. S1 10/10 -> S2
+    // 0/13: a naive "did display shrink past the new total" check misses
+    // this, since 10 is not > 13). `total` is scoped to one specific
+    // season and, in practice, doesn't shift mid-season on its own — so
+    // "same total as last time" is treated as proof of "still the same
+    // season", and any `watched` change within it (up or down, any size)
+    // is safe to animate normally; "different total" is treated as proof
+    // of a context change, and jumps instantly with no tween/bump.
+    const contextReset = prev !== undefined && progress.total !== prev.total;
+    if (contextReset) {
       setDisplay(progress.watched);
       return;
     }

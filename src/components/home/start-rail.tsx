@@ -46,11 +46,20 @@ export function StartRail({ items }: { items: ReadyItem[] }) {
           to="/library"
           search={{ status: "a_voir" }}
           aria-label={`Voir toutes les séries à commencer (+${hiddenCount})`}
-          className="flex w-32 shrink-0 snap-start items-center justify-center"
+          className="w-32 shrink-0 snap-start"
         >
-          <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
-            +{hiddenCount} ›
-          </span>
+          {/* Same `aspect-[2/3]` height as StartCard's poster box (and no
+              caption below it, matching StartCard's own "no second line
+              needed here" case) — without this, the outer `<Link>` above
+              stretches to the row's full poster+caption height (default
+              flex `align-items: stretch` on the rail's row), and centering
+              "+N ›" against THAT full height would sit it visibly lower
+              than the neighboring posters' own vertical center. */}
+          <div className="flex aspect-[2/3] items-center justify-center">
+            <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
+              +{hiddenCount} ›
+            </span>
+          </div>
         </Link>
       )}
     </div>
