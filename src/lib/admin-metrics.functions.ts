@@ -1,26 +1,76 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import {
+  bucketSignupsByDay,
+  bucketSignupsByHour,
+  computeImportStats,
+  findHourMarkerIndex,
+  paginateSignupsSince,
+  splitShowsByStatus,
+  type ImportRunRaw,
+  type SignupDay,
+  type SignupHour,
+  type ImportStats,
+  type TopShow,
+  type UserShowStatusRow,
+} from "@/lib/admin-metrics-aggregation";
 
-export type SignupDay = { date: string; count: number };
-export type TopShow = { title: string; followers: number };
+export type { SignupDay, SignupHour, ImportStats, TopShow };
+
+// Fenêtre fixe (pas glissante) pour la sparkline horaire des inscriptions —
+// bracket la semaine de bascule TV Time -> tvtrackd. Fixe volontairement
+// pour que le marqueur du 15/07 (fermeture TV Time) soit visible dès le
+// déploiement de cette feature (J-3, 12/07), pas seulement une fois "now"
+// entré dans une fenêtre glissante des 72 dernières heures qui l'exclurait
+// jusqu'au 14/07 en fin de journée. À retirer/reconsidérer une fois la
+// fenêtre de migration passée.
+const MIGRATION_WINDOW_START = "2026-07-10T00:00:00.000Z";
+const MIGRATION_WINDOW_END = "2026-07-17T00:00:00.000Z";
+const TVTIME_CLOSURE_MARKER = "2026-07-15T00:00:00.000Z";
+
+// Fenêtre de lecture du bloc "Imports" (bySourceDay + taux d'échec/matching).
+const IMPORT_STATS_WINDOW_DAYS = 14;
 
 export type AdminMetrics = {
   totalUsers: number;
   signupsSeries: SignupDay[];
+  signupsSeriesHourly: SignupHour[];
+  signupsHourlyMarkerIndex: number | null;
+  // DAU/WAU/MAU + compteurs d'épisodes "réels" (watched_at_approximate = false)
   dau: number;
   wau: number;
   mau: number;
-  activeShows: number;
   episodesWatchedTotal: number;
   episodesWatchedLast7d: number;
-  topShows: TopShow[];
-  importsTotal: number;
+  // Miroir "activité d'import" (watched_at_approximate = true) — mêmes
+  // fenêtres, à lire séparément : un pic ici signale un import de masse,
+  // pas de l'engagement utilisateur réel.
+  dauImports: number;
+  wauImports: number;
+  mauImports: number;
+  episodesImportedTotal: number;
+  episodesImportedLast7d: number;
+  activeShowsAVoir: number;
+  activeShowsEnCours: number;
+  topShowsAVoir: TopShow[];
+  topShowsEnCours: TopShow[];
+  importStats: ImportStats;
+  /** Count all-time sur import_runs, sans borne de date — complète importStats.totalRuns (fenêtré 14j). */
+  importsTotalAllTime: number;
 };
 
-// Supabase RPC call typed as `any` because `has_role` is not in the generated
+// Supabase RPC call typed as `any` because `has_role` / `admin_watch_activity`
+// and the `import_runs.total_groups` column are not in the generated
 // Database types yet (added by migration). Will be fixed on next type sync.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabase = any;
+
+type WatchActivityRow = {
+  window_label: "1d" | "7d" | "30d";
+  is_approximate: boolean;
+  distinct_users: number | string;
+  episode_count: number | string;
+};
 
 export const getAdminMetrics = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -39,108 +89,143 @@ export const getAdminMetrics = createServerFn({ method: "GET" })
 
     // Use service-role client for privileged queries
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as AnySupabase;
 
-    // totalUsers — listUsers returns { users, aud, total? } depending on version
+    // totalUsers — le total exact vient du header x-total-count exposé par
+    // GoTrue (lu par supabase-js dans data.total), pas d'un comptage de lignes
+    // paginées : fiable même très au-delà de 1000 utilisateurs, une seule
+    // requête (perPage: 1) suffit à le lire.
     const { data: usersPage1 } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
       perPage: 1,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const totalUsers = (usersPage1 as any)?.total ?? 0;
+    // listUsers' declared return type is a union: the happy path carries
+    // Pagination (`total`, `nextPage`, ...), the error path degrades to just
+    // `{ users: [] }` — narrow with `in` rather than casting to `any`.
+    const totalUsers = usersPage1 && "total" in usersPage1 ? usersPage1.total : 0;
 
-    // signupsSeries: last 30 days, group by day
+    // Un seul fetch paginé couvre à la fois la vue 30j (existante) et la vue
+    // horaire fixe de 7 jours / 168h (item 4, fenêtre 10/07 -> 17/07) : cette
+    // fenêtre est entièrement contenue dans les 30 derniers jours vus depuis
+    // le 12/07.
     const since30 = new Date();
     since30.setDate(since30.getDate() - 29);
     since30.setHours(0, 0, 0, 0);
 
-    const { data: recentUsersData } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-    const recentUsers = (recentUsersData?.users ?? []).filter(
-      (u) => u.created_at && new Date(u.created_at) >= since30,
+    // Pagine jusqu'à épuisement (ou jusqu'à sortir de la fenêtre 30j — voir
+    // paginateSignupsSince) au lieu d'une seule page de 1000 : au-delà de
+    // 1000 inscrits, l'ancien code sous-comptait silencieusement totalUsers,
+    // signupsSeries et signupsSeriesHourly — précisément pendant le pic
+    // d'inscriptions TV Time que ce dashboard doit surveiller.
+    const recentCreatedAt = await paginateSignupsSince(async (page, perPage) => {
+      const { data } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      return {
+        users: (data?.users ?? []).map((u) => ({ created_at: u.created_at ?? null })),
+        hasNextPage: !!data && "nextPage" in data && data.nextPage != null,
+      };
+    }, since30.toISOString());
+
+    const signupsSeries = bucketSignupsByDay(recentCreatedAt, since30.toISOString(), 30);
+    const signupsSeriesHourly = bucketSignupsByHour(
+      recentCreatedAt,
+      MIGRATION_WINDOW_START,
+      MIGRATION_WINDOW_END,
+    );
+    const signupsHourlyMarkerIndex = findHourMarkerIndex(
+      signupsSeriesHourly,
+      TVTIME_CLOSURE_MARKER,
     );
 
-    // Build day → count map for last 30 days
-    const dayMap = new Map<string, number>();
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(since30);
-      d.setDate(d.getDate() + i);
-      dayMap.set(d.toISOString().slice(0, 10), 0);
-    }
-    for (const u of recentUsers) {
-      const day = u.created_at!.slice(0, 10);
-      dayMap.set(day, (dayMap.get(day) ?? 0) + 1);
-    }
-    const signupsSeries: SignupDay[] = Array.from(dayMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, count]) => ({ date, count }));
+    // DAU/WAU/MAU + épisodes, réel vs miroir import, en un seul aller-retour
+    // (fonction SQL admin_watch_activity — voir migration
+    // 20260712090000_watch_status_activity_rpc.sql). Remplace les anciennes
+    // requêtes brutes non filtrées sur watched_at_approximate, qui faisaient
+    // passer un import de masse pour de l'activité utilisateur réelle.
+    const { data: activityRows } = await admin.rpc("admin_watch_activity");
+    const activity = (activityRows ?? []) as WatchActivityRow[];
+    const findActivity = (window: WatchActivityRow["window_label"], isApprox: boolean) =>
+      activity.find((r) => r.window_label === window && r.is_approximate === isApprox);
 
-    // DAU / WAU / MAU  (distinct users with watched_at in last 1/7/30 days)
-    const now = new Date();
-    const ts1d = new Date(now.getTime() - 1 * 86400000).toISOString();
-    const ts7d = new Date(now.getTime() - 7 * 86400000).toISOString();
-    const ts30d = new Date(now.getTime() - 30 * 86400000).toISOString();
+    const dau = Number(findActivity("1d", false)?.distinct_users ?? 0);
+    const wau = Number(findActivity("7d", false)?.distinct_users ?? 0);
+    const mau = Number(findActivity("30d", false)?.distinct_users ?? 0);
+    const episodesWatchedLast7d = Number(findActivity("7d", false)?.episode_count ?? 0);
 
-    const [dauRes, wauRes, mauRes] = await Promise.all([
-      supabaseAdmin.from("watch_status").select("user_id").gte("watched_at", ts1d),
-      supabaseAdmin.from("watch_status").select("user_id").gte("watched_at", ts7d),
-      supabaseAdmin.from("watch_status").select("user_id").gte("watched_at", ts30d),
+    const dauImports = Number(findActivity("1d", true)?.distinct_users ?? 0);
+    const wauImports = Number(findActivity("7d", true)?.distinct_users ?? 0);
+    const mauImports = Number(findActivity("30d", true)?.distinct_users ?? 0);
+    const episodesImportedLast7d = Number(findActivity("7d", true)?.episode_count ?? 0);
+
+    // episodesWatchedTotal / episodesImportedTotal — compteurs all-time (pas
+    // de fenêtre), donc hors du RPC ci-dessus, mais toujours filtrés sur
+    // watched_at_approximate (index composite watch_status_approx_watched_at_idx).
+    // `admin` (cast AnySupabase) car cette colonne n'est pas encore dans les
+    // types générés (même limitation que has_role/admin_watch_activity plus haut).
+    const [{ count: episodesWatchedTotal }, { count: episodesImportedTotal }] = await Promise.all([
+      admin
+        .from("watch_status")
+        .select("id", { count: "exact", head: true })
+        .eq("watched_at_approximate", false),
+      admin
+        .from("watch_status")
+        .select("id", { count: "exact", head: true })
+        .eq("watched_at_approximate", true),
     ]);
 
-    const dau = new Set((dauRes.data ?? []).map((r) => r.user_id)).size;
-    const wau = new Set((wauRes.data ?? []).map((r) => r.user_id)).size;
-    const mau = new Set((mauRes.data ?? []).map((r) => r.user_id)).size;
-
-    // activeShows
-    const { count: activeShows } = await supabaseAdmin
+    // Séries actives + Top 10, scindés par statut (a_voir / en_cours) — un
+    // seul fetch de user_shows sert les deux (comptages ET classement).
+    const { data: userShowsRaw } = await supabaseAdmin
       .from("user_shows")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["en_cours", "a_voir"]);
-
-    // episodesWatchedTotal
-    const { count: episodesWatchedTotal } = await supabaseAdmin
-      .from("watch_status")
-      .select("id", { count: "exact", head: true });
-
-    // episodesWatchedLast7d
-    const { count: episodesWatchedLast7d } = await supabaseAdmin
-      .from("watch_status")
-      .select("id", { count: "exact", head: true })
-      .gte("watched_at", ts7d);
-
-    // topShows: top 10 by follower count
-    const { data: topShowsRaw } = await supabaseAdmin
-      .from("user_shows")
-      .select("show_id, shows(title)")
+      .select("show_id, status, shows(title)")
+      .in("status", ["a_voir", "en_cours"])
       .order("show_id");
 
-    const showCount = new Map<number, { title: string; count: number }>();
-    for (const row of topShowsRaw ?? []) {
-      const title = (row.shows as { title?: string } | null)?.title ?? "Inconnu";
-      const prev = showCount.get(row.show_id) ?? { title, count: 0 };
-      showCount.set(row.show_id, { title: prev.title, count: prev.count + 1 });
-    }
-    const topShows: TopShow[] = Array.from(showCount.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10)
-      .map(({ title, count }) => ({ title, followers: count }));
+    const userShowStatusRows: UserShowStatusRow[] = (userShowsRaw ?? []).map((row) => ({
+      show_id: row.show_id,
+      status: row.status,
+      title: (row.shows as { title?: string } | null)?.title ?? "Inconnu",
+    }));
+    const { activeShowsAVoir, activeShowsEnCours, topShowsAVoir, topShowsEnCours } =
+      splitShowsByStatus(userShowStatusRows);
 
-    // importsTotal
-    const { count: importsTotal } = await supabaseAdmin
-      .from("import_runs")
-      .select("id", { count: "exact", head: true });
+    // Bloc "Imports" : runs par source/jour, taux d'échec, volume moyen
+    // (runs réussis uniquement), taux de matching TMDb pondéré — fenêtré 14j.
+    // + un compteur all-time séparé (importsTotalAllTime), simple count exact
+    // sur un index déjà existant (import_runs_user_created), sans re-fetch des
+    // lignes : garde une visibilité "depuis toujours" à côté du fenêtré.
+    const sinceImportStats = new Date();
+    sinceImportStats.setDate(sinceImportStats.getDate() - IMPORT_STATS_WINDOW_DAYS);
+    const [{ data: importRunsRaw }, { count: importsTotalAllTime }] = await Promise.all([
+      admin
+        .from("import_runs")
+        .select(
+          "source, imported_episodes, followed_shows, unmatched_count, total_groups, created_at",
+        )
+        .gte("created_at", sinceImportStats.toISOString()),
+      supabaseAdmin.from("import_runs").select("id", { count: "exact", head: true }),
+    ]);
+    const importStats = computeImportStats((importRunsRaw ?? []) as ImportRunRaw[]);
 
     return {
       totalUsers,
       signupsSeries,
+      signupsSeriesHourly,
+      signupsHourlyMarkerIndex,
       dau,
       wau,
       mau,
-      activeShows: activeShows ?? 0,
       episodesWatchedTotal: episodesWatchedTotal ?? 0,
-      episodesWatchedLast7d: episodesWatchedLast7d ?? 0,
-      topShows,
-      importsTotal: importsTotal ?? 0,
+      episodesWatchedLast7d,
+      dauImports,
+      wauImports,
+      mauImports,
+      episodesImportedTotal: episodesImportedTotal ?? 0,
+      episodesImportedLast7d,
+      activeShowsAVoir,
+      activeShowsEnCours,
+      topShowsAVoir,
+      topShowsEnCours,
+      importStats,
+      importsTotalAllTime: importsTotalAllTime ?? 0,
     };
   });
