@@ -33,11 +33,17 @@ export function StartRail({ items }: { items: ReadyItem[] }) {
         <StartCard key={item.show.id} item={item} />
       ))}
       {hiddenCount > 0 && (
-        <div className="flex w-32 shrink-0 items-center justify-center">
+        // Clickable — parity with "Reprendre"'s own "Voir tout" overflow
+        // link, filtered to the a_voir tab (this rail's own status).
+        <Link
+          to="/library"
+          search={{ status: "a_voir" }}
+          className="flex w-32 shrink-0 items-center justify-center"
+        >
           <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             +{hiddenCount}
           </span>
-        </div>
+        </Link>
       )}
     </div>
   );
