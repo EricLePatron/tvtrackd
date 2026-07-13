@@ -15,6 +15,7 @@ import {
   computeSeasonTally,
   countUpcomingEntries,
   groupUpcomingByDay,
+  isSeasonTallyReliable,
   nextCountdown,
   resolveHomeState,
   selectHero,
@@ -115,29 +116,64 @@ function HomeScreen() {
 
       const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
       const epIds = episodes.map((e) => e.id);
-      // `watched_at` is fetched alongside `episode_id` (no extra round-trip)
-      // to derive a per-show "last watched" recency signal — see
-      // `buildLastWatchedAtByShow` and its use in `selectHero`'s 60j hero
-      // guard.
       const { data: watched } = epIds.length
         ? await supabase
             .from("watch_status")
-            .select("episode_id, watched_at")
+            .select("episode_id")
             .eq("user_id", user!.id)
             .in("episode_id", epIds)
         : { data: [] };
-      const watchedRows = watched ?? [];
-      const watchedSet = new Set(watchedRows.map((w) => w.episode_id));
-      const lastWatchedAtByShowId = buildLastWatchedAtByShow(episodes, watchedRows);
+      const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
+
+      // Dedicated recency query for `selectHero`'s hero/Reprendre freshness
+      // signal — deliberately NOT derived from `episodes`/`watched` above,
+      // which are scoped to `air_date IS NOT NULL` (needed for scheduling,
+      // irrelevant here): a watched episode with no cached air_date (common
+      // right after a CSV/Betaseries import with no per-episode dates) would
+      // otherwise be invisible to the recency signal, making a show watched
+      // yesterday look dormant. Joins straight to `episodes.show_id` so this
+      // stays a single small query scoped by show id (bounded by the user's
+      // followed-shows count), never by a potentially huge episode-id list.
+      const { data: recencyRows } = await supabase
+        .from("watch_status")
+        .select("watched_at, episode:episodes!inner(show_id)")
+        .eq("user_id", user!.id)
+        .in("episode.show_id", showIds);
+      const lastWatchedAtByShowId = buildLastWatchedAtByShow(
+        (
+          (recencyRows ?? []) as unknown as { watched_at: string; episode: { show_id: number } }[]
+        ).map((r) => ({ show_id: r.episode.show_id, watched_at: r.watched_at })),
+      );
 
       const ready = buildReadyItems(episodes, watchedSet, showStatusByShowId, today);
       // `reprendreDormant` isn't consumed by the UI this lot — dormant shows
       // are only reachable through /library — but the split itself already
       // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
       const { hero, reprendre, nouveau } = selectHero(ready, today, lastWatchedAtByShowId);
-      const heroProgress = hero
-        ? computeSeasonTally(episodes, watchedSet, hero.show.id, hero.nextEpisode.season_number)
-        : null;
+
+      let heroProgress: { watched: number; total: number } | null = null;
+      if (hero) {
+        const tally = computeSeasonTally(
+          episodes,
+          watchedSet,
+          hero.show.id,
+          hero.nextEpisode.season_number,
+        );
+        // One cheap single-row lookup (unique-indexed on show_id+season_number)
+        // for the hero's own season only — never for every followed show —
+        // to know the season's OFFICIAL episode count and confirm `tally`
+        // isn't undercounted by the 90-day future cap above. See
+        // `isSeasonTallyReliable` for why an unreliable tally hides the
+        // fraction/bar entirely rather than risking a falsely-~100% bar.
+        const { data: seasonRow } = await supabase
+          .from("seasons")
+          .select("episode_count")
+          .eq("show_id", hero.show.id)
+          .eq("season_number", hero.nextEpisode.season_number)
+          .maybeSingle();
+        heroProgress = isSeasonTallyReliable(tally, seasonRow?.episode_count) ? tally : null;
+      }
+
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
       const countdown = nextCountdown(episodes, today);
@@ -220,9 +256,12 @@ const DEMO_HERO_ITEM: ReadyItem = {
 };
 
 function AnonymousHome() {
-  // Animate the VHS counter's bump once on mount, purely for demo effect —
-  // reuses VhsCounter's own increment logic (triggered by a `watched` prop
-  // change), not a new animation mechanism.
+  // Animate the hero ticket's bump once on mount, purely for demo effect —
+  // reuses HeroTicket's own bump/tween effect (triggered by a `progress.watched`
+  // prop change, the same "compteur mécanique" logic as `VhsCounter`'s bump,
+  // duplicated locally in HeroTicket rather than routed through the shared
+  // `VhsCounter` component — see D2/the "hero" variant removal note in
+  // vhs-counter.tsx), not a new animation mechanism.
   const [demoWatched, setDemoWatched] = useState(2);
   useEffect(() => {
     const id = setTimeout(() => setDemoWatched(3), 600);
@@ -300,24 +339,46 @@ function HomeContent({ data }: { data: HomeData }) {
     <>
       {/* Zone A — À voir maintenant */}
       <div className="mx-5">
-        {data.hero && <HeroTicket item={data.hero} progress={data.heroProgress ?? undefined} />}
+        {data.hero && (
+          // `key` on the show id: when the hero rotates to a different show
+          // (e.g. the previous one just got fully caught up), this forces a
+          // fresh mount so HeroTicket's local bump/tween state resets
+          // instantly instead of animating a meaningless jump between two
+          // unrelated shows' watched counts.
+          <HeroTicket
+            key={data.hero.show.id}
+            item={data.hero}
+            progress={data.heroProgress ?? undefined}
+          />
+        )}
 
         {data.reprendre.length > 0 && (
           <div className="mt-5">
-            <div className="mb-2 flex items-baseline justify-between">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
               <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
                 Reprendre
               </p>
               {/* "Reprendre" is capped to 3 visible rows — the rest is only
                   reachable through the library, filtered on the en_cours tab
-                  via the shared status search-param (see library.tsx). */}
+                  via the shared status search-param (see library.tsx).
+                  Deliberately worded "+N actives" rather than "+N à
+                  reprendre": the count here only ever includes active
+                  (<30j) shows (never the dormant ones, by design — see
+                  `selectHero`'s LIST_STALE_DAYS split), but the destination
+                  /library?status=en_cours tab shows EVERY en_cours show
+                  (hero + active + dormant + not-yet-ready ones too) — a
+                  strictly larger set. Naming the badge "actives" sets the
+                  right expectation instead of implying it previews the
+                  library tab's exact count. `flex-wrap` + shorter wording
+                  both guard against this row overflowing on narrow (~360px)
+                  viewports. */}
               {data.reprendre.length > REPRENDRE_VISIBLE_COUNT && (
                 <Link
                   to="/library"
                   search={{ status: "en_cours" }}
                   className="font-counter text-[10px] uppercase tracking-widest text-primary"
                 >
-                  Voir tout · +{data.reprendre.length - REPRENDRE_VISIBLE_COUNT} à reprendre ›
+                  Voir tout · +{data.reprendre.length - REPRENDRE_VISIBLE_COUNT} actives ›
                 </Link>
               )}
             </div>
@@ -425,8 +486,42 @@ function HeroTicket({
   // override (demo hero's "Exemple") always wins when supplied, otherwise
   // omit the eyebrow line entirely rather than rendering nothing/empty.
   const eyebrowLabel = badge?.label ?? formatReadyLabel(item);
-  const pct =
-    progress && progress.total > 0 ? Math.min(100, (progress.watched / progress.total) * 100) : 0;
+
+  // Signature "compteur mécanique" bump: ticks `display` up to the new
+  // `progress.watched` in a few steps (rather than jumping instantly) and
+  // flashes cyan + a slight scale while it does, for ~240ms — the exact same
+  // math as `VhsCounter`'s own bump effect, duplicated here on purpose: the
+  // hero ticket's sober markup is hand-rolled (see the removed dead "hero"
+  // variant note in vhs-counter.tsx), not routed through the shared
+  // component, so this keeps the *visual* signature consistent without
+  // merging the two. Callers rely on the parent giving this component a
+  // fresh `key` (see `HomeContent`) whenever the underlying show changes, so
+  // a hero rotation never gets misread as "just watched one more episode".
+  const [display, setDisplay] = useState(progress?.watched ?? 0);
+  const [bump, setBump] = useState(false);
+  useEffect(() => {
+    if (progress === undefined) return;
+    if (display === progress.watched) return;
+    setBump(true);
+    const target = progress.watched;
+    const diff = target - display;
+    const steps = Math.min(Math.abs(diff), 6);
+    const step = diff / (steps || 1);
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      setDisplay((d) => (i >= steps ? target : Math.round(d + step)));
+      if (i >= steps) {
+        clearInterval(id);
+        setTimeout(() => setBump(false), 200);
+      }
+    }, 40);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress?.watched]);
+
+  const displayTotal = progress?.total ?? 0;
+  const pct = displayTotal > 0 ? Math.min(100, (display / displayTotal) * 100) : 0;
 
   const handleMark = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -474,15 +569,21 @@ function HeroTicket({
                 S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
               </span>
               {progress && (
-                <span className="font-counter text-xs uppercase tracking-widest text-muted-foreground">
-                  {pad(progress.watched)} / {pad(progress.total)}
+                <span
+                  className={`font-counter text-xs uppercase tracking-widest transition-transform ${
+                    bump ? "scale-110 text-cyan-accent" : "text-muted-foreground"
+                  }`}
+                >
+                  {pad(display)} / {pad(progress.total)}
                 </span>
               )}
             </div>
             {progress && (
               <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
                 <div
-                  className="h-full bg-primary transition-[width] duration-300 ease-out"
+                  className={`h-full transition-[width,background-color] duration-300 ease-out ${
+                    bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
+                  }`}
                   style={{ width: `${pct}%` }}
                 />
               </div>

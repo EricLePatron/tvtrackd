@@ -6,6 +6,8 @@ import {
   computeSeasonTally,
   formatReadyLabel,
   getDayLabelParts,
+  HERO_STALE_DAYS,
+  isSeasonTallyReliable,
   selectHero,
   type ActiveStatus,
   type ScheduleEpisode,
@@ -267,72 +269,67 @@ describe("formatReadyLabel", () => {
 
 describe("buildLastWatchedAtByShow", () => {
   it("picks the max watched_at per show, not the first/last row in insertion order", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
     const watchedRows = [
-      { episode_id: 101, watched_at: "2026-01-05T10:00:00.000Z" },
-      { episode_id: 102, watched_at: "2026-06-01T10:00:00.000Z" }, // more recent, inserted last
+      { show_id: 1, watched_at: "2026-01-05T10:00:00.000Z" },
+      { show_id: 1, watched_at: "2026-06-01T10:00:00.000Z" }, // more recent, inserted last
     ];
 
-    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+    const result = buildLastWatchedAtByShow(watchedRows);
 
     expect(result.get(1)).toBe("2026-06-01T10:00:00.000Z");
   });
 
   it("compares timestamps as instants, not as strings, across differing fractional-second precision", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
     // A naive lexicographic string comparison would rank the shorter string
     // ("...T10:00:01Z", no fractional seconds) BEFORE "...T10:00:00.500Z"
     // (fractional seconds present) because "1" > "." in ASCII — even though
     // 10:00:01 is chronologically LATER than 10:00:00.5. This must resolve
     // to the true later instant.
     const watchedRows = [
-      { episode_id: 101, watched_at: "2026-01-05T10:00:00.500Z" },
-      { episode_id: 102, watched_at: "2026-01-05T10:00:01Z" },
+      { show_id: 1, watched_at: "2026-01-05T10:00:00.500Z" },
+      { show_id: 1, watched_at: "2026-01-05T10:00:01Z" },
     ];
 
-    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+    const result = buildLastWatchedAtByShow(watchedRows);
 
     expect(result.get(1)).toBe("2026-01-05T10:00:01Z");
   });
 
-  it("skips rows whose episode isn't part of the given episodes list", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
-    const watchedRows = [
-      { episode_id: 101, watched_at: "2026-01-05T10:00:00.000Z" },
-      { episode_id: 999, watched_at: "2026-06-01T10:00:00.000Z" }, // unknown episode
-    ];
-
-    const result = buildLastWatchedAtByShow(episodes, watchedRows);
-
-    expect(result.size).toBe(1);
-    expect(result.get(1)).toBe("2026-01-05T10:00:00.000Z");
-  });
-
   it("keeps shows independent — one show's watch rows never leak into another's", () => {
-    const s1 = show(1);
-    const s2 = show(2);
-    const episodes = [ep(s1, 101, 1, 1, "2026-01-01"), ep(s2, 201, 1, 1, "2026-01-01")];
     const watchedRows = [
-      { episode_id: 101, watched_at: "2026-01-05T10:00:00.000Z" },
-      { episode_id: 201, watched_at: "2026-06-01T10:00:00.000Z" },
+      { show_id: 1, watched_at: "2026-01-05T10:00:00.000Z" },
+      { show_id: 2, watched_at: "2026-06-01T10:00:00.000Z" },
     ];
 
-    const result = buildLastWatchedAtByShow(episodes, watchedRows);
+    const result = buildLastWatchedAtByShow(watchedRows);
 
     expect(result.get(1)).toBe("2026-01-05T10:00:00.000Z");
     expect(result.get(2)).toBe("2026-06-01T10:00:00.000Z");
   });
 
   it("returns an empty map when there are no watched rows at all", () => {
-    const s = show(1);
-    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
-
-    const result = buildLastWatchedAtByShow(episodes, []);
+    const result = buildLastWatchedAtByShow([]);
 
     expect(result.size).toBe(0);
+  });
+
+  it("[M1 regression] counts a show as recently watched even when the watched episode has no known air_date", () => {
+    // Fix for M1: the recency signal used to be derived from episode_id ->
+    // show_id resolution through the (air_date IS NOT NULL-scoped) `episodes`
+    // array fetched for scheduling, which silently dropped any watched
+    // episode whose cached air_date is unknown — common right after a CSV/
+    // Betaseries import with no per-episode dates. `buildLastWatchedAtByShow`
+    // now takes rows that already carry `show_id` directly (resolved via a
+    // Supabase join in index.tsx, entirely independent of `air_date`), so
+    // there is structurally no way for an unknown air_date to hide a watch
+    // from this function anymore — this test documents that guarantee by
+    // exercising the exact "just watched, date unknown" shape (a row with no
+    // `episodes`/`air_date` involvement at all).
+    const watchedRows = [{ show_id: 42, watched_at: "2026-07-07T09:00:00.000Z" }];
+
+    const result = buildLastWatchedAtByShow(watchedRows);
+
+    expect(result.get(42)).toBe("2026-07-07T09:00:00.000Z");
   });
 });
 
@@ -369,6 +366,35 @@ describe("selectHero", () => {
     // reprendreDormant rather than the visible reprendre list — it doesn't
     // vanish, it's just not one of the 3 visible "Reprendre" rows.
     expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
+  });
+
+  it("treats the exact HERO_STALE_DAYS (60j) boundary as stale (>=, not >), 59j as still fresh", () => {
+    const staleAt60 = show(1, "Stale At 60j"); // earliest backlog, but exactly 60j since last watch
+    const freshAt59 = show(2, "Fresh At 59j"); // later backlog, but only 59j since last watch
+    const items = readyItems([
+      {
+        showRef: staleAt60,
+        status: "en_cours",
+        episodes: [ep(staleAt60, 101, 1, 1, "2025-12-01")],
+      },
+      {
+        showRef: freshAt59,
+        status: "en_cours",
+        episodes: [ep(freshAt59, 201, 1, 1, "2026-01-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-05-09T00:00:00.000Z"], // exactly HERO_STALE_DAYS (60j) before TODAY -> stale
+      [2, "2026-05-10T00:00:00.000Z"], // exactly 59j before TODAY -> still fresh
+    ]);
+    expect(HERO_STALE_DAYS).toBe(60); // guards this test against a silent threshold change
+
+    const { hero, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2);
+    // 60j is also >=30j (LIST_STALE_DAYS), so the stale show lands in
+    // reprendreDormant rather than disappearing.
     expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
   });
 
@@ -541,5 +567,29 @@ describe("computeSeasonTally", () => {
     const result = computeSeasonTally(episodes, watched, 1, 1);
 
     expect(result).toEqual({ watched: 1, total: 2 });
+  });
+});
+
+describe("isSeasonTallyReliable", () => {
+  it("[M2] treats the tally as unreliable when the official episode count is unknown (null/undefined)", () => {
+    // Fix for M2: the Home screen's `episodes` fetch caps the future at
+    // J+90, so a still-airing, long-hiatus season could have its `total`
+    // silently undercounted — without a known official count to compare
+    // against, we must not claim reliability just because a tally exists.
+    expect(isSeasonTallyReliable({ total: 9 }, null)).toBe(false);
+    expect(isSeasonTallyReliable({ total: 9 }, undefined)).toBe(false);
+  });
+
+  it("treats the tally as unreliable when it hasn't caught up to the official count yet (long-hiatus undercount)", () => {
+    // e.g. 9 episodes fetched within the J+90 window, but TMDb says the
+    // season has 12 — 3 more are announced further out than the fetch window
+    // covers. Showing "9/9 = 100%" here would be exactly the misleading bar
+    // M2 flagged.
+    expect(isSeasonTallyReliable({ total: 9 }, 12)).toBe(false);
+  });
+
+  it("treats the tally as reliable once it has caught up to (or exceeds) the official count", () => {
+    expect(isSeasonTallyReliable({ total: 9 }, 9)).toBe(true);
+    expect(isSeasonTallyReliable({ total: 10 }, 9)).toBe(true); // over-count edge case: still trusted
   });
 });

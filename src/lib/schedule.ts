@@ -184,6 +184,27 @@ export function computeSeasonTally(
 }
 
 /**
+ * Whether a `computeSeasonTally` result can be trusted as a *complete*
+ * season total — guards against the hero ticket's progress bar looking
+ * falsely close to 100% for a long-hiatus season. The Home screen's
+ * `episodes` fetch caps the future at J+90 (see index.tsx), so a season
+ * still airing with episodes announced further out than that would have its
+ * `total` silently undercounted by `computeSeasonTally` (which only ever
+ * sees what got fetched). `officialEpisodeCount` is TMDb's own per-season
+ * count (the `seasons.episode_count` cache column, fetched separately —
+ * see index.tsx — only for the hero's own season, a single cheap row
+ * lookup): the tally is only reliable once it has caught up to that
+ * official count. `null`/`undefined` (not yet known, or the season row
+ * isn't cached) is treated as unreliable — fail safe, never fail loud.
+ */
+export function isSeasonTallyReliable(
+  tally: { total: number },
+  officialEpisodeCount: number | null | undefined,
+): boolean {
+  return officialEpisodeCount != null && tally.total >= officialEpisodeCount;
+}
+
+/**
  * Per-show progress data for the library grid ("En cours" tab): next episode
  * to watch + a tally scoped to that episode's SEASON only (not the whole
  * series). Deliberately NOT built on top of `buildReadyItems` (which needs a
@@ -258,33 +279,28 @@ function byEarliestAirDate(a: ReadyItem, b: ReadyItem) {
 }
 
 /**
- * Aggregates `watch_status.watched_at` into "most recent watch per show",
- * resolving `episode_id -> show_id` via the already-fetched `episodes` array
- * — no extra Supabase round-trip needed: the home screen's `episodes` query
- * (src/routes/_public/index.tsx) already spans each followed show's entire
- * aired history (no lower bound on the past), so this is a pure in-memory
- * aggregation over data already in hand. A row whose episode isn't present
- * in `episodes` is skipped rather than throwing (defensive — shouldn't
- * happen in practice, since `watchedRows` is always fetched scoped to those
- * same episode ids).
+ * Aggregates `watch_status.watched_at` into "most recent watch per show".
+ * Takes rows that already carry `show_id` directly (resolved server-side via
+ * a join — see the home screen's dedicated recency query in
+ * src/routes/_public/index.tsx) rather than resolving `episode_id -> show_id`
+ * through the (air_date-scoped) `episodes` array: an earlier version did the
+ * latter, which silently dropped any watched episode whose cached `air_date`
+ * is unknown (NULL) — common right after a CSV/Betaseries import that has no
+ * per-episode date — making a show watched yesterday look "dormant" simply
+ * because the episode that proves it has no known air date. Decoupling from
+ * `air_date` entirely fixes this at the root instead of patching around it.
  */
 export function buildLastWatchedAtByShow(
-  episodes: ScheduleEpisode[],
-  watchedRows: ReadonlyArray<{ episode_id: number; watched_at: string }>,
+  watchedRows: ReadonlyArray<{ show_id: number; watched_at: string }>,
 ): ReadonlyMap<number, string> {
-  const showIdByEpisodeId = new Map<number, number>();
-  for (const ep of episodes) showIdByEpisodeId.set(ep.id, ep.show.id);
-
   const result = new Map<number, string>();
   for (const row of watchedRows) {
-    const showId = showIdByEpisodeId.get(row.episode_id);
-    if (showId == null) continue;
-    const prev = result.get(showId);
+    const prev = result.get(row.show_id);
     // Compared as actual instants, not strings — Postgres/Supabase can
     // serialize timestamptz with varying fractional-second precision, which
     // would break a naive lexicographic string comparison.
     if (!prev || new Date(row.watched_at).getTime() > new Date(prev).getTime()) {
-      result.set(showId, row.watched_at);
+      result.set(row.show_id, row.watched_at);
     }
   }
   return result;
