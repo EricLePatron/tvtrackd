@@ -7,6 +7,24 @@ import { DiscoverySection } from "@/components/home/discovery-section";
 
 export const Route = createFileRoute("/_public/search")({
   component: SearchScreen,
+  head: () => ({
+    meta: [
+      { title: "Rechercher une série ou un film — tvtrackd" },
+      {
+        name: "description",
+        content:
+          "Recherchez une série ou un film dans le catalogue TMDb et ajoutez-le à votre bibliothèque tvtrackd en un clic.",
+      },
+      { property: "og:title", content: "Rechercher une série ou un film — tvtrackd" },
+      {
+        property: "og:description",
+        content:
+          "Trouvez une série ou un film et ajoutez-le à votre bibliothèque tvtrackd en un clic.",
+      },
+      { property: "og:url", content: "https://tvtrackd.com/search" },
+    ],
+    links: [{ rel: "canonical", href: "https://tvtrackd.com/search" }],
+  }),
 });
 
 type Result = {

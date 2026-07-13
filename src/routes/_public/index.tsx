@@ -34,6 +34,24 @@ import {
 
 export const Route = createFileRoute("/_public/")({
   component: HomeScreen,
+  head: () => ({
+    meta: [
+      { title: "tvtrackd — Suivi de séries & films en français" },
+      {
+        name: "description",
+        content:
+          "Suivez vos séries et films épisode par épisode. Calendrier des sorties, import TV Time, bibliothèque personnelle. Gratuit et sans pub.",
+      },
+      { property: "og:title", content: "tvtrackd — Suivi de séries & films en français" },
+      {
+        property: "og:description",
+        content:
+          "Suivez vos séries et films épisode par épisode. Calendrier, import TV Time, bibliothèque. Gratuit.",
+      },
+      { property: "og:url", content: "https://tvtrackd.com/" },
+    ],
+    links: [{ rel: "canonical", href: "https://tvtrackd.com/" }],
+  }),
 });
 
 function pad(n: number) {

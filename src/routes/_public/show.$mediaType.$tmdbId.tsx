@@ -47,6 +47,34 @@ import { SimilarRail } from "@/components/show/similar-rail";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   component: ShowDetail,
+  head: ({ params }) => {
+    const kind = params.mediaType === "movie" ? "Film" : "Série";
+    return {
+      meta: [
+        { title: `${kind} sur tvtrackd — fiche détaillée` },
+        {
+          name: "description",
+          content: `Fiche ${kind.toLowerCase()} sur tvtrackd : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
+        },
+        { property: "og:title", content: `${kind} sur tvtrackd` },
+        {
+          property: "og:description",
+          content: `Fiche ${kind.toLowerCase()} : synopsis, saisons, épisodes et plateformes de diffusion.`,
+        },
+        { property: "og:type", content: params.mediaType === "movie" ? "video.movie" : "video.tv_show" },
+        {
+          property: "og:url",
+          content: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
+        },
+      ],
+      links: [
+        {
+          rel: "canonical",
+          href: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
+        },
+      ],
+    };
+  },
   errorComponent: ({ error }) => (
     <div className="p-6 text-sm text-destructive">Erreur : {error.message}</div>
   ),
