@@ -196,12 +196,19 @@ export function computeSeasonTally(
  * lookup): the tally is only reliable once it has caught up to that
  * official count. `null`/`undefined` (not yet known, or the season row
  * isn't cached) is treated as unreliable — fail safe, never fail loud.
+ * `0` is treated the same way: a season legitimately has at least one
+ * episode by the time a hero ticket can point at it, so `episode_count = 0`
+ * only ever means "not populated yet" in the `seasons` cache, never a real
+ * zero-episode season — trusting it would have let a tally of `{ total: 0 }`
+ * through as "reliable" by pure coincidence (`0 >= 0`).
  */
 export function isSeasonTallyReliable(
   tally: { total: number },
   officialEpisodeCount: number | null | undefined,
 ): boolean {
-  return officialEpisodeCount != null && tally.total >= officialEpisodeCount;
+  return (
+    officialEpisodeCount != null && officialEpisodeCount > 0 && tally.total >= officialEpisodeCount
+  );
 }
 
 /**

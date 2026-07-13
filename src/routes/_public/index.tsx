@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
+import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -104,15 +105,39 @@ function HomeScreen() {
       // No lower bound on the past — a followed show can be arbitrarily late.
       const future = addDaysToDateString(today, 90);
 
-      const { data: eps } = await supabase
-        .from("episodes")
-        .select(
-          "id, season_number, episode_number, title, air_date, still_path, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
-        )
-        .in("show_id", showIds)
-        .not("air_date", "is", null)
-        .lte("air_date", future)
-        .order("air_date", { ascending: true });
+      // The `episodes` fetch and the recency query below are independent of
+      // each other (neither's inputs depend on the other's output — both
+      // only need `showIds`), so they run in parallel rather than as a
+      // waterfall. The `watched_status` (readiness) query further down still
+      // has to wait on `episodes` (it needs `epIds`), so it stays sequential.
+      const [{ data: eps }, { data: recencyRows }] = await Promise.all([
+        supabase
+          .from("episodes")
+          .select(
+            "id, season_number, episode_number, title, air_date, still_path, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
+          )
+          .in("show_id", showIds)
+          .not("air_date", "is", null)
+          .lte("air_date", future)
+          .order("air_date", { ascending: true }),
+        // Dedicated recency query for `selectHero`'s hero/Reprendre freshness
+        // signal — deliberately NOT derived from `episodes`/`watched` below,
+        // which are scoped to `air_date IS NOT NULL` (needed for scheduling,
+        // irrelevant here): a watched episode with no cached air_date (common
+        // right after a CSV/Betaseries import with no per-episode dates) would
+        // otherwise be invisible to the recency signal, making a show watched
+        // yesterday look dormant. Joins straight to `episodes.show_id` so
+        // this is filtered server-side by show id — the response itself is
+        // one row per *watched* episode of a followed show (bounded by the
+        // user's total watch history on followed shows, not by how many
+        // shows they follow), same order of magnitude as the `watched` query
+        // below, not a "potentially huge episode-id list" cost.
+        supabase
+          .from("watch_status")
+          .select("watched_at, episode:episodes!inner(show_id)")
+          .eq("user_id", user!.id)
+          .in("episode.show_id", showIds),
+      ]);
 
       const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
       const epIds = episodes.map((e) => e.id);
@@ -125,20 +150,6 @@ function HomeScreen() {
         : { data: [] };
       const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
 
-      // Dedicated recency query for `selectHero`'s hero/Reprendre freshness
-      // signal — deliberately NOT derived from `episodes`/`watched` above,
-      // which are scoped to `air_date IS NOT NULL` (needed for scheduling,
-      // irrelevant here): a watched episode with no cached air_date (common
-      // right after a CSV/Betaseries import with no per-episode dates) would
-      // otherwise be invisible to the recency signal, making a show watched
-      // yesterday look dormant. Joins straight to `episodes.show_id` so this
-      // stays a single small query scoped by show id (bounded by the user's
-      // followed-shows count), never by a potentially huge episode-id list.
-      const { data: recencyRows } = await supabase
-        .from("watch_status")
-        .select("watched_at, episode:episodes!inner(show_id)")
-        .eq("user_id", user!.id)
-        .in("episode.show_id", showIds);
       const lastWatchedAtByShowId = buildLastWatchedAtByShow(
         (
           (recencyRows ?? []) as unknown as { watched_at: string; episode: { show_id: number } }[]
@@ -340,13 +351,18 @@ function HomeContent({ data }: { data: HomeData }) {
       {/* Zone A — À voir maintenant */}
       <div className="mx-5">
         {data.hero && (
-          // `key` on the show id: when the hero rotates to a different show
-          // (e.g. the previous one just got fully caught up), this forces a
-          // fresh mount so HeroTicket's local bump/tween state resets
-          // instantly instead of animating a meaningless jump between two
-          // unrelated shows' watched counts.
+          // `key` on show id + season number: forces a fresh mount (so
+          // HeroTicket's local bump/tween state resets instantly) not only
+          // when the hero rotates to a different show, but also when the
+          // SAME show's hero moves to its next season (e.g. marking the
+          // season finale watched from the hero button) — `heroProgress`
+          // resets to a smaller watched/total pair in that case, and without
+          // the season in the key, the tween would animate a misleading
+          // countdown (full bar -> emptying) right as the S/E label already
+          // shows the new season. See also HeroTicket's own defensive guard
+          // for the same scenario, in case this key ever fails to change.
           <HeroTicket
-            key={data.hero.show.id}
+            key={`${data.hero.show.id}-${data.hero.nextEpisode.season_number}`}
             item={data.hero}
             progress={data.heroProgress ?? undefined}
           />
@@ -495,30 +511,64 @@ function HeroTicket({
   // variant note in vhs-counter.tsx), not routed through the shared
   // component, so this keeps the *visual* signature consistent without
   // merging the two. Callers rely on the parent giving this component a
-  // fresh `key` (see `HomeContent`) whenever the underlying show changes, so
-  // a hero rotation never gets misread as "just watched one more episode".
+  // fresh `key` (see `HomeContent`) whenever the underlying show OR season
+  // changes, so a hero rotation never gets misread as "just watched one more
+  // episode".
   const [display, setDisplay] = useState(progress?.watched ?? 0);
   const [bump, setBump] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
   useEffect(() => {
     if (progress === undefined) return;
     if (display === progress.watched) return;
+
+    // Defensive backstop: the `key` on the parent call site (HomeContent) is
+    // the primary fix for a season rollover on the SAME hero show (e.g. the
+    // season finale just got marked watched from this very ticket) — it
+    // forces a fresh mount so this effect never even runs across the
+    // transition. But if that key ever fails to catch a context change for
+    // any reason, a stale `display` left over from the PREVIOUS season can
+    // be larger than the new season's `total` — tweening down from it would
+    // render a misleading "descending" animation (full bar emptying out)
+    // right as the S/E label already shows the new season. Jump straight to
+    // the new value instead, no tween, no bump flash (this isn't a "you just
+    // watched one more" event).
+    if (display > progress.total) {
+      setDisplay(progress.watched);
+      return;
+    }
+
+    if (prefersReducedMotion) {
+      // No tween, no scale — jump straight to the new value. The cyan color
+      // cue (via `bump`, applied below without `scale-110`) is kept: a color
+      // swap isn't the kind of motion `prefers-reduced-motion` is meant to
+      // suppress.
+      setDisplay(progress.watched);
+      setBump(true);
+      const timeoutId = setTimeout(() => setBump(false), 200);
+      return () => clearTimeout(timeoutId);
+    }
+
     setBump(true);
     const target = progress.watched;
     const diff = target - display;
     const steps = Math.min(Math.abs(diff), 6);
     const step = diff / (steps || 1);
     let i = 0;
-    const id = setInterval(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const intervalId = setInterval(() => {
       i += 1;
       setDisplay((d) => (i >= steps ? target : Math.round(d + step)));
       if (i >= steps) {
-        clearInterval(id);
-        setTimeout(() => setBump(false), 200);
+        clearInterval(intervalId);
+        timeoutId = setTimeout(() => setBump(false), 200);
       }
     }, 40);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress?.watched]);
+  }, [progress?.watched, progress?.total, prefersReducedMotion]);
 
   const displayTotal = progress?.total ?? 0;
   const pct = displayTotal > 0 ? Math.min(100, (display / displayTotal) * 100) : 0;
@@ -565,14 +615,21 @@ function HeroTicket({
           */}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
+              {/* Deliberately `text-foreground` (white), not `text-primary`
+                  (amber): unlike `VhsCounter`'s S/E line (always amber, see
+                  its own comment), the hero's S/E is the validated sober
+                  design — amber is reserved for the progress bar below, the
+                  S/E line itself stays neutral. Do not "fix" this to match
+                  VhsCounter's amber convention; it's an intentional,
+                  validated divergence for this specific ticket. */}
               <span className="font-counter text-base uppercase tracking-widest text-foreground">
                 S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
               </span>
               {progress && (
                 <span
                   className={`font-counter text-xs uppercase tracking-widest transition-transform ${
-                    bump ? "scale-110 text-cyan-accent" : "text-muted-foreground"
-                  }`}
+                    bump ? "text-cyan-accent" : "text-muted-foreground"
+                  } ${bump && !prefersReducedMotion ? "scale-110" : ""}`}
                 >
                   {pad(display)} / {pad(progress.total)}
                 </span>

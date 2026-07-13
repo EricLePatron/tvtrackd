@@ -592,4 +592,13 @@ describe("isSeasonTallyReliable", () => {
     expect(isSeasonTallyReliable({ total: 9 }, 9)).toBe(true);
     expect(isSeasonTallyReliable({ total: 10 }, 9)).toBe(true); // over-count edge case: still trusted
   });
+
+  it("[QA nit] never treats an official count of 0 as reliable, even for a matching { total: 0 } tally", () => {
+    // `0 >= 0` would otherwise pass the naive `total >= officialEpisodeCount`
+    // check by coincidence — but `episode_count = 0` in the `seasons` cache
+    // only ever means "not populated yet", never a genuine zero-episode
+    // season (a hero always points at an already-aired episode, so its
+    // season has at least one).
+    expect(isSeasonTallyReliable({ total: 0 }, 0)).toBe(false);
+  });
 });
