@@ -404,6 +404,7 @@ function parseTvTimeShowRow(row: Record<string, string>): AggregateImportItem | 
     archived: false,
     percent: null,
     episodesSeenCount: seen,
+    _from: "utsd",
   };
 }
 
