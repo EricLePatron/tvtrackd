@@ -116,13 +116,79 @@ export async function parseImportFile(file: File): Promise<ParseResult> {
     warnings.push(...result.warnings);
   }
 
-  const deduped = dedupeItems(items);
+  const merged = crossFilterTvTimeAggregates(items);
+  const deduped = dedupeItems(merged).map(stripInternalMarkers);
 
   if (!deduped.length) {
     warnings.push("Aucune ligne exploitable trouvée dans le fichier.");
   }
 
   return { items: deduped, detectedFormats: [...detectedFormats], warnings };
+}
+
+// Le zip GDPR TV Time contient DEUX vues des séries suivies, incohérentes entre
+// elles :
+// - `user_tv_show_data.csv` : liste large (compteurs cumulés), garde `is_followed=1`
+//   même sur des séries que l'utilisateur a retirées de sa bibliothèque il y a
+//   longtemps → sinon on ré-importe en "à voir" des séries non désirées.
+// - `followed_tv_show.csv` : liste autoritative actuelle (`active=1`), avec le
+//   flag `archived` correct.
+// Quand les deux sont présents, on intersecte : seules les séries `active=1` de
+// followed_tv_show sont conservées, avec le `nb_episodes_seen` de user_tv_show_data
+// et le flag `archived` de followed_tv_show.
+function crossFilterTvTimeAggregates(items: ImportItem[]): ImportItem[] {
+  const hasFollowed = items.some((it) => it.kind === "aggregate" && it._from === "followed");
+  if (!hasFollowed) return items;
+
+  const followedByTitle = new Map<string, AggregateImportItem>();
+  for (const it of items) {
+    if (it.kind === "aggregate" && it._from === "followed") {
+      followedByTitle.set(it.title.trim().toLowerCase(), it);
+    }
+  }
+
+  const utsdByTitle = new Map<string, AggregateImportItem>();
+  for (const it of items) {
+    if (it.kind === "aggregate" && it._from === "utsd") {
+      utsdByTitle.set(it.title.trim().toLowerCase(), it);
+    }
+  }
+
+  const out: ImportItem[] = [];
+  for (const it of items) {
+    // Granulaire : toujours conservé (couvre uniquement les épisodes vus).
+    if (it.kind !== "aggregate") {
+      out.push(it);
+      continue;
+    }
+    // On drop les entrées utsd et followed pour recomposer proprement ci-dessous.
+    if (it._from === "utsd" || it._from === "followed") continue;
+    out.push(it);
+  }
+
+  for (const [key, followed] of followedByTitle) {
+    const utsd = utsdByTitle.get(key);
+    out.push({
+      kind: "aggregate",
+      title: followed.title,
+      year: null,
+      lastSeason: 0,
+      lastEpisode: 0,
+      archived: followed.archived,
+      percent: null,
+      episodesSeenCount: utsd?.episodesSeenCount ?? 0,
+      _from: "utsd",
+    });
+  }
+
+  return out;
+}
+
+function stripInternalMarkers(it: ImportItem): ImportItem {
+  if (it.kind !== "aggregate") return it;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { _from, ...rest } = it;
+  return rest;
 }
 
 // Un même épisode apparaît souvent plusieurs fois dans un export TV Time
