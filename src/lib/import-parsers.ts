@@ -258,6 +258,17 @@ function parseCsvSource(text: string): SourceResult | null {
     };
   }
 
+  // TV Time followed_tv_show.csv : liste autoritative des séries encore dans
+  // la bibliothèque (active=1) avec le flag `archived`. Croisée plus tard avec
+  // user_tv_show_data pour reconstruire l'état correct de la bibliothèque.
+  if (isTvTimeFollowedHeader(headers)) {
+    const items = rows
+      .map(parseTvTimeFollowedRow)
+      .filter((r): r is AggregateImportItem => !!r);
+    if (!items.length) return null;
+    return { format: "granular", items, warnings: [] };
+  }
+
   // TV Time user_tv_show_data.csv : agrégé par série avec nb_episodes_seen —
   // seule source qui décrit vraiment le statut "suivi / à voir / vu partiellement"
   // pour l'ensemble de la bibliothèque (les CSV granulaires ne couvrent qu'une
