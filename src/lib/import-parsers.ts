@@ -35,6 +35,9 @@ export type AggregateImportItem = {
   // utilisé quand aucun couple (saison, épisode) n'est fourni : le backend
   // marquera les N premiers épisodes comme vus.
   episodesSeenCount?: number | null;
+  // Marqueur interne (non transmis au serveur) pour cross-référencer les CSV
+  // TV Time entre eux avant l'envoi. Voir `crossFilterTvTimeAggregates`.
+  _from?: "utsd" | "followed" | "betaseries";
 };
 
 export type ImportItem = GranularImportItem | AggregateImportItem;
@@ -62,6 +65,7 @@ const TVTIME_HISTORY_FILE_HINTS = [
   "history",
   "episodes",
   "user_tv_show_data", // liste des séries suivies + nb_episodes_seen (statut global)
+  "followed_tv_show",  // liste autoritative des séries encore dans la bibliothèque (active=1)
 ];
 
 function looksLikeTvTimeHistoryFile(name: string): boolean {
@@ -112,13 +116,79 @@ export async function parseImportFile(file: File): Promise<ParseResult> {
     warnings.push(...result.warnings);
   }
 
-  const deduped = dedupeItems(items);
+  const merged = crossFilterTvTimeAggregates(items);
+  const deduped = dedupeItems(merged).map(stripInternalMarkers);
 
   if (!deduped.length) {
     warnings.push("Aucune ligne exploitable trouvée dans le fichier.");
   }
 
   return { items: deduped, detectedFormats: [...detectedFormats], warnings };
+}
+
+// Le zip GDPR TV Time contient DEUX vues des séries suivies, incohérentes entre
+// elles :
+// - `user_tv_show_data.csv` : liste large (compteurs cumulés), garde `is_followed=1`
+//   même sur des séries que l'utilisateur a retirées de sa bibliothèque il y a
+//   longtemps → sinon on ré-importe en "à voir" des séries non désirées.
+// - `followed_tv_show.csv` : liste autoritative actuelle (`active=1`), avec le
+//   flag `archived` correct.
+// Quand les deux sont présents, on intersecte : seules les séries `active=1` de
+// followed_tv_show sont conservées, avec le `nb_episodes_seen` de user_tv_show_data
+// et le flag `archived` de followed_tv_show.
+function crossFilterTvTimeAggregates(items: ImportItem[]): ImportItem[] {
+  const hasFollowed = items.some((it) => it.kind === "aggregate" && it._from === "followed");
+  if (!hasFollowed) return items;
+
+  const followedByTitle = new Map<string, AggregateImportItem>();
+  for (const it of items) {
+    if (it.kind === "aggregate" && it._from === "followed") {
+      followedByTitle.set(it.title.trim().toLowerCase(), it);
+    }
+  }
+
+  const utsdByTitle = new Map<string, AggregateImportItem>();
+  for (const it of items) {
+    if (it.kind === "aggregate" && it._from === "utsd") {
+      utsdByTitle.set(it.title.trim().toLowerCase(), it);
+    }
+  }
+
+  const out: ImportItem[] = [];
+  for (const it of items) {
+    // Granulaire : toujours conservé (couvre uniquement les épisodes vus).
+    if (it.kind !== "aggregate") {
+      out.push(it);
+      continue;
+    }
+    // On drop les entrées utsd et followed pour recomposer proprement ci-dessous.
+    if (it._from === "utsd" || it._from === "followed") continue;
+    out.push(it);
+  }
+
+  for (const [key, followed] of followedByTitle) {
+    const utsd = utsdByTitle.get(key);
+    out.push({
+      kind: "aggregate",
+      title: followed.title,
+      year: null,
+      lastSeason: 0,
+      lastEpisode: 0,
+      archived: followed.archived,
+      percent: null,
+      episodesSeenCount: utsd?.episodesSeenCount ?? 0,
+      _from: "utsd",
+    });
+  }
+
+  return out;
+}
+
+function stripInternalMarkers(it: ImportItem): ImportItem {
+  if (it.kind !== "aggregate") return it;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { _from, ...rest } = it;
+  return rest;
 }
 
 // Un même épisode apparaît souvent plusieurs fois dans un export TV Time
@@ -186,6 +256,17 @@ function parseCsvSource(text: string): SourceResult | null {
       items,
       warnings: summarizeUnrecognizedEpisodeWarnings(unrecognizedEpisodeTitles),
     };
+  }
+
+  // TV Time followed_tv_show.csv : liste autoritative des séries encore dans
+  // la bibliothèque (active=1) avec le flag `archived`. Croisée plus tard avec
+  // user_tv_show_data pour reconstruire l'état correct de la bibliothèque.
+  if (isTvTimeFollowedHeader(headers)) {
+    const items = rows
+      .map(parseTvTimeFollowedRow)
+      .filter((r): r is AggregateImportItem => !!r);
+    if (!items.length) return null;
+    return { format: "granular", items, warnings: [] };
   }
 
   // TV Time user_tv_show_data.csv : agrégé par série avec nb_episodes_seen —
@@ -265,6 +346,35 @@ function parseBetaseriesRow(
     lastEpisode,
     archived,
     percent,
+    _from: "betaseries",
+  };
+}
+
+// ------- TV Time followed_tv_show.csv (bibliothèque autoritative) -------
+
+function isTvTimeFollowedHeader(headers: string[]): boolean {
+  return (
+    headers.includes("tv_show_name") &&
+    headers.includes("active") &&
+    headers.includes("archived")
+  );
+}
+
+function parseTvTimeFollowedRow(row: Record<string, string>): AggregateImportItem | null {
+  const title = row["tv_show_name"]?.trim();
+  if (!title) return null;
+  // active=0 : série retirée définitivement de la bibliothèque TV Time.
+  if (row["active"]?.trim() !== "1") return null;
+  const archived = row["archived"]?.trim() === "1";
+  return {
+    kind: "aggregate",
+    title,
+    year: null,
+    lastSeason: 0,
+    lastEpisode: 0,
+    archived,
+    percent: null,
+    _from: "followed",
   };
 }
 
@@ -294,6 +404,7 @@ function parseTvTimeShowRow(row: Record<string, string>): AggregateImportItem | 
     archived: false,
     percent: null,
     episodesSeenCount: seen,
+    _from: "utsd",
   };
 }
 
