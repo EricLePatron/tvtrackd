@@ -346,6 +346,35 @@ function parseBetaseriesRow(
     lastEpisode,
     archived,
     percent,
+    _from: "betaseries",
+  };
+}
+
+// ------- TV Time followed_tv_show.csv (bibliothèque autoritative) -------
+
+function isTvTimeFollowedHeader(headers: string[]): boolean {
+  return (
+    headers.includes("tv_show_name") &&
+    headers.includes("active") &&
+    headers.includes("archived")
+  );
+}
+
+function parseTvTimeFollowedRow(row: Record<string, string>): AggregateImportItem | null {
+  const title = row["tv_show_name"]?.trim();
+  if (!title) return null;
+  // active=0 : série retirée définitivement de la bibliothèque TV Time.
+  if (row["active"]?.trim() !== "1") return null;
+  const archived = row["archived"]?.trim() === "1";
+  return {
+    kind: "aggregate",
+    title,
+    year: null,
+    lastSeason: 0,
+    lastEpisode: 0,
+    archived,
+    percent: null,
+    _from: "followed",
   };
 }
 
