@@ -35,6 +35,9 @@ export type AggregateImportItem = {
   // utilisé quand aucun couple (saison, épisode) n'est fourni : le backend
   // marquera les N premiers épisodes comme vus.
   episodesSeenCount?: number | null;
+  // Marqueur interne (non transmis au serveur) pour cross-référencer les CSV
+  // TV Time entre eux avant l'envoi. Voir `crossFilterTvTimeAggregates`.
+  _from?: "utsd" | "followed" | "betaseries";
 };
 
 export type ImportItem = GranularImportItem | AggregateImportItem;
