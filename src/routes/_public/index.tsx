@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
-import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -534,7 +534,7 @@ function HeroTicket({
   // episode".
   const [display, setDisplay] = useState(progress?.watched ?? 0);
   const [bump, setBump] = useState(false);
-  const prefersReducedMotion = usePrefersReducedMotion();
+  const prefersReducedMotion = useReducedMotion();
   // Last {watched, total} pair this effect has seen — the backstop below
   // compares against this rather than the (possibly still-tweening)
   // `display` state, so the comparison is stable regardless of where a

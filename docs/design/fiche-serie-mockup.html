@@ -1,0 +1,1123 @@
+<title>Fiche série — refonte immersive</title>
+<style>
+  :root {
+    --bg-void: #0B0E14;
+    --bg-surface: #151A24;
+    --bg-surface-raised: #1E2530;
+    --accent-amber: #FF8A3D;
+    --accent-cyan: #4DD9C4;
+    --text-primary: #F2EDE4;
+    --text-muted: #8B92A3;
+    --border: #262E3B;
+    --radius: 10px;
+    --font-display: "Archivo Expanded", "Archivo", ui-sans-serif, system-ui, sans-serif;
+    --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #10151f 0%, var(--bg-void) 55%),
+      var(--bg-void);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .page-wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  .page-head {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .page-head .kicker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--accent-amber);
+    margin: 0 0 10px;
+  }
+  .page-head h1 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-stretch: expanded;
+    letter-spacing: 0.01em;
+    font-size: clamp(22px, 4vw, 32px);
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+  .page-head p {
+    color: var(--text-muted);
+    max-width: 56ch;
+    margin: 0 auto;
+    font-size: 14px;
+  }
+
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+    justify-content: center;
+  }
+  @media (max-width: 760px) {
+    .stage { grid-template-columns: 1fr; gap: 28px; justify-items: center; }
+  }
+
+  /* ---------- Phone frame ---------- */
+  .phone {
+    width: 340px;
+    max-width: 100%;
+    border-radius: 34px;
+    padding: 10px;
+    background: linear-gradient(160deg, #232b38, #0d1117);
+    box-shadow: 0 40px 80px -30px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03);
+    position: sticky;
+    top: 24px;
+  }
+  @media (max-width: 760px) { .phone { position: static; } }
+
+  .screen {
+    border-radius: 26px;
+    overflow: hidden;
+    background: var(--bg-void);
+    height: 720px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    position: relative;
+  }
+  .screen::-webkit-scrollbar { width: 6px; }
+  .screen::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    position: relative;
+    padding: 16px 18px 20px;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    isolation: isolate;
+    overflow: hidden;
+  }
+  .hero::before {
+    /* backdrop : "écran allumé dans le noir" */
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(120% 90% at 72% 18%, rgba(255,138,61,0.30) 0%, rgba(255,138,61,0) 55%),
+      radial-gradient(120% 100% at 20% 6%, rgba(77,217,196,0.22) 0%, rgba(77,217,196,0) 50%),
+      linear-gradient(180deg, #1a2330 0%, #10161f 60%, var(--bg-void) 100%);
+  }
+  .hero::after {
+    /* fondu bas vers le void pour ancrer le titre */
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0; height: 62%;
+    z-index: -1;
+    background: linear-gradient(180deg, rgba(11,14,20,0) 0%, rgba(11,14,20,0.72) 58%, var(--bg-void) 100%);
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .icon-btn {
+    height: 36px; width: 36px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: rgba(11,14,20,0.5);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .icon-btn svg { width: 17px; height: 17px; }
+
+  .hero-body { margin-top: auto; display: flex; align-items: flex-end; gap: 14px; }
+  .mini-poster {
+    width: 66px; height: 99px; flex-shrink: 0;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 12px 28px -10px rgba(0,0,0,0.85);
+    background: linear-gradient(160deg, #2b3444, #141a24);
+    display: grid; place-items: center;
+    overflow: hidden;
+  }
+  .mini-poster span {
+    font-family: var(--font-display); font-weight: 800; font-stretch: expanded;
+    font-size: 22px; color: rgba(242,237,228,0.85); letter-spacing: 0.04em;
+  }
+  .hero-text { min-width: 0; flex: 1; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .eyebrow .live {
+    color: var(--accent-amber);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .eyebrow .live::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-amber);
+    box-shadow: 0 0 8px var(--accent-amber);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  .hero h2 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-stretch: expanded;
+    font-size: 32px;
+    line-height: 1.02;
+    letter-spacing: 0.005em;
+    margin: 0;
+    text-wrap: balance;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  }
+  .hero .tagline {
+    font-style: italic;
+    color: #cfd6e2;
+    font-size: 13.5px;
+    margin: 8px 0 0;
+  }
+  .hero-meta {
+    display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .rating {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent-cyan);
+    font-variant-numeric: tabular-nums;
+    display: inline-flex; align-items: baseline; gap: 2px;
+    border: 1px solid rgba(77,217,196,0.40);
+    background: rgba(77,217,196,0.10);
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .rating small { color: rgba(77,217,196,0.65); font-size: 10px; }
+  .genre-row { display: flex; gap: 7px; flex-wrap: wrap; }
+  .genre {
+    font-size: 11px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: rgba(11,14,20,0.35);
+    padding: 2px 9px;
+    border-radius: 999px;
+  }
+
+  /* ---------- Body sections ---------- */
+  .section { padding: 0 18px; }
+  .section + .section { margin-top: 22px; }
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 10px;
+  }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    flex-shrink: 0; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; font-weight: 500;
+    border: 1px solid rgba(255,138,61,0.40);
+    background: rgba(255,138,61,0.10);
+    color: var(--accent-amber);
+    padding: 5px 11px; border-radius: 999px;
+  }
+  .status-pill::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-amber);
+  }
+  /* variante "à jour" (rattrapé) */
+  .status-pill.is-caught {
+    border-color: rgba(77,217,196,0.40); background: rgba(77,217,196,0.10); color: var(--accent-cyan);
+  }
+  .status-pill.is-caught::before { background: var(--accent-cyan); }
+
+  /* Cartes fines — near-black, filet 1px discret, grand rayon, beaucoup d'air */
+  .card {
+    background: rgba(255,255,255,0.018);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 16px;
+    padding: 18px;
+  }
+  .card + .card { margin-top: 12px; }
+
+  .story-head-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-bottom: 15px;
+  }
+  .story-head {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.24em;
+    text-transform: uppercase; color: var(--text-muted); margin: 0;
+  }
+  /* Compteur de progression (grand chiffre mono) + barre fine */
+  .counter-row {
+    display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 11px;
+  }
+  .big-counter {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    display: inline-flex; align-items: baseline; gap: 3px; line-height: 1;
+  }
+  .big-counter .cur { font-size: 36px; color: var(--accent-cyan); letter-spacing: -0.01em; }
+  .big-counter .sep, .big-counter .tot { font-size: 20px; color: var(--text-muted); }
+  .counter-cap {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .story-bar { height: 4px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .story-bar > i { display: block; height: 100%; border-radius: 4px; background: var(--accent-cyan); }
+  .story-memory {
+    margin-top: 13px; font-size: 12.5px; color: var(--text-muted);
+  }
+  .story-memory b { color: #cdd4df; font-weight: 500; }
+
+  /* Prochain à voir : le prochain épisode diffusé pas encore vu */
+  .story-resume {
+    margin-top: 15px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+  }
+  .resume-k {
+    display: block; margin-bottom: 9px;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .resume-row { display: flex; align-items: center; gap: 11px; }
+  .resume-row .play {
+    width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
+    background: rgba(255,138,61,0.12); color: var(--accent-amber);
+    display: grid; place-items: center;
+  }
+  .resume-row .play svg { width: 12px; height: 12px; margin-left: 1px; }
+  .resume-row .ep { font-family: var(--font-mono); font-weight: 600; color: var(--accent-amber); font-size: 12px; flex-shrink: 0; }
+  .resume-row .ti { font-size: 13.5px; color: var(--text-primary); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Prochain épisode (à venir) — hiérarchie simple : titre, date, compte à rebours à droite */
+  .next-ep-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .next-ep-eyebrow {
+    margin: 0; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.24em;
+    text-transform: uppercase; color: var(--accent-cyan);
+  }
+  .next-ep-title { font-size: 14px; color: var(--text-primary); line-height: 1.35; }
+  .next-ep-title .ep { font-family: var(--font-mono); font-weight: 600; color: var(--accent-cyan); font-size: 12.5px; margin-right: 7px; }
+  .next-ep-date { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+  .next-ep-count {
+    flex-shrink: 0; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
+    color: var(--accent-cyan); border: 1px solid rgba(77,217,196,0.30);
+    background: rgba(77,217,196,0.08); border-radius: 999px; padding: 6px 12px;
+  }
+
+
+  .synopsis {
+    font-size: 13.5px;
+    color: #b9c0cd;
+    margin: 0;
+    line-height: 1.62;
+  }
+  .read-more {
+    background: none; border: none; padding: 6px 0 0;
+    color: var(--text-muted); font-size: 11.5px; font-family: var(--font-body);
+    cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  }
+
+  .where {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 2px;
+  }
+  .provider {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.018);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--text-primary);
+  }
+  .provider .logo {
+    width: 22px; height: 22px; border-radius: 5px;
+    background: linear-gradient(135deg,#3d4658,#1b2230);
+    display: grid; place-items: center;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-primary);
+  }
+
+  /* Saisons en accordéon (fermées par défaut → moins de scroll) */
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+
+  .seasons { margin-top: 6px; }
+  .season + .season { border-top: 1px solid rgba(255,255,255,0.06); }
+  .season-sum { display: flex; align-items: center; gap: 12px; padding: 16px 2px; }
+  .season-name { font-family: var(--font-display); font-weight: 800; font-stretch: expanded; font-size: 16px; flex: 1; }
+  .season-mini-bar { width: 46px; height: 3px; border-radius: 3px; background: rgba(255,255,255,0.09); overflow: hidden; flex-shrink: 0; }
+  .season-mini-bar > i { display: block; height: 100%; background: var(--accent-cyan); border-radius: 3px; }
+  .season-chev { width: 17px; height: 17px; color: var(--text-muted); flex-shrink: 0; transition: transform 0.2s ease; }
+  .season[open] .season-chev { transform: rotate(180deg); }
+  .season-content { padding-bottom: 14px; }
+  .mark-all {
+    margin-top: 12px; width: 100%;
+    font-size: 12px; color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);
+    border-radius: 10px; padding: 10px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .mark-all svg { width: 14px; height: 14px; }
+
+  .vhs {
+    background: var(--bg-surface-raised);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 13px 15px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: relative;
+  }
+  .vhs-digits {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    display: flex; align-items: baseline; gap: 4px;
+    position: relative;
+  }
+  .vhs-digits .cur {
+    font-size: 30px; color: var(--accent-cyan); line-height: 1;
+    letter-spacing: 0.02em;
+    text-shadow: 0 0 14px rgba(77,217,196,0.35);
+  }
+  .vhs-digits .sep, .vhs-digits .tot {
+    font-size: 18px; color: var(--text-muted); line-height: 1;
+  }
+  .vhs-meta { text-align: right; }
+  .vhs-meta .k {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--text-muted); display: block;
+  }
+  .vhs-bar {
+    margin-top: 7px; height: 3px; width: 96px; border-radius: 2px;
+    background: var(--border); overflow: hidden; margin-left: auto;
+  }
+  .vhs-bar > i { display: block; height: 100%; background: var(--accent-cyan); border-radius: 2px; }
+
+  /* Épisodes : lignes dépliables pour le résumé (pas d'encart par épisode) */
+  .ep-list { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; }
+  .ep-list > li + li { border-top: 1px solid rgba(255,255,255,0.06); }
+  .ep-sum { display: flex; align-items: flex-start; gap: 13px; padding: 13px 2px; }
+  .check {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    display: grid; place-items: center;
+    border: 1px solid var(--border); background: var(--bg-surface-raised);
+    color: var(--text-muted);
+  }
+  .check.done {
+    border-color: var(--accent-cyan);
+    background: rgba(77,217,196,0.10);
+    color: var(--accent-cyan);
+  }
+  .check svg { width: 14px; height: 14px; }
+  .ep-main { min-width: 0; flex: 1; }
+  .ep-line { display: flex; align-items: baseline; gap: 8px; }
+  .ep-no { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-muted); letter-spacing: 0.12em; flex-shrink: 0; }
+  .ep-t { font-size: 13.5px; color: var(--text-primary); line-height: 1.35; }
+  .ep-date { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); margin-top: 5px; }
+  .ep-chev { width: 15px; height: 15px; color: var(--text-muted); flex-shrink: 0; margin-top: 3px; transition: transform 0.2s ease; }
+  .ep[open] .ep-chev { transform: rotate(180deg); }
+  .ep-overview { margin: 0; padding: 0 2px 13px 41px; font-size: 12.5px; line-height: 1.6; color: var(--text-muted); }
+
+  .milestone {
+    margin-top: 12px;
+    display: flex; align-items: center; gap: 9px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em;
+    color: var(--accent-cyan);
+    background: rgba(77,217,196,0.06);
+    border: 1px solid rgba(77,217,196,0.22);
+    border-radius: 8px; padding: 9px 12px;
+  }
+
+  /* bottom nav */
+  .bottom-nav {
+    position: sticky; bottom: 0;
+    display: grid; grid-template-columns: repeat(4,1fr);
+    background: rgba(11,14,20,0.92);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    padding: 9px 0 12px;
+  }
+  .nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--text-muted); font-size: 9.5px; }
+  .nav-item.active { color: var(--accent-amber); }
+  .nav-item svg { width: 19px; height: 19px; }
+
+  .pad-b { height: 20px; }
+
+  /* ---------- Legend (desktop side) ---------- */
+  .legend { padding-top: 8px; }
+  .legend h3 {
+    font-family: var(--font-display); font-weight: 800; font-stretch: expanded;
+    font-size: 16px; margin: 0 0 4px;
+  }
+  .legend > p { color: var(--text-muted); font-size: 13px; margin: 0 0 22px; max-width: 42ch; }
+  .beat { display: flex; gap: 14px; margin-bottom: 20px; }
+  .beat .dot {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+    display: grid; place-items: center;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    background: var(--bg-surface-raised); border: 1px solid var(--border);
+    color: var(--accent-amber);
+  }
+  .beat h4 { margin: 3px 0 4px; font-size: 13.5px; color: var(--text-primary); }
+  .beat p { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
+  .beat p em { color: #c3cad6; font-style: normal; }
+  .legend-note {
+    margin-top: 6px; font-size: 11.5px; color: var(--text-muted);
+    border-top: 1px solid var(--border); padding-top: 16px; line-height: 1.6;
+  }
+  .legend-note b { color: #c3cad6; font-weight: 500; }
+
+  /* variantes de statut */
+  .status-pill.is-paused {
+    border-color: rgba(139,146,163,0.32); background: rgba(139,146,163,0.08); color: var(--text-muted);
+  }
+  .status-pill.is-paused::before { background: var(--text-muted); }
+  .big-counter.is-muted .cur { color: var(--text-muted); }
+  .story-bar.is-muted > i { background: var(--text-muted); opacity: 0.55; }
+
+  /* ligne "note" générique dans une carte d'état (à jour, terminé) */
+  .state-note {
+    margin-top: 14px; display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
+    color: var(--accent-cyan);
+  }
+  .state-note svg { flex-shrink: 0; }
+  .state-line {
+    margin-top: 15px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 9px; cursor: pointer;
+    font-size: 13px; color: var(--text-primary);
+  }
+  .state-line svg { flex-shrink: 0; color: var(--text-muted); width: 15px; height: 15px; }
+  .state-line .arrow { margin-left: auto; color: var(--text-muted); display: inline-flex; }
+
+  /* Follow CTA (série non suivie) */
+  .follow-cta { display: flex; flex-direction: column; gap: 12px; }
+  .follow-btn {
+    background: var(--accent-amber); color: #0B0E14; border: none; border-radius: 11px;
+    padding: 13px; font-family: var(--font-body); font-weight: 600; font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  }
+  .follow-btn svg { width: 16px; height: 16px; }
+  .follow-hint { font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5; }
+
+  /* ============ GALERIE D'ÉTATS ============ */
+  .states { max-width: 1060px; margin: 60px auto 0; padding: 0 20px; }
+  .states-head { text-align: center; margin-bottom: 38px; }
+  .states-head .kicker {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.28em;
+    text-transform: uppercase; color: var(--accent-amber); margin: 0 0 10px;
+  }
+  .states-head h2 {
+    font-family: var(--font-display); font-weight: 800; font-stretch: expanded;
+    font-size: clamp(20px, 3.5vw, 27px); margin: 0 0 8px; text-wrap: balance;
+  }
+  .states-head p { color: var(--text-muted); max-width: 54ch; margin: 0 auto; font-size: 14px; }
+  .states-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 28px;
+  }
+  .mini-label {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-primary);
+  }
+  .mini-label .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-amber { background: var(--accent-amber); }
+  .dot-cyan { background: var(--accent-cyan); }
+  .dot-muted { background: var(--text-muted); }
+  .mini-frame {
+    border-radius: 28px; padding: 8px;
+    background: linear-gradient(160deg, #232b38, #0d1117);
+    box-shadow: 0 30px 60px -28px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.03);
+  }
+  .mini-screen { border-radius: 21px; overflow: hidden; background: var(--bg-void); }
+  .mini-hero {
+    position: relative; padding: 14px 15px 15px; min-height: 132px;
+    display: flex; flex-direction: column; justify-content: flex-end; isolation: isolate; overflow: hidden;
+  }
+  .mini-hero::before {
+    content: ""; position: absolute; inset: 0; z-index: -2;
+    background:
+      radial-gradient(120% 90% at 75% 15%, rgba(255,138,61,0.28) 0%, rgba(255,138,61,0) 55%),
+      radial-gradient(120% 100% at 18% 5%, rgba(77,217,196,0.20) 0%, rgba(77,217,196,0) 50%),
+      linear-gradient(180deg, #1a2330 0%, #10161f 55%, var(--bg-void) 100%);
+  }
+  .mini-hero::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 60%; z-index: -1;
+    background: linear-gradient(180deg, rgba(11,14,20,0) 0%, rgba(11,14,20,0.7) 55%, var(--bg-void) 100%);
+  }
+  .mini-eyebrow {
+    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--text-muted); margin: 0 0 6px;
+  }
+  .mini-hero h3 {
+    font-family: var(--font-display); font-weight: 800; font-stretch: expanded;
+    font-size: 20px; line-height: 1.05; margin: 0; text-shadow: 0 2px 16px rgba(0,0,0,0.6);
+  }
+  .mini-body { padding: 14px; }
+  .mini-body .card { margin-top: 0; padding: 15px; }
+  .mini-body .card + .card { margin-top: 10px; }
+  .mini-body .story-head { font-size: 9.5px; }
+  .mini-body .big-counter .cur { font-size: 30px; }
+  .mini-body .big-counter .sep, .mini-body .big-counter .tot { font-size: 17px; }
+
+  /* ---- Motion au scroll (activé seulement si JS + pas de reduced-motion) ---- */
+  .js-anim .reveal { opacity: 0; transform: translateY(12px); }
+  .js-anim .reveal.in {
+    opacity: 1; transform: none;
+    transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .js-anim .hero-body { will-change: transform, opacity; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; }
+    .js-anim .reveal { opacity: 1 !important; transform: none !important; }
+  }
+</style>
+
+<div class="page-wrap">
+  <header class="page-head">
+    <p class="kicker">Refonte · Fiche série</p>
+    <h1>Une fiche qu'on ressent, pas qu'on remplit</h1>
+    <p>Maquette mobile de la fiche série repensée pour l'émotion : le rituel du visionnage, la mémoire durable, la fierté de la progression — dans le design system existant (void nocturne, ambre / cyan, compteur VHS).</p>
+  </header>
+
+  <div class="stage">
+    <!-- ============ PHONE ============ -->
+    <div class="phone">
+      <div class="screen">
+
+        <!-- HERO -->
+        <section class="hero">
+          <div class="topbar">
+            <button class="icon-btn" aria-label="Retour">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <button class="icon-btn" aria-label="Gérer le suivi" aria-haspopup="menu">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+            </button>
+          </div>
+
+          <div class="hero-body">
+            <div class="mini-poster"><span>SΞ</span></div>
+            <div class="hero-text">
+              <p class="eyebrow">
+                <span>Série · 2022</span>
+                <span>·</span>
+                <span class="live">En diffusion</span>
+              </p>
+              <h2>Severance</h2>
+              <p class="tagline">« Vous n'êtes pas votre travail. »</p>
+              <div class="hero-meta">
+                <span class="rating">8.4<small>/10</small></span>
+                <div class="genre-row">
+                  <span class="genre">Drame</span>
+                  <span class="genre">Science-fiction</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VOTRE HISTOIRE (statut + compteur + reprendre intégré) -->
+        <div class="section" style="margin-top:16px">
+          <div class="card">
+            <div class="story-head-row">
+              <span class="story-head">Votre progression</span>
+              <span class="status-pill">En cours</span>
+            </div>
+            <div class="counter-row">
+              <span class="big-counter"><span class="cur">12</span><span class="sep">/</span><span class="tot">19</span></span>
+              <span class="counter-cap">épisodes vus</span>
+            </div>
+            <div class="story-bar"><i style="width:63%"></i></div>
+            <div class="story-memory"><b>≈ 8 h</b> de visionnage</div>
+            <div class="story-resume">
+              <span class="resume-k">À voir maintenant</span>
+              <div class="resume-row">
+                <span class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+                <span class="ep">S02E04</span>
+                <span class="ti">La rançon</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PROCHAIN ÉPISODE (à venir) -->
+          <div class="card">
+            <div class="next-ep-top">
+              <p class="next-ep-eyebrow">Prochain épisode</p>
+              <span class="next-ep-count">dans 3 j</span>
+            </div>
+            <div class="next-ep-title"><span class="ep">S02E05</span>Trou de mémoire</div>
+            <div class="next-ep-date">vendredi 14 février</div>
+          </div>
+        </div>
+
+        <!-- SYNOPSIS -->
+        <div class="section" style="margin-top:22px">
+          <p class="section-label">Synopsis</p>
+          <p class="synopsis">Mark dirige une équipe d'employés dont la mémoire a été chirurgicalement divisée entre leur vie professionnelle et leur vie personnelle. Quand un mystérieux collègue réapparaît hors des murs de Lumon…</p>
+          <button class="read-more">Lire la suite
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </div>
+
+        <!-- WHERE TO WATCH -->
+        <div class="section" style="margin-top:18px">
+          <p class="section-label">Où regarder</p>
+          <div class="where">
+            <span class="provider"><span class="logo">tv+</span> Apple&nbsp;TV+</span>
+          </div>
+        </div>
+
+        <!-- SAISONS (accordéons — fermés par défaut pour limiter le scroll) -->
+        <div class="section">
+          <p class="section-label">Saisons</p>
+          <div class="seasons">
+
+            <!-- Saison 1 : bouclée, fermée par défaut -->
+            <details class="season">
+              <summary class="season-sum">
+                <span class="season-name">Saison 1</span>
+                <span class="season-mini-bar"><i style="width:100%"></i></span>
+                <svg class="season-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </summary>
+              <div class="season-content">
+                <div class="vhs">
+                  <div class="vhs-digits"><span class="cur">09</span><span class="sep">/</span><span class="tot">09</span></div>
+                  <div class="vhs-meta">
+                    <span class="k">Saison bouclée</span>
+                    <div class="vhs-bar"><i style="width:100%"></i></div>
+                  </div>
+                </div>
+                <ul class="ep-list">
+                  <li><details class="ep">
+                    <summary class="ep-sum">
+                      <span class="check done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E01</span><span class="ep-t">Bonne santé</span></span>
+                        <span class="ep-date">18 fév. 2022</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">Mark peine à s'adapter à son premier jour comme chef d'équipe au raffinage des macrodonnées.</p>
+                  </details></li>
+                  <li><details class="ep">
+                    <summary class="ep-sum">
+                      <span class="check done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E02</span><span class="ep-t">Demi-boucle</span></span>
+                        <span class="ep-date">18 fév. 2022</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">L'équipe découvre un couloir qui semble ne mener nulle part, et Helly refuse de coopérer.</p>
+                  </details></li>
+                </ul>
+              </div>
+            </details>
+
+            <!-- Saison 2 : en cours, ouverte pour la démo -->
+            <details class="season" open>
+              <summary class="season-sum">
+                <span class="season-name">Saison 2</span>
+                <span class="season-mini-bar"><i style="width:30%"></i></span>
+                <svg class="season-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </summary>
+              <div class="season-content">
+                <div class="vhs">
+                  <div class="vhs-digits"><span class="cur">03</span><span class="sep">/</span><span class="tot">10</span></div>
+                  <div class="vhs-meta">
+                    <span class="k">En cours</span>
+                    <div class="vhs-bar"><i style="width:30%"></i></div>
+                  </div>
+                </div>
+                <button class="mark-all">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  Marquer la saison comme vue
+                </button>
+                <ul class="ep-list">
+                  <li><details class="ep" open>
+                    <summary class="ep-sum">
+                      <span class="check done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E01</span><span class="ep-t">Hello, Ms. Cobel</span></span>
+                        <span class="ep-date">17 jan. 2025</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">De retour après le soulèvement, Mark retrouve un étage méconnaissable et une équipe à reconstituer.</p>
+                  </details></li>
+                  <li><details class="ep">
+                    <summary class="ep-sum">
+                      <span class="check done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E02</span><span class="ep-t">Goodbye, Mrs. Selvig</span></span>
+                        <span class="ep-date">24 jan. 2025</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">Les innies tentent de comprendre ce qui a changé pendant leur absence, et à qui se fier.</p>
+                  </details></li>
+                  <li><details class="ep">
+                    <summary class="ep-sum">
+                      <span class="check done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E03</span><span class="ep-t">Who Is Alive?</span></span>
+                        <span class="ep-date">31 jan. 2025</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">Une réunion de service vire à l'inquiétude générale ; Lumon resserre discrètement son contrôle.</p>
+                  </details></li>
+                  <li><details class="ep">
+                    <summary class="ep-sum">
+                      <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E04</span><span class="ep-t">La rançon</span></span>
+                        <span class="ep-date">7 fév. 2025</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">Helly doit choisir son camp alors que la frontière entre innie et outie se brouille.</p>
+                  </details></li>
+                </ul>
+              </div>
+            </details>
+
+          </div>
+        </div>
+
+        <div class="pad-b"></div>
+
+        <!-- BOTTOM NAV -->
+        <nav class="bottom-nav">
+          <span class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Accueil
+          </span>
+          <span class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            Recherche
+          </span>
+          <span class="nav-item active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg>
+            Bibliothèque
+          </span>
+          <span class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+            Profil
+          </span>
+        </nav>
+
+      </div>
+    </div>
+
+    <!-- ============ LEGEND ============ -->
+    <aside class="legend">
+      <h3>Les moments d'émotion</h3>
+      <p>Trois temps forts ajoutés, chacun servi par une donnée déjà présente en base — aucune migration, aucune donnée inventée.</p>
+
+      <div class="beat">
+        <span class="dot">01</span>
+        <div>
+          <h4>Le hero immersif</h4>
+          <p>Le <em>backdrop</em> TMDb (déjà remonté par l'API, jamais affiché) devient un fond dégradé vers le void — « l'écran allumé dans le noir ». Titre en Archivo Expanded, note cyan, tagline. Repli soigné pour les fiches sans image.</p>
+        </div>
+      </div>
+
+      <div class="beat">
+        <span class="dot">02</span>
+        <div>
+          <h4>« Votre progression »</h4>
+          <p>Statut lisible directement (<em>En cours</em>), compteur <em>12/19</em> + barre fine, et une ligne mémoire : heures cumulées (≈ explicite, dérivé des épisodes vus). En pied de carte, <em>À voir maintenant</em> pointe le prochain épisode diffusé à regarder. Pas de date de suivi affichée — on ne sait pas de façon fiable quand l'utilisateur a démarré sa saison.</p>
+        </div>
+      </div>
+
+      <div class="beat">
+        <span class="dot">03</span>
+        <div>
+          <h4>Anticipation : reprendre & prochain épisode</h4>
+          <p><em>Reprendre</em> (ambre) est intégré en pied de la carte histoire — l'épisode diffusé pas encore vu. <em>Prochain épisode</em> (cyan) est une carte dédiée : titre, date et compte à rebours discret « dans 3 jours ». Le rendez-vous télé, sans surcharge.</p>
+        </div>
+      </div>
+
+      <div class="beat">
+        <span class="dot">04</span>
+        <div>
+          <h4>Saisons repliables & compteur VHS</h4>
+          <p>Les saisons sont des accordéons <em>fermés par défaut</em> (moins de scroll) ; chaque épisode se déplie pour révéler son résumé. Le compteur VHS (chiffres Plex Mono, module surélevé) reste la pièce maîtresse à l'ouverture d'une saison, avec ses jalons sobres (<em>« Saison bouclée »</em>).</p>
+        </div>
+      </div>
+
+      <p class="legend-note">
+        <b>Un seul menu ⋮ (kebab), en haut à droite :</b> il ouvre les actions de suivi <em>rares</em> — Abandonner / Reprendre / Ne plus suivre. Le statut, lui, est calculé automatiquement et se lit <em>directement</em> dans l'entête de l'encart (pastille <em>En cours</em> en ambre, ou <em>À jour</em> en cyan une fois rattrapé) — aucun clic requis.<br><br>
+        <b>Garde-fous respectés :</b> optimistic UI intact sur le clic « vu », aucun accent hors tokens, zéro gamification gadget, estimations marquées « ≈ », et l'argument « historique en sécurité » réservé au seul dialogue « Ne plus suivre ».
+      </p>
+    </aside>
+  </div>
+
+  <!-- ============ GALERIE D'ÉTATS ============ -->
+  <section class="states">
+    <div class="states-head">
+      <p class="kicker">Une fiche, plusieurs vies</p>
+      <h2>Tous les états de la fiche</h2>
+      <p>La même page s'adapte à votre relation avec la série. Le haut de fiche (hero + carte de suivi) change ; le reste — synopsis, saisons, épisodes — reste identique.</p>
+    </div>
+
+    <div class="states-grid">
+
+      <!-- 1. NON SUIVIE (visiteur) -->
+      <div class="mini">
+        <div class="mini-label"><span class="dot dot-muted"></span>Non suivie</div>
+        <div class="mini-frame"><div class="mini-screen">
+          <div class="mini-hero">
+            <p class="mini-eyebrow">Série · 2022 · En diffusion</p>
+            <h3>Severance</h3>
+          </div>
+          <div class="mini-body">
+            <div class="card">
+              <div class="follow-cta">
+                <button class="follow-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                  Suivre
+                </button>
+                <p class="follow-hint">Suivez cette série pour activer le compteur et retrouver votre progression à chaque visite.</p>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- 2. EN COURS -->
+      <div class="mini">
+        <div class="mini-label"><span class="dot dot-amber"></span>En cours</div>
+        <div class="mini-frame"><div class="mini-screen">
+          <div class="mini-hero">
+            <p class="mini-eyebrow">Série · 2022 · En diffusion</p>
+            <h3>Severance</h3>
+          </div>
+          <div class="mini-body">
+            <div class="card">
+              <div class="story-head-row">
+                <span class="story-head">Votre progression</span>
+                <span class="status-pill">En cours</span>
+              </div>
+              <div class="counter-row">
+                <span class="big-counter"><span class="cur">12</span><span class="sep">/</span><span class="tot">19</span></span>
+                <span class="counter-cap">épisodes vus</span>
+              </div>
+              <div class="story-bar"><i style="width:63%"></i></div>
+              <div class="story-memory"><b>≈ 8 h</b> de visionnage</div>
+              <div class="story-resume">
+                <span class="resume-k">À voir maintenant</span>
+                <div class="resume-row">
+                  <span class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+                  <span class="ep">S02E04</span>
+                  <span class="ti">La rançon</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- 3. À JOUR (rattrapée, série en diffusion) -->
+      <div class="mini">
+        <div class="mini-label"><span class="dot dot-cyan"></span>À jour</div>
+        <div class="mini-frame"><div class="mini-screen">
+          <div class="mini-hero">
+            <p class="mini-eyebrow">Série · 2022 · En diffusion</p>
+            <h3>Severance</h3>
+          </div>
+          <div class="mini-body">
+            <div class="card">
+              <div class="story-head-row">
+                <span class="story-head">Votre progression</span>
+                <span class="status-pill is-caught">À jour</span>
+              </div>
+              <div class="counter-row">
+                <span class="big-counter"><span class="cur">19</span><span class="sep">/</span><span class="tot">19</span></span>
+                <span class="counter-cap">épisodes diffusés</span>
+              </div>
+              <div class="story-bar"><i style="width:100%"></i></div>
+              <div class="state-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                Vous avez tout vu jusqu'ici.
+              </div>
+              <div class="state-line">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 3l4 4 4-4"/></svg>
+                Prochain épisode · <span style="color:var(--accent-cyan)">dans 3 j</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- 4. TERMINÉE (série finie, tout vu) -->
+      <div class="mini">
+        <div class="mini-label"><span class="dot dot-cyan"></span>Terminée</div>
+        <div class="mini-frame"><div class="mini-screen">
+          <div class="mini-hero">
+            <p class="mini-eyebrow">Série · 2019–2023 · Terminée</p>
+            <h3>Succession</h3>
+          </div>
+          <div class="mini-body">
+            <div class="card">
+              <div class="story-head-row">
+                <span class="story-head">Votre progression</span>
+                <span class="status-pill is-caught">Terminé</span>
+              </div>
+              <div class="counter-row">
+                <span class="big-counter"><span class="cur">39</span><span class="sep">/</span><span class="tot">39</span></span>
+                <span class="counter-cap">épisodes vus</span>
+              </div>
+              <div class="story-bar"><i style="width:100%"></i></div>
+              <div class="state-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                À jour sur toute la série.
+              </div>
+              <div class="story-memory"><b>≈ 29 h</b> de visionnage</div>
+              <div class="state-line">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                Revoir depuis le début
+                <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M9 18l6-6-6-6"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- 5. ABANDONNÉE -->
+      <div class="mini">
+        <div class="mini-label"><span class="dot dot-muted"></span>Abandonnée</div>
+        <div class="mini-frame"><div class="mini-screen">
+          <div class="mini-hero">
+            <p class="mini-eyebrow">Série · 2022 · En diffusion</p>
+            <h3>Severance</h3>
+          </div>
+          <div class="mini-body">
+            <div class="card">
+              <div class="story-head-row">
+                <span class="story-head">Votre progression</span>
+                <span class="status-pill is-paused">Abandonné</span>
+              </div>
+              <div class="counter-row">
+                <span class="big-counter is-muted"><span class="cur">05</span><span class="sep">/</span><span class="tot">19</span></span>
+                <span class="counter-cap">épisodes vus</span>
+              </div>
+              <div class="story-bar is-muted"><i style="width:26%"></i></div>
+              <div class="story-memory"><b>≈ 3 h</b> de visionnage · en pause</div>
+              <div class="state-line">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                Reprendre le suivi
+                <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M9 18l6-6-6-6"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var screenEl = document.querySelector(".phone .screen");
+  if (!screenEl || reduce) return;
+
+  document.body.classList.add("js-anim");
+
+  var easeOut = function (t) { return 1 - Math.pow(1 - t, 3); };
+
+  // Roll d'un compteur mono de 0 → valeur cible (préserve le zéro-padding)
+  function rollNumber(el) {
+    var raw = (el.textContent || "").trim();
+    var target = parseInt(raw, 10);
+    if (isNaN(target)) return;
+    var width = raw.length;
+    var dur = 750, start = null;
+    function frame(ts) {
+      if (start === null) start = ts;
+      var p = Math.min((ts - start) / dur, 1);
+      var val = Math.round(easeOut(p) * target);
+      el.textContent = String(val).padStart(width, "0");
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    el.textContent = String(0).padStart(width, "0");
+    requestAnimationFrame(frame);
+  }
+
+  // Remplissage d'une barre : largeur inline mémorisée puis rejouée de 0
+  function fillBar(bar) {
+    var target = bar.style.width || "0%";
+    bar.style.width = "0%";
+    // force reflow avant transition
+    void bar.offsetWidth;
+    bar.style.transition = "width 0.8s cubic-bezier(0.16,1,0.3,1)";
+    requestAnimationFrame(function () { bar.style.width = target; });
+  }
+
+  // Cibles "feuilles" à révéler : cartes, saisons, sections d'info — sans
+  // révéler un ancêtre qui contient déjà une autre cible (évite le double).
+  var candidates = Array.prototype.slice.call(
+    screenEl.querySelectorAll(".card, details.season, .section")
+  );
+  var targets = candidates.filter(function (el) {
+    return !candidates.some(function (other) {
+      return other !== el && el.contains(other);
+    });
+  });
+
+  targets.forEach(function (el) { el.classList.add("reveal"); });
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      var el = entry.target;
+      el.classList.add("in");
+      el.querySelectorAll(".big-counter .cur, .vhs-digits .cur").forEach(rollNumber);
+      el.querySelectorAll(".story-bar > i, .vhs-bar > i").forEach(fillBar);
+      io.unobserve(el);
+    });
+  }, { root: screenEl, threshold: 0.25 });
+
+  targets.forEach(function (el) { io.observe(el); });
+
+  // Hero qui recule : fondu + légère dérive du contenu quand on plonge
+  var heroBody = screenEl.querySelector(".hero-body");
+  if (heroBody) {
+    var onScroll = function () {
+      var st = screenEl.scrollTop;
+      var f = Math.min(st / 240, 1);
+      heroBody.style.transform = "translateY(" + (st * 0.22) + "px)";
+      heroBody.style.opacity = String(1 - f * 0.85);
+    };
+    screenEl.addEventListener("scroll", onScroll, { passive: true });
+  }
+})();
+</script>

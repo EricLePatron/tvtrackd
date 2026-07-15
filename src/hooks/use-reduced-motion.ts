@@ -1,24 +1,32 @@
 import { useEffect, useState } from "react";
 
+const QUERY = "(prefers-reduced-motion: reduce)";
+
 /**
- * Live `prefers-reduced-motion: reduce` — used to gate the app's "compteur
- * mécanique" bump/tween effects (`VhsCounter`'s own bump, and its duplicate
- * in `HeroTicket`, src/routes/_public/index.tsx): under `reduce`, callers
- * should skip the numeric tween (ticking count-up) and any `scale-*`
- * transform, jumping straight to the final value instead — a brief color
- * change (e.g. the cyan flash) is still fine to keep, since a color swap
- * isn't the kind of motion `prefers-reduced-motion` is meant to suppress.
- * Same SSR-agnostic pattern as `useIsMobile` (use-mobile.tsx): starts at a
- * default (`false`, i.e. "motion allowed") and corrects itself once mounted.
+ * Live `prefers-reduced-motion: reduce` — utilisé pour désactiver l'anim
+ * "compteur mécanique" (tween + `scale-*`) partout où elle apparaît :
+ * `VhsCounter`'s own bump, sa duplication locale dans `HeroTicket`
+ * (`src/routes/_public/index.tsx`), et les blocs de la fiche série
+ * (`ProgressCard`, `NextEpisodeCard`, dérive du hero). Sous `reduce`, les
+ * appelants doivent sauter directement à la valeur finale et ne jamais
+ * appliquer de `scale-*` — un changement de couleur (ex. le flash cyan)
+ * reste acceptable, ce n'est pas le type de mouvement que
+ * `prefers-reduced-motion` vise à supprimer.
+ *
+ * SSR-safe : `window.matchMedia` n'existe pas côté serveur (TanStack Start).
+ * L'état initial est `false` ("mouvement autorisé") et se corrige au
+ * montage — même garde-fou que `useIsMobile` (`use-mobile.tsx`), utile ici
+ * car ce hook est maintenant appelé depuis des routes rendues côté serveur.
  */
-export function usePrefersReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = () => setReduced(mql.matches);
-    mql.addEventListener("change", onChange);
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(QUERY);
     setReduced(mql.matches);
+    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);
 

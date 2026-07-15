@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
+import { cn } from "@/lib/utils";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { useRollingNumber } from "@/hooks/use-rolling-number";
 
 type VhsCounterProps =
   | {
@@ -34,46 +35,13 @@ export function VhsCounter(props: VhsCounterProps) {
   const { seasonNumber, watched, total } = props;
   const isGrid = props.variant === "grid";
   const lineOneEpisode = isGrid ? props.nextEpisodeNumber : props.lastEpisode;
-  const prefersReducedMotion = usePrefersReducedMotion();
+  const showFraction = watched !== undefined && total !== undefined;
 
-  const [display, setDisplay] = useState(watched ?? 0);
-  const [bump, setBump] = useState(false);
-
-  useEffect(() => {
-    if (watched === undefined) return;
-    if (display === watched) return;
-
-    if (prefersReducedMotion) {
-      // No tween, no scale — jump straight to the new value. The cyan color
-      // cue (via `bump`, applied in the JSX below without `scale-110`) is
-      // kept: a color swap isn't the kind of motion `prefers-reduced-motion`
-      // is meant to suppress.
-      setDisplay(watched);
-      setBump(true);
-      const timeoutId = setTimeout(() => setBump(false), 200);
-      return () => clearTimeout(timeoutId);
-    }
-
-    setBump(true);
-    const diff = watched - display;
-    const steps = Math.min(Math.abs(diff), 6);
-    const step = diff / (steps || 1);
-    let i = 0;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const intervalId = setInterval(() => {
-      i += 1;
-      setDisplay((d) => (i >= steps ? watched : Math.round(d + step)));
-      if (i >= steps) {
-        clearInterval(intervalId);
-        timeoutId = setTimeout(() => setBump(false), 200);
-      }
-    }, 40);
-    return () => {
-      clearInterval(intervalId);
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watched, prefersReducedMotion]);
+  const reducedMotion = useReducedMotion();
+  const { display, bump } = useRollingNumber(watched ?? 0, {
+    enabled: showFraction,
+    reducedMotion,
+  });
 
   const pad = (n: number) => n.toString().padStart(2, "0");
 
@@ -89,7 +57,7 @@ export function VhsCounter(props: VhsCounterProps) {
         <span className="text-primary">E{pad(lineOneEpisode)}</span>
         <div className="h-[2px] w-full overflow-hidden bg-muted-foreground/15">
           <div
-            className={`h-full transition-[width,background-color] duration-200 ease-out ${
+            className={`h-full transition-[width,background-color] duration-200 ease-out motion-reduce:transition-none ${
               bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
             }`}
             style={{ width: `${pct}%` }}
@@ -100,36 +68,44 @@ export function VhsCounter(props: VhsCounterProps) {
   }
 
   // Only "detail" (the default) reaches here.
-  const detailWatched = watched as number;
+  // `pct` tracks `display` (the animated value), not the raw `watched`
+  // target, so the bar fills in lockstep with the rolling digits.
   const detailTotal = total as number;
-  const pct = detailTotal ? Math.min(100, (detailWatched / detailTotal) * 100) : 0;
+  const pct = detailTotal ? Math.min(100, (display / detailTotal) * 100) : 0;
+  const seasonLabel = pct === 100 ? "Saison bouclée" : "En cours";
 
   return (
-    <div className="rounded-md border border-border bg-surface-elevated px-3 py-2.5">
-      <div className="flex items-center justify-between font-counter text-[11px] uppercase tracking-widest">
-        <span className="text-primary">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/[0.07] bg-surface-elevated px-3.5 py-3">
+      {/* Pièce maîtresse de la fiche série (cf. CLAUDE.md, élément signature) :
+          la fraction vue/total domine visuellement, cyan en permanence (pas
+          seulement pendant le bump), avec un léger glow — jamais reléguée au
+          rang de texte secondaire blanc. */}
+      <span className="flex items-baseline gap-1 font-counter tabular-nums">
+        <span
+          className={cn(
+            "text-[28px] leading-none tracking-tight text-cyan-accent transition-transform motion-reduce:transition-none",
+            bump && "scale-110",
+          )}
+          style={{ textShadow: "0 0 14px rgba(77,217,196,0.35)" }}
+        >
+          {pad(display)}
+        </span>
+        <span className="text-lg leading-none text-muted-foreground">/{pad(detailTotal)}</span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block font-counter text-[9px] uppercase tracking-[0.2em] text-primary">
           S{pad(seasonNumber)} E{pad(lineOneEpisode)}
         </span>
-        <span
-          className={`transition-transform ${bump ? "text-cyan-accent" : "text-foreground"} ${
-            bump && !prefersReducedMotion ? "scale-110" : ""
-          }`}
-        >
-          {pad(display)}/{pad(detailTotal)}
+        <span className="mt-1 block font-counter text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+          {seasonLabel}
         </span>
-      </div>
-      {/* Unlike "grid"'s bar (above), this one is deliberately always
-          `bg-primary`, never flashing cyan on bump — a pre-existing,
-          intentional divergence (only the fraction text flashes here), left
-          as-is: this is the show detail page, a separate screen from the
-          library grid/Home hero, and changing its bar treatment now would
-          be an unrelated risk on a screen this pass isn't touching. */}
-      <div className="mt-2 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
-        <div
-          className="h-full bg-primary transition-[width] duration-300 ease-out"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+        <span className="mt-1.5 ml-auto block h-[3px] w-20 overflow-hidden rounded-full bg-white/[0.09]">
+          <span
+            className="block h-full rounded-full bg-cyan-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
+            style={{ width: `${pct}%` }}
+          />
+        </span>
+      </span>
     </div>
   );
 }
