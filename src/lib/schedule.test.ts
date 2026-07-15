@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLastWatchedAtByShow,
   buildLibraryProgress,
+  buildReadyItems,
+  computeSeasonTally,
+  formatReadyLabel,
   getDayLabelParts,
+  HERO_STALE_DAYS,
+  isSeasonTallyReliable,
+  selectHero,
+  type ActiveStatus,
   type ScheduleEpisode,
   type ShowLite,
 } from "./schedule";
@@ -226,5 +234,371 @@ describe("getDayLabelParts", () => {
 
     expect(parts.dayNumber).toBe("6");
     expect(parts.dayNumber).not.toBe("06");
+  });
+});
+
+describe("formatReadyLabel", () => {
+  it("returns 'Ce soir' when the item isn't late at all", () => {
+    expect(formatReadyLabel({ isLate: false, lateDays: 0 })).toBe("Ce soir");
+  });
+
+  it("returns 'Ce soir' when isLate is true but lateDays is 0 (defensive, shouldn't happen in practice)", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 0 })).toBe("Ce soir");
+  });
+
+  it("shows a day count for 1-6j late", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 1 })).toBe("En retard · 1j");
+    expect(formatReadyLabel({ isLate: true, lateDays: 6 })).toBe("En retard · 6j");
+  });
+
+  it("switches to a week count at the 7j boundary", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 7 })).toBe("En retard · 1 sem");
+  });
+
+  it("floors to whole weeks within the 7-29j range", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 13 })).toBe("En retard · 1 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 14 })).toBe("En retard · 2 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 29 })).toBe("En retard · 4 sem");
+  });
+
+  it("returns null (no label at all) at the 30j boundary and beyond", () => {
+    expect(formatReadyLabel({ isLate: true, lateDays: 30 })).toBeNull();
+    expect(formatReadyLabel({ isLate: true, lateDays: 90 })).toBeNull();
+  });
+});
+
+describe("buildLastWatchedAtByShow", () => {
+  it("picks the max watched_at per show, not the first/last row in insertion order", () => {
+    const watchedRows = [
+      { show_id: 1, watched_at: "2026-01-05T10:00:00.000Z" },
+      { show_id: 1, watched_at: "2026-06-01T10:00:00.000Z" }, // more recent, inserted last
+    ];
+
+    const result = buildLastWatchedAtByShow(watchedRows);
+
+    expect(result.get(1)).toBe("2026-06-01T10:00:00.000Z");
+  });
+
+  it("compares timestamps as instants, not as strings, across differing fractional-second precision", () => {
+    // A naive lexicographic string comparison would rank the shorter string
+    // ("...T10:00:01Z", no fractional seconds) BEFORE "...T10:00:00.500Z"
+    // (fractional seconds present) because "1" > "." in ASCII — even though
+    // 10:00:01 is chronologically LATER than 10:00:00.5. This must resolve
+    // to the true later instant.
+    const watchedRows = [
+      { show_id: 1, watched_at: "2026-01-05T10:00:00.500Z" },
+      { show_id: 1, watched_at: "2026-01-05T10:00:01Z" },
+    ];
+
+    const result = buildLastWatchedAtByShow(watchedRows);
+
+    expect(result.get(1)).toBe("2026-01-05T10:00:01Z");
+  });
+
+  it("keeps shows independent — one show's watch rows never leak into another's", () => {
+    const watchedRows = [
+      { show_id: 1, watched_at: "2026-01-05T10:00:00.000Z" },
+      { show_id: 2, watched_at: "2026-06-01T10:00:00.000Z" },
+    ];
+
+    const result = buildLastWatchedAtByShow(watchedRows);
+
+    expect(result.get(1)).toBe("2026-01-05T10:00:00.000Z");
+    expect(result.get(2)).toBe("2026-06-01T10:00:00.000Z");
+  });
+
+  it("returns an empty map when there are no watched rows at all", () => {
+    const result = buildLastWatchedAtByShow([]);
+
+    expect(result.size).toBe(0);
+  });
+
+  it("[M1 regression] counts a show as recently watched even when the watched episode has no known air_date", () => {
+    // Fix for M1: the recency signal used to be derived from episode_id ->
+    // show_id resolution through the (air_date IS NOT NULL-scoped) `episodes`
+    // array fetched for scheduling, which silently dropped any watched
+    // episode whose cached air_date is unknown — common right after a CSV/
+    // Betaseries import with no per-episode dates. `buildLastWatchedAtByShow`
+    // now takes rows that already carry `show_id` directly (resolved via a
+    // Supabase join in index.tsx, entirely independent of `air_date`), so
+    // there is structurally no way for an unknown air_date to hide a watch
+    // from this function anymore — this test documents that guarantee by
+    // exercising the exact "just watched, date unknown" shape (a row with no
+    // `episodes`/`air_date` involvement at all).
+    const watchedRows = [{ show_id: 42, watched_at: "2026-07-07T09:00:00.000Z" }];
+
+    const result = buildLastWatchedAtByShow(watchedRows);
+
+    expect(result.get(42)).toBe("2026-07-07T09:00:00.000Z");
+  });
+});
+
+describe("selectHero", () => {
+  // Builds one ReadyItem per show via the real buildReadyItems (rather than
+  // hand-rolling ReadyItem literals) so earliestAirDate/lateDays/isLate stay
+  // internally consistent with how the app actually produces them.
+  function readyItems(
+    shows: { showRef: ShowLite; status: ActiveStatus; episodes: ScheduleEpisode[] }[],
+  ) {
+    const allEpisodes = shows.flatMap((s) => s.episodes);
+    const statusByShowId = new Map<number, ActiveStatus>(
+      shows.map((s) => [s.showRef.id, s.status]),
+    );
+    return buildReadyItems(allEpisodes, new Set(), statusByShowId, TODAY);
+  }
+
+  it("prefers a fresh en_cours show over a stale (60j+) one for the hero slot, even with an older backlog", () => {
+    const stale = show(1, "Stale Show"); // earliest backlog episode, but abandoned
+    const fresh = show(2, "Fresh Show");
+    const items = readyItems([
+      { showRef: stale, status: "en_cours", episodes: [ep(stale, 101, 1, 1, "2026-01-01")] },
+      { showRef: fresh, status: "en_cours", episodes: [ep(fresh, 201, 1, 1, "2026-06-01")] },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-04-01T00:00:00.000Z"], // ~98j before TODAY (2026-07-08) -> stale
+      [2, "2026-07-01T00:00:00.000Z"], // ~7j before TODAY -> fresh
+    ]);
+
+    const { hero, reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2);
+    // The stale show is also >=30j dormant here, so it lands in
+    // reprendreDormant rather than the visible reprendre list — it doesn't
+    // vanish, it's just not one of the 3 visible "Reprendre" rows.
+    expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
+  });
+
+  it("treats the exact HERO_STALE_DAYS (60j) boundary as stale (>=, not >), 59j as still fresh", () => {
+    const staleAt60 = show(1, "Stale At 60j"); // earliest backlog, but exactly 60j since last watch
+    const freshAt59 = show(2, "Fresh At 59j"); // later backlog, but only 59j since last watch
+    const items = readyItems([
+      {
+        showRef: staleAt60,
+        status: "en_cours",
+        episodes: [ep(staleAt60, 101, 1, 1, "2025-12-01")],
+      },
+      {
+        showRef: freshAt59,
+        status: "en_cours",
+        episodes: [ep(freshAt59, 201, 1, 1, "2026-01-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-05-09T00:00:00.000Z"], // exactly HERO_STALE_DAYS (60j) before TODAY -> stale
+      [2, "2026-05-10T00:00:00.000Z"], // exactly 59j before TODAY -> still fresh
+    ]);
+    expect(HERO_STALE_DAYS).toBe(60); // guards this test against a silent threshold change
+
+    const { hero, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2);
+    // 60j is also >=30j (LIST_STALE_DAYS), so the stale show lands in
+    // reprendreDormant rather than disappearing.
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
+  });
+
+  it("treats a show with no watch_status row at all (lastWatchedAt unknown) as NOT stale", () => {
+    const neverWatched = show(1, "Never Watched"); // e.g. just marked en_cours, no watch yet
+    const items = readyItems([
+      {
+        showRef: neverWatched,
+        status: "en_cours",
+        episodes: [ep(neverWatched, 101, 1, 1, "2026-01-01")],
+      },
+    ]);
+
+    const { hero } = selectHero(items, TODAY, new Map());
+
+    expect(hero?.show.id).toBe(1);
+  });
+
+  it("falls back to the oldest a_voir show when every en_cours candidate is stale", () => {
+    const staleEnCours = show(1, "Stale");
+    const aVoir = show(2, "A Voir");
+    const items = readyItems([
+      {
+        showRef: staleEnCours,
+        status: "en_cours",
+        episodes: [ep(staleEnCours, 101, 1, 1, "2026-01-01")],
+      },
+      { showRef: aVoir, status: "a_voir", episodes: [ep(aVoir, 201, 1, 1, "2026-01-01")] },
+    ]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-01-01T00:00:00.000Z"]]); // way past 60j
+
+    const { hero, reprendre, reprendreDormant, nouveau } = selectHero(
+      items,
+      TODAY,
+      lastWatchedAtByShowId,
+    );
+
+    expect(hero?.show.id).toBe(2);
+    // The stale en_cours show doesn't disappear — it's also >=30j dormant,
+    // so it lands in reprendreDormant rather than the visible reprendre list.
+    expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([1]);
+    expect(nouveau).toEqual([]);
+  });
+
+  it("never leaves hero null when readyItems is non-empty: falls back to the stale en_cours itself if nothing else qualifies", () => {
+    const onlyStaleShow = show(1, "Alone And Stale");
+    const items = readyItems([
+      {
+        showRef: onlyStaleShow,
+        status: "en_cours",
+        episodes: [ep(onlyStaleShow, 101, 1, 1, "2026-01-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-01-01T00:00:00.000Z"]]); // way past 60j, no other candidate
+
+    const { hero, reprendre } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(1);
+    expect(reprendre).toEqual([]); // hero isn't duplicated into reprendre
+  });
+
+  it("returns hero: null only when readyItems itself is empty", () => {
+    const { hero, reprendre, nouveau } = selectHero([], TODAY, new Map());
+
+    expect(hero).toBeNull();
+    expect(reprendre).toEqual([]);
+    expect(nouveau).toEqual([]);
+  });
+
+  it("splits non-hero en_cours shows into active reprendre (<30j) and reprendreDormant (>=30j)", () => {
+    // Distinct air_dates (heroShow earliest) so hero selection isn't left to
+    // the show-title tie-break — it must unambiguously be the show with the
+    // oldest ready backlog among the fresh (<60j) candidates.
+    const heroShow = show(1, "Hero");
+    const active = show(2, "Active");
+    const dormant = show(3, "Dormant");
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2025-12-01")] },
+      { showRef: active, status: "en_cours", episodes: [ep(active, 201, 1, 1, "2026-01-15")] },
+      { showRef: dormant, status: "en_cours", episodes: [ep(dormant, 301, 1, 1, "2026-02-01")] },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // 1j — freshest, wins hero
+      [2, "2026-06-20T00:00:00.000Z"], // ~18j — active
+      [3, "2026-05-01T00:00:00.000Z"], // ~68j — dormant
+    ]);
+
+    const { hero, reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(1);
+    expect(reprendre.map((i) => i.show.id)).toEqual([2]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([3]);
+  });
+
+  it("treats the 30j boundary itself as dormant (>=, not >)", () => {
+    const heroShow = show(1, "Hero");
+    const boundary = show(2, "Boundary");
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2025-12-01")] },
+      {
+        showRef: boundary,
+        status: "en_cours",
+        episodes: [ep(boundary, 201, 1, 1, "2026-01-15")],
+      },
+    ]);
+    // Exactly 30 days before TODAY (2026-07-08).
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"],
+      [2, "2026-06-08T00:00:00.000Z"],
+    ]);
+
+    const { reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(reprendre).toEqual([]);
+    expect(reprendreDormant.map((i) => i.show.id)).toEqual([2]);
+  });
+
+  it("never counts a show with no watch history at all as dormant", () => {
+    const heroShow = show(1, "Hero");
+    const neverWatched = show(2, "Never Watched");
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2025-12-01")] },
+      {
+        showRef: neverWatched,
+        status: "en_cours",
+        episodes: [ep(neverWatched, 201, 1, 1, "2026-01-15")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-07-07T00:00:00.000Z"]]); // show 2 absent entirely
+
+    const { reprendre, reprendreDormant } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(reprendre.map((i) => i.show.id)).toEqual([2]);
+    expect(reprendreDormant).toEqual([]);
+  });
+});
+
+describe("computeSeasonTally", () => {
+  it("scopes watched/total to the given show + season only", () => {
+    const s1 = show(1);
+    const s2 = show(2);
+    const episodes = [
+      ep(s1, 101, 1, 1, "2026-01-01"),
+      ep(s1, 102, 1, 2, "2026-01-08"),
+      ep(s1, 201, 2, 1, "2026-02-01"), // different season, same show — excluded
+      ep(s2, 901, 1, 1, "2026-01-01"), // different show, same season number — excluded
+    ];
+    const watched = new Set([101, 201, 901]);
+
+    const result = computeSeasonTally(episodes, watched, 1, 1);
+
+    expect(result).toEqual({ watched: 1, total: 2 });
+  });
+
+  it("returns { watched: 0, total: 0 } when the show/season combination isn't present", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
+
+    const result = computeSeasonTally(episodes, new Set(), 1, 99);
+
+    expect(result).toEqual({ watched: 0, total: 0 });
+  });
+
+  it("ignores rewatch magnitude — set membership alone counts an episode as watched", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
+    const watched = new Set([101]);
+
+    const result = computeSeasonTally(episodes, watched, 1, 1);
+
+    expect(result).toEqual({ watched: 1, total: 2 });
+  });
+});
+
+describe("isSeasonTallyReliable", () => {
+  it("[M2] treats the tally as unreliable when the official episode count is unknown (null/undefined)", () => {
+    // Fix for M2: the Home screen's `episodes` fetch caps the future at
+    // J+90, so a still-airing, long-hiatus season could have its `total`
+    // silently undercounted — without a known official count to compare
+    // against, we must not claim reliability just because a tally exists.
+    expect(isSeasonTallyReliable({ total: 9 }, null)).toBe(false);
+    expect(isSeasonTallyReliable({ total: 9 }, undefined)).toBe(false);
+  });
+
+  it("treats the tally as unreliable when it hasn't caught up to the official count yet (long-hiatus undercount)", () => {
+    // e.g. 9 episodes fetched within the J+90 window, but TMDb says the
+    // season has 12 — 3 more are announced further out than the fetch window
+    // covers. Showing "9/9 = 100%" here would be exactly the misleading bar
+    // M2 flagged.
+    expect(isSeasonTallyReliable({ total: 9 }, 12)).toBe(false);
+  });
+
+  it("treats the tally as reliable once it has caught up to (or exceeds) the official count", () => {
+    expect(isSeasonTallyReliable({ total: 9 }, 9)).toBe(true);
+    expect(isSeasonTallyReliable({ total: 10 }, 9)).toBe(true); // over-count edge case: still trusted
+  });
+
+  it("[QA nit] never treats an official count of 0 as reliable, even for a matching { total: 0 } tally", () => {
+    // `0 >= 0` would otherwise pass the naive `total >= officialEpisodeCount`
+    // check by coincidence — but `episode_count = 0` in the `seasons` cache
+    // only ever means "not populated yet", never a genuine zero-episode
+    // season (a hero always points at an already-aired episode, so its
+    // season has at least one).
+    expect(isSeasonTallyReliable({ total: 0 }, 0)).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import { ScreenHeader } from "@/components/screen-header";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -11,10 +12,6 @@ import {
   type ScheduleEpisode,
 } from "@/lib/schedule";
 
-export const Route = createFileRoute("/_authenticated/library")({
-  component: LibraryScreen,
-});
-
 const STATUSES = [
   { key: "a_voir", label: "À voir" },
   { key: "en_cours", label: "En cours" },
@@ -22,6 +19,25 @@ const STATUSES = [
   { key: "abandonne", label: "Abandonné" },
   { key: "archive", label: "Archive" },
 ] as const;
+
+const librarySearchSchema = z.object({
+  status: z.enum(["a_voir", "en_cours", "termine", "abandonne", "archive"]).optional(),
+});
+
+export const Route = createFileRoute("/_authenticated/library")({
+  // Same defensive try/catch as /auth's validateSearch: a malformed/garbage
+  // `?status=` (typo'd link, stale bookmark) falls back to `{}` (→ the
+  // component's own "en_cours" default) rather than blowing up the whole
+  // route via the root errorComponent.
+  validateSearch: (search: Record<string, unknown>) => {
+    try {
+      return librarySearchSchema.parse(search);
+    } catch {
+      return {};
+    }
+  },
+  component: LibraryScreen,
+});
 
 type Row = {
   id: number;
@@ -37,7 +53,29 @@ type Row = {
 
 function LibraryScreen() {
   const { user } = useAuth();
-  const [active, setActive] = useState<(typeof STATUSES)[number]["key"]>("en_cours");
+  const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const [active, setActive] = useState<(typeof STATUSES)[number]["key"]>(
+    search.status ?? "en_cours",
+  );
+
+  // Bidirectional sync: the URL can drive the active tab (e.g. Home's
+  // "Voir tout · à reprendre" link landing here with `?status=en_cours`),
+  // and — via handleTabChange below — the active tab also drives the URL,
+  // so the current filter stays bookmarkable/shareable and survives a
+  // back-navigation. Guarded on an actual mismatch so this never fights
+  // with handleTabChange's own `navigate` (which always lands here with
+  // `search.status === active` already, a no-op on the next render).
+  useEffect(() => {
+    if (search.status && search.status !== active) {
+      setActive(search.status);
+    }
+  }, [search.status, active]);
+
+  const handleTabChange = (key: (typeof STATUSES)[number]["key"]) => {
+    setActive(key);
+    navigate({ search: { status: key }, replace: true });
+  };
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["library", user?.id],
@@ -125,7 +163,7 @@ function LibraryScreen() {
             {STATUSES.map((s) => (
               <button
                 key={s.key}
-                onClick={() => setActive(s.key)}
+                onClick={() => handleTabChange(s.key)}
                 className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                   active === s.key
                     ? "border-primary bg-primary/10 text-primary"

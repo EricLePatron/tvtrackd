@@ -23,30 +23,18 @@ type VhsCounterProps =
       nextEpisodeNumber: number;
       watched: number;
       total: number;
-    }
-  | {
-      /**
-       * Enlarged pastille for the Home "Ce soir" hero ticket (real hero and
-       * anonymous demo hero alike). Line 1 = next episode to watch, same
-       * semantics as "grid". `watched`/`total` are deliberately optional: the
-       * signed-in hero currently has no season-progress data fetched into
-       * `ReadyItem`, so it renders a single line (SxxExx only). The
-       * anonymous demo hero supplies fabricated `watched`/`total` to show
-       * the full two-line fraction + bump animation — the app's signature
-       * "compteur mécanique" — right on the first screen.
-       */
-      variant: "hero";
-      seasonNumber: number;
-      nextEpisodeNumber: number;
-      watched?: number;
-      total?: number;
     };
+// NB: there used to be a third "hero" variant here (an enlarged pastille
+// meant for the Home "Ce soir" ticket). It was removed as dead code — the
+// hero ticket (`HeroTicket` in src/routes/_public/index.tsx) never actually
+// consumed it; it has always hand-rolled its own markup, which now
+// implements the same sober mono-line + bump animation independently (see
+// that file's `HeroTicket` component for the equivalent tween logic).
 
 export function VhsCounter(props: VhsCounterProps) {
   const { seasonNumber, watched, total } = props;
   const isGrid = props.variant === "grid";
-  const isHero = props.variant === "hero";
-  const lineOneEpisode = isGrid || isHero ? props.nextEpisodeNumber : props.lastEpisode;
+  const lineOneEpisode = isGrid ? props.nextEpisodeNumber : props.lastEpisode;
   const showFraction = watched !== undefined && total !== undefined;
 
   const reducedMotion = useReducedMotion();
@@ -57,14 +45,11 @@ export function VhsCounter(props: VhsCounterProps) {
 
   const pad = (n: number) => n.toString().padStart(2, "0");
 
-  // S/E line color — deliberately `text-primary` (amber) across all three
+  // S/E line color — deliberately `text-primary` (amber) across both
   // variants, never `text-cyan-accent`. Amber = action/CTA/"en cours" per
   // the design system; cyan is reserved for "vu"/success. The S/E line
   // always names the *next episode to watch*, not one already watched, so
-  // amber is the semantically correct choice here — including on the "hero"
-  // variant, even though the hand-rolled pastille it replaced happened to
-  // render this line in cyan. Do not "restore" cyan on this line thinking
-  // it's a regression; it isn't.
+  // amber is the semantically correct choice here.
   if (isGrid) {
     const pct = total ? Math.min(100, (display / total) * 100) : 0;
     return (
@@ -82,26 +67,7 @@ export function VhsCounter(props: VhsCounterProps) {
     );
   }
 
-  if (isHero) {
-    return (
-      <div className="flex items-center justify-between rounded-md bg-surface-elevated px-3 py-1.5 font-counter text-sm uppercase tracking-widest">
-        {/* Amber, not cyan — see the note above this if/else chain. */}
-        <span className="text-primary">
-          S{pad(seasonNumber)} E{pad(lineOneEpisode)}
-        </span>
-        {showFraction && (
-          <span
-            className={`transition-transform motion-reduce:transition-none ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
-          >
-            {pad(display)}/{pad(total ?? 0)}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  // Only "detail" (the default) reaches here — its type guarantees
-  // `watched`/`total` are required numbers, unlike "hero"'s optional pair.
+  // Only "detail" (the default) reaches here.
   // `pct` tracks `display` (the animated value), not the raw `watched`
   // target, so the bar fills in lockstep with the rolling digits.
   const detailTotal = total as number;
