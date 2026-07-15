@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 
 type FeedbackType = "Bug" | "Improvement";
 
-export function FeedbackButton() {
+export function FeedbackButton({
+  triggerClassName,
+  triggerLabel,
+}: {
+  triggerClassName?: string;
+  triggerLabel?: string;
+} = {}) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>("Improvement");
