@@ -1252,7 +1252,7 @@ function EpisodeRow({
             "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50",
             isWatched
               ? "border-cyan-accent bg-cyan-accent/10 text-cyan-accent"
-              : "border-border bg-surface-elevated text-muted-foreground hover:border-primary/60 hover:text-primary",
+              : "border-white/[0.07] bg-surface-elevated text-muted-foreground hover:border-primary/60 hover:text-primary",
           )}
         >
           {isWatched ? (
