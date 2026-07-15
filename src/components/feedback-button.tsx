@@ -66,9 +66,9 @@ export function FeedbackButton() {
         <button
           type="button"
           aria-label="Envoyer un retour"
-          className="fixed top-4 right-4 z-40 inline-flex h-10 items-center gap-2 rounded-full border border-primary/40 bg-surface-elevated/95 px-3 font-counter text-[10px] uppercase tracking-widest text-primary shadow-lg backdrop-blur transition-colors hover:bg-primary/15"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <MessageSquarePlus className="h-3 w-3" />
           Feedback
         </button>
       </DialogTrigger>

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { APP_NAME } from "@/lib/app-config";
+import { FeedbackButton } from "@/components/feedback-button";
 
 export function LegalFooter() {
   return (
@@ -21,9 +22,11 @@ export function LegalFooter() {
           Cookies
         </Link>
       </nav>
-      <p className="mt-3 text-center opacity-70">
-        © {new Date().getFullYear()} {APP_NAME}
-      </p>
+      <div className="mt-3 flex items-center justify-center gap-3">
+        <FeedbackButton />
+        <span aria-hidden className="opacity-40">·</span>
+        <span className="opacity-70">© {new Date().getFullYear()} {APP_NAME}</span>
+      </div>
     </footer>
   );
 }
