@@ -910,7 +910,7 @@ function Hero({
             {show.title}
           </h1>
           {show.tagline && (
-            <p className="mt-2 text-sm italic text-[#cfd6e2] line-clamp-1">« {show.tagline} »</p>
+            <p className="mt-2 text-sm italic leading-snug text-[#cfd6e2] line-clamp-2">« {show.tagline} »</p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-3.5">
             {!!show.vote_average && (
