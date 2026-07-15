@@ -35,13 +35,12 @@ export function VhsCounter(props: VhsCounterProps) {
   const { seasonNumber, watched, total } = props;
   const isGrid = props.variant === "grid";
   const lineOneEpisode = isGrid ? props.nextEpisodeNumber : props.lastEpisode;
-  const showFraction = watched !== undefined && total !== undefined;
 
   const reducedMotion = useReducedMotion();
-  const { display, bump } = useRollingNumber(watched ?? 0, {
-    enabled: showFraction,
-    reducedMotion,
-  });
+  // `watched`/`total` are required numbers on both variants (no optional
+  // "hero"-style pastille anymore, cf. NB above) — the fraction is always
+  // shown, so no `enabled` gate is needed here.
+  const { display, bump } = useRollingNumber(watched, { reducedMotion });
 
   const pad = (n: number) => n.toString().padStart(2, "0");
 
@@ -75,7 +74,7 @@ export function VhsCounter(props: VhsCounterProps) {
   const seasonLabel = pct === 100 ? "Saison bouclée" : "En cours";
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-white/[0.07] bg-surface-elevated px-3.5 py-3">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-surface-elevated px-3.5 py-3">
       {/* Pièce maîtresse de la fiche série (cf. CLAUDE.md, élément signature) :
           la fraction vue/total domine visuellement, cyan en permanence (pas
           seulement pendant le bump), avec un léger glow — jamais reléguée au
