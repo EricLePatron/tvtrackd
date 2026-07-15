@@ -162,6 +162,12 @@ const MOVIE_TMDB_STATUS_LABELS: Record<string, string> = {
   Rumored: "Rumeur",
 };
 
+// Statuts TMDb "toujours en vie" (diffusion/production en cours ou à venir) :
+// seuls ceux-là justifient le point pulsant ambre dans l'eyebrow du hero.
+// `Ended`/`Canceled` (et le reste des statuts films) restent en muted, sans
+// point — une série annulée n'est pas "en vie".
+const LIVE_TMDB_STATUSES = new Set(["Returning Series", "In Production", "Planned", "Pilot"]);
+
 const pad = (n: number) => n.toString().padStart(2, "0");
 
 // Attend un cycle de commit + peinture (double rAF) avant de scroller vers un
@@ -477,6 +483,7 @@ function ShowDetail() {
   const statusLabel = show.status
     ? (mediaType === "tv" ? TV_TMDB_STATUS_LABELS : MOVIE_TMDB_STATUS_LABELS)[show.status]
     : undefined;
+  const isLiveStatus = !!show.status && LIVE_TMDB_STATUSES.has(show.status);
 
   const today = new Date().toISOString().slice(0, 10);
   const nextUpcomingEpisode =
@@ -503,6 +510,7 @@ function ShowDetail() {
         mediaType={mediaType}
         year={year}
         statusLabel={statusLabel}
+        isLiveStatus={isLiveStatus}
         userShow={userShow ?? null}
         onFollow={() =>
           requireAuth(() => follow.mutate(), {
@@ -751,6 +759,7 @@ function Hero({
   mediaType,
   year,
   statusLabel,
+  isLiveStatus,
   userShow,
   onFollow,
   followPending,
@@ -760,6 +769,7 @@ function Hero({
   mediaType: string;
   year: string;
   statusLabel: string | undefined;
+  isLiveStatus: boolean;
   userShow: UserShowRow | null;
   onFollow: () => void;
   followPending: boolean;
@@ -848,12 +858,18 @@ function Hero({
             <span>
               {mediaType === "tv" ? "Série" : "Film"} · {year}
             </span>
-            {statusLabel && (
-              <span className="inline-flex items-center gap-1.5 text-primary">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-                {statusLabel}
-              </span>
-            )}
+            {statusLabel &&
+              (isLiveStatus ? (
+                <span className="inline-flex items-center gap-1.5 text-primary">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                  {statusLabel}
+                </span>
+              ) : (
+                <span>{statusLabel}</span>
+              ))}
           </p>
           <h1
             className="font-display text-[28px] leading-[1.05] text-foreground line-clamp-2"

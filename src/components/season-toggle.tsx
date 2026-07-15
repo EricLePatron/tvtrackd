@@ -14,8 +14,13 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// `border-white/[0.07]` + `bg-white/[0.02]` (pas `border-border`/`bg-surface-elevated` :
+// `--border` == `--surface-elevated` dans styles.css, ce qui rendrait le
+// filet invisible) — reprend le filet quasi-transparent des nouvelles cartes
+// de la page (`.mark-all` de la maquette), pour une cohérence visuelle avec
+// `ProgressCard`/`NextEpisodeCard`.
 const BUTTON_BASE_CLASSES =
-  "mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-surface-elevated px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /**
  * Action pleine largeur pour marquer/démarquer une saison entière vue/non

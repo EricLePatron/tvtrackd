@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useRollingNumber } from "@/hooks/use-rolling-number";
 
@@ -9,16 +10,6 @@ type VhsCounterProps =
       lastEpisode: number;
       watched: number;
       total: number;
-      /**
-       * Scroll-reveal gate (fiche série refonte) : tant que `false`, le
-       * compteur reste figé à 0 au lieu de sauter directement à `watched`.
-       * Repasser à `true` (typiquement piloté par `useInViewOnce`) déclenche
-       * le roll 0→`watched`, réutilisant l'anim de bump existante plutôt
-       * qu'une nouvelle animation. Par défaut `true` : préserve exactement
-       * le comportement historique (affichage immédiat au montage) pour
-       * tous les appelants qui ne passent pas cette prop.
-       */
-      revealed?: boolean;
     }
   | {
       /**
@@ -32,7 +23,6 @@ type VhsCounterProps =
       nextEpisodeNumber: number;
       watched: number;
       total: number;
-      revealed?: boolean;
     }
   | {
       /**
@@ -50,7 +40,6 @@ type VhsCounterProps =
       nextEpisodeNumber: number;
       watched?: number;
       total?: number;
-      revealed?: boolean;
     };
 
 export function VhsCounter(props: VhsCounterProps) {
@@ -59,11 +48,10 @@ export function VhsCounter(props: VhsCounterProps) {
   const isHero = props.variant === "hero";
   const lineOneEpisode = isGrid || isHero ? props.nextEpisodeNumber : props.lastEpisode;
   const showFraction = watched !== undefined && total !== undefined;
-  const revealed = props.revealed ?? true;
 
   const reducedMotion = useReducedMotion();
   const { display, bump } = useRollingNumber(watched ?? 0, {
-    enabled: showFraction && revealed,
+    enabled: showFraction,
     reducedMotion,
   });
 
@@ -115,31 +103,43 @@ export function VhsCounter(props: VhsCounterProps) {
   // Only "detail" (the default) reaches here — its type guarantees
   // `watched`/`total` are required numbers, unlike "hero"'s optional pair.
   // `pct` tracks `display` (the animated value), not the raw `watched`
-  // target, so the bar fills in lockstep with the rolling digits — this is
-  // also what makes the scroll-reveal "0 → valeur" work for the bar without
-  // a second, separate width-transition mechanism (cf. `revealed` prop
-  // above). Same approach as the "grid" variant just above.
+  // target, so the bar fills in lockstep with the rolling digits.
   const detailTotal = total as number;
   const pct = detailTotal ? Math.min(100, (display / detailTotal) * 100) : 0;
+  const seasonLabel = pct === 100 ? "Saison bouclée" : "En cours";
 
   return (
-    <div className="rounded-md border border-border bg-surface-elevated px-3 py-2.5">
-      <div className="flex items-center justify-between font-counter text-[11px] uppercase tracking-widest">
-        <span className="text-primary">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/[0.07] bg-surface-elevated px-3.5 py-3">
+      {/* Pièce maîtresse de la fiche série (cf. CLAUDE.md, élément signature) :
+          la fraction vue/total domine visuellement, cyan en permanence (pas
+          seulement pendant le bump), avec un léger glow — jamais reléguée au
+          rang de texte secondaire blanc. */}
+      <span className="flex items-baseline gap-1 font-counter tabular-nums">
+        <span
+          className={cn(
+            "text-[28px] leading-none tracking-tight text-cyan-accent transition-transform motion-reduce:transition-none",
+            bump && "scale-110",
+          )}
+          style={{ textShadow: "0 0 14px rgba(77,217,196,0.35)" }}
+        >
+          {pad(display)}
+        </span>
+        <span className="text-lg leading-none text-muted-foreground">/{pad(detailTotal)}</span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block font-counter text-[9px] uppercase tracking-[0.2em] text-primary">
           S{pad(seasonNumber)} E{pad(lineOneEpisode)}
         </span>
-        <span
-          className={`transition-transform motion-reduce:transition-none ${bump ? "scale-110 text-cyan-accent" : "text-foreground"}`}
-        >
-          {pad(display)}/{pad(detailTotal)}
+        <span className="mt-1 block font-counter text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+          {seasonLabel}
         </span>
-      </div>
-      <div className="mt-2 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
-        <div
-          className="h-full bg-primary transition-[width] duration-300 ease-out motion-reduce:transition-none"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+        <span className="mt-1.5 ml-auto block h-[3px] w-20 overflow-hidden rounded-full bg-white/[0.09]">
+          <span
+            className="block h-full rounded-full bg-cyan-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
+            style={{ width: `${pct}%` }}
+          />
+        </span>
+      </span>
     </div>
   );
 }
