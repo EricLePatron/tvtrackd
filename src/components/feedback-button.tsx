@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 
 type FeedbackType = "Bug" | "Improvement";
 
-export function FeedbackButton() {
+export function FeedbackButton({
+  triggerClassName,
+  triggerLabel,
+}: {
+  triggerClassName?: string;
+  triggerLabel?: string;
+} = {}) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>("Improvement");
@@ -66,10 +72,13 @@ export function FeedbackButton() {
         <button
           type="button"
           aria-label="Envoyer un retour"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className={
+            triggerClassName ??
+            "inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          }
         >
-          <MessageSquarePlus className="h-3 w-3" />
-          Feedback
+          <MessageSquarePlus className={triggerClassName ? "h-4 w-4" : "h-3 w-3"} />
+          {triggerLabel ?? "Feedback"}
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
