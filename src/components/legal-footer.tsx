@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { APP_NAME } from "@/lib/app-config";
+import { FeedbackButton } from "@/components/feedback-button";
 
 export function LegalFooter() {
   return (
