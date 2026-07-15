@@ -369,6 +369,27 @@
   .season + .season { border-top: 1px solid rgba(255,255,255,0.06); }
   .season-sum { display: flex; align-items: center; gap: 12px; padding: 16px 2px; }
   .season-name { font-family: var(--font-display); font-weight: 800; font-stretch: expanded; font-size: 16px; flex: 1; }
+  /* État lisible accordéon fermé : terminée (check + "Vue", pas de barre) /
+     en cours ou pas commencée (compteur + mini-barre) — mêmes données que
+     le module VHS de la saison (watched/total). */
+  .season-status {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap;
+  }
+  .season-status.is-done {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent-cyan);
+  }
+  .season-status.is-done svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .season-count {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 12.5px; flex-shrink: 0; white-space: nowrap;
+  }
+  .season-count .w { color: var(--accent-cyan); }
+  .season-count .t { color: var(--text-muted); }
+  /* Saison pas encore commencée (0 épisode vu) : le compteur reste
+     entièrement en muted, y compris la partie "watched" (pas de cyan tant
+     que rien n'est vu). */
+  .season-count--empty .w { color: var(--text-muted); }
   .season-mini-bar { width: 46px; height: 3px; border-radius: 3px; background: rgba(255,255,255,0.09); overflow: hidden; flex-shrink: 0; }
   .season-mini-bar > i { display: block; height: 100%; background: var(--accent-cyan); border-radius: 3px; }
   .season-chev { width: 17px; height: 17px; color: var(--text-muted); flex-shrink: 0; transition: transform 0.2s ease; }
@@ -701,7 +722,10 @@
             <details class="season">
               <summary class="season-sum">
                 <span class="season-name">Saison 1</span>
-                <span class="season-mini-bar"><i style="width:100%"></i></span>
+                <span class="season-status is-done">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  Vue
+                </span>
                 <svg class="season-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
               </summary>
               <div class="season-content">
@@ -743,6 +767,7 @@
             <details class="season" open>
               <summary class="season-sum">
                 <span class="season-name">Saison 2</span>
+                <span class="season-count"><span class="w">03</span><span class="t">/10</span></span>
                 <span class="season-mini-bar"><i style="width:30%"></i></span>
                 <svg class="season-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
               </summary>
@@ -802,6 +827,38 @@
                       <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
                     </summary>
                     <p class="ep-overview">Helly doit choisir son camp alors que la frontière entre innie et outie se brouille.</p>
+                  </details></li>
+                </ul>
+              </div>
+            </details>
+
+            <!-- Saison 3 : pas commencée, fermée par défaut -->
+            <details class="season">
+              <summary class="season-sum">
+                <span class="season-name">Saison 3</span>
+                <span class="season-count season-count--empty"><span class="w">00</span><span class="t">/08</span></span>
+                <span class="season-mini-bar"><i style="width:0%"></i></span>
+                <svg class="season-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </summary>
+              <div class="season-content">
+                <div class="vhs">
+                  <div class="vhs-digits"><span class="cur">00</span><span class="sep">/</span><span class="tot">08</span></div>
+                  <div class="vhs-meta">
+                    <span class="k">Pas commencée</span>
+                    <div class="vhs-bar"><i style="width:0%"></i></div>
+                  </div>
+                </div>
+                <ul class="ep-list">
+                  <li><details class="ep">
+                    <summary class="ep-sum">
+                      <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"><path d="M20 6L9 17l-5-5"/></svg></span>
+                      <span class="ep-main">
+                        <span class="ep-line"><span class="ep-no">E01</span><span class="ep-t">Season Three</span></span>
+                        <span class="ep-date">à venir</span>
+                      </span>
+                      <svg class="ep-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <p class="ep-overview">Détails à venir.</p>
                   </details></li>
                 </ul>
               </div>
@@ -868,7 +925,7 @@
         <span class="dot">04</span>
         <div>
           <h4>Saisons repliables & compteur VHS</h4>
-          <p>Les saisons sont des accordéons <em>fermés par défaut</em> (moins de scroll) ; chaque épisode se déplie pour révéler son résumé. Le compteur VHS (chiffres Plex Mono, module surélevé) reste la pièce maîtresse à l'ouverture d'une saison, avec ses jalons sobres (<em>« Saison bouclée »</em>).</p>
+          <p>Les saisons sont des accordéons <em>fermés par défaut</em> (moins de scroll) ; chaque épisode se déplie pour révéler son résumé. Le sommaire fermé reste lisible par lui-même : <em>check cyan « Vue »</em> pour une saison terminée, <em>compteur</em> vus/total pour une saison en cours, <em>compteur muted</em> pour une saison pas encore commencée — mêmes données que la mini-barre, aucun clic requis pour savoir où on en est. Le compteur VHS (chiffres Plex Mono, module surélevé) reste la pièce maîtresse à l'ouverture d'une saison, avec ses jalons sobres (<em>« Saison bouclée »</em>).</p>
         </div>
       </div>
 
