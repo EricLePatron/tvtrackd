@@ -1,4 +1,4 @@
-import { Check, Minus } from "lucide-react";
+import { Check } from "lucide-react";
 
 import {
   AlertDialog,
@@ -14,15 +14,27 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const TOGGLE_BASE_CLASSES =
-  "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const BUTTON_BASE_CLASSES =
+  "mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-surface-elevated px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /**
- * Toggle tri-state pour marquer une saison entière vue/non vue.
- * - Non coché / indéterminé -> clic = marquer vu (n'affecte que les épisodes
- *   déjà diffusés et pas encore vus, cf. logique côté appelant).
- * - Coché (saison entièrement vue) -> clic = démarquer, avec confirmation
- *   car ça supprime l'historique de rewatch de toute la saison.
+ * Action pleine largeur pour marquer/démarquer une saison entière vue/non
+ * vue (fiche série — refonte "accordéons de saison", cf.
+ * `docs/design/fiche-serie-mockup.html` `.mark-all`). Toute la logique
+ * tri-state hérite de l'ancien bouton-icône rond : seul l'habillage change
+ * (bouton pleine largeur à libellé explicite), pas le comportement ni les
+ * mutations (`onMark`/`onUnmark`, dialogue de confirmation au démarquage).
+ *
+ * - Non coché -> "Marquer la saison comme vue".
+ * - Indéterminé (une partie déjà vue) -> "Marquer le reste de la saison
+ *   comme vue" (même action `onMark`, libellé plus précis).
+ * - Coché (saison entièrement vue) -> "Démarquer la saison", avec
+ *   confirmation car ça supprime l'historique de rewatch de toute la
+ *   saison.
+ *
+ * Le libellé visible porte lui-même l'information d'état : pas de
+ * `aria-pressed`/`aria-label` séparé ici (pertinent seulement pour l'ancien
+ * bouton-icône sans texte).
  */
 export function SeasonToggle({
   seasonNumber,
@@ -44,14 +56,13 @@ export function SeasonToggle({
           <button
             type="button"
             disabled={disabled}
-            aria-pressed="true"
-            aria-label={`Marquer la saison ${seasonNumber} non vue`}
             className={cn(
-              TOGGLE_BASE_CLASSES,
-              "border-cyan-accent bg-cyan-accent/10 text-cyan-accent hover:bg-cyan-accent/20",
+              BUTTON_BASE_CLASSES,
+              "border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent hover:text-cyan-accent",
             )}
           >
-            <Check className="h-4 w-4" />
+            <Check className="h-3.5 w-3.5" />
+            Démarquer la saison
           </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
@@ -76,37 +87,12 @@ export function SeasonToggle({
     );
   }
 
-  if (state === "indeterminate") {
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onMark}
-        aria-pressed="mixed"
-        aria-label={`Marquer le reste de la saison ${seasonNumber} vue`}
-        className={cn(
-          TOGGLE_BASE_CLASSES,
-          "border-primary/60 bg-primary/15 text-primary hover:border-primary hover:bg-primary/20",
-        )}
-      >
-        <Minus className="h-4 w-4" />
-      </button>
-    );
-  }
-
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onMark}
-      aria-pressed="false"
-      aria-label={`Marquer la saison ${seasonNumber} vue`}
-      className={cn(
-        TOGGLE_BASE_CLASSES,
-        "border-border bg-surface-elevated text-muted-foreground hover:text-primary hover:border-primary/60",
-      )}
-    >
-      <Check className="h-4 w-4 opacity-40" />
+    <button type="button" disabled={disabled} onClick={onMark} className={BUTTON_BASE_CLASSES}>
+      <Check className="h-3.5 w-3.5 opacity-60" />
+      {state === "indeterminate"
+        ? "Marquer le reste de la saison comme vue"
+        : "Marquer la saison comme vue"}
     </button>
   );
 }

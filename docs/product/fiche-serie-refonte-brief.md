@@ -103,7 +103,14 @@ Registre : phrases courtes, vouvoiement, français idiomatique (pas d'anglicisme
 
 - **Nom d'app en dur** : `head()` committe « tvtrackd » (lignes 54, 59, 67, 73), contraire à la règle de nommage CLAUDE.md (nom non tranché). → passer en variable de config.
 - **Écart schéma `watch_status`** : CLAUDE.md décrit « une ligne par visionnage » mais l'implémentation est une ligne unique par `(user_id, episode_id)` avec `watched_at` écrasé à chaque rewatch. La date de **première** découverte n'est donc pas conservée — un futur module « journal » serait fiable seulement hors rewatch. Décision de modèle de données **séparée**, pas dans cette refonte.
-- **Cibles tactiles** : toggles épisode en `h-8 w-8` (32px < 44px) — dette a11y préexistante, à traiter séparément.
+- **Cibles tactiles** : toggles épisode en `h-8 w-8` (32px < 44px) — dette a11y préexistante, à traiter séparément. *Mise à jour post-implémentation : corrigée dans cette itération (coche épisode passée à 44×44px), à l'occasion de la refonte plutôt que dans un correctif séparé.*
+
+### Décisions produit actées explicitement pendant cette itération (pas des écarts non validés)
+
+Les deux points suivants s'écartent de ce que décrivait ce brief au moment de sa rédaction. Ce ne sont **pas** des dérives d'implémentation non validées : ce sont des décisions produit prises explicitement par l'utilisateur en cours d'itération, au moment de valider le plan d'implémentation. Notées ici pour lever toute ambiguïté à la relecture (QA notamment).
+
+- **Suppression de l'UI de rewatch « pour le moment »** (décision utilisateur). Le bouton de revisionnage par épisode (et la mutation `addRewatch` associée) a été retiré de la fiche série. La donnée `watch_count` et son affichage rétroactif (`×N` sur la coche, pour les rewatchs déjà enregistrés avant cette refonte) sont **conservés** — rien n'est perdu côté historique. **Suivi ouvert** : cette suppression est assumée comme temporaire, pas comme un abandon de la fonctionnalité — le rewatch natif reste un différenciateur produit identifié dans la thèse CLAUDE.md (mémoire durable / historique fiable) et devra être réintroduit, avec une UI repensée, dans une itération ultérieure.
+- **Saisons en accordéons fermés par défaut** (décision utilisateur, pour réduire le scroll sur les séries à beaucoup de saisons/épisodes). Compromis assumé : cocher un épisode nécessite désormais un clic supplémentaire pour déplier sa saison avant d'accéder à la liste d'épisodes, contrairement à l'ancienne liste toujours dépliée. Ce coût de friction a été jugé acceptable au regard du gain de lisibilité en tête de page ; à réévaluer si des retours utilisateurs signalent que ça ralentit le geste de logging au quotidien (cf. CLAUDE.md, principe de vitesse de logging).
 
 ## Arbitrages à trancher avant implémentation
 

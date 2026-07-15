@@ -1,12 +1,27 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Ban, Check, ChevronDown, ChevronRight, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  Ban,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  MoreVertical,
+  Play,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { useInViewOnce } from "@/hooks/use-in-view-once";
+import { useRollingNumber } from "@/hooks/use-rolling-number";
 import { followShow, unfollowShow } from "@/lib/follow-show";
+import { formatApproxHours } from "@/lib/watch-time";
+import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import {
@@ -16,14 +31,19 @@ import {
   type WatchProviders,
 } from "@/components/where-to-watch";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,17 +71,20 @@ export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
     const kind = params.mediaType === "movie" ? "Film" : "Série";
     return {
       meta: [
-        { title: `${kind} sur tvtrackd — fiche détaillée` },
+        { title: `${kind} sur ${APP_NAME} — fiche détaillée` },
         {
           name: "description",
-          content: `Fiche ${kind.toLowerCase()} sur tvtrackd : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
+          content: `Fiche ${kind.toLowerCase()} sur ${APP_NAME} : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
         },
-        { property: "og:title", content: `${kind} sur tvtrackd` },
+        { property: "og:title", content: `${kind} sur ${APP_NAME}` },
         {
           property: "og:description",
           content: `Fiche ${kind.toLowerCase()} : synopsis, saisons, épisodes et plateformes de diffusion.`,
         },
-        { property: "og:type", content: params.mediaType === "movie" ? "video.movie" : "video.tv_show" },
+        {
+          property: "og:type",
+          content: params.mediaType === "movie" ? "video.movie" : "video.tv_show",
+        },
         {
           property: "og:url",
           content: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
@@ -88,6 +111,7 @@ type ShowRow = {
   title: string;
   overview: string | null;
   poster_path: string | null;
+  backdrop_path: string | null;
   first_air_date: string | null;
   status: string | null;
   genres: string[] | null;
@@ -140,12 +164,28 @@ const MOVIE_TMDB_STATUS_LABELS: Record<string, string> = {
 
 const pad = (n: number) => n.toString().padStart(2, "0");
 
+// Attend un cycle de commit + peinture (double rAF) avant de scroller vers un
+// id du DOM — nécessaire depuis le passage des saisons en accordéons Radix
+// fermés par défaut : ouvrir une saison (state React) puis scroller vers un
+// de ses épisodes doit laisser le temps au DOM de refléter l'ouverture.
+// Inoffensif si l'élément était déjà visible (le double rAF ne fait que
+// retarder le scroll de 2 frames dans ce cas).
+function scrollToIdSoon(domId: string) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const target = document.getElementById(domId);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+    });
+  });
+}
+
 function ShowDetail() {
   const { mediaType, tmdbId } = Route.useParams();
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
   const qc = useQueryClient();
-  // Verrou par épisode, partagé entre toggleWatched et addRewatch : les deux
+  // Verrou par épisode, partagé entre toggleWatched et toggleSeason : les deux
   // actions touchent la même ligne watch_status pour un épisode donné, donc
   // ni isPending ni variables (qui ne reflètent que le DERNIER mutate() sur
   // une instance de mutation partagée par toute la liste) ne suffisent à
@@ -154,6 +194,10 @@ function ShowDetail() {
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [isOverviewTruncated, setIsOverviewTruncated] = useState(false);
   const overviewRef = useRef<HTMLParagraphElement>(null);
+  // Saisons dépliées (fermées par défaut, cf. refonte fiche série) : contrôlé
+  // plutôt que laissé non contrôlé pour pouvoir forcer l'ouverture d'une
+  // saison depuis "À voir maintenant" / "Revoir depuis le début".
+  const [openSeasons, setOpenSeasons] = useState<string[]>([]);
 
   const detailsKey = ["show-details", mediaType, tmdbId];
   const { data, isLoading, error } = useQuery({
@@ -220,13 +264,13 @@ function ShowDetail() {
   });
 
   // Invalide toujours `followKey` après une action de tracking (mark/unmark/
-  // rewatch/saison) : `status`/`manual_override` peuvent changer côté SQL
-  // (triggers de la migration auto_status) et le badge affiché plus haut sur
-  // cette page doit refléter ce changement sans attendre une renavigation.
+  // saison) : `status`/`manual_override` peuvent changer côté SQL (triggers de
+  // la migration auto_status) et le statut affiché plus haut sur cette page
+  // doit refléter ce changement sans attendre une renavigation.
   // Si l'override valait "abandonne" juste avant l'action et vaut `null`
   // après refetch, ça signifie que le trigger SQL vient de lever la reprise
   // de suivi implicite (nouvel épisode marqué vu) : on l'annonce par un
-  // toast, plutôt que de laisser le badge changer silencieusement.
+  // toast, plutôt que de laisser le statut changer silencieusement.
   //
   // Garde-fou anti double-toast : si l'utilisateur marque deux épisodes en
   // succession rapide, les deux mutations peuvent chacune capturer
@@ -250,7 +294,7 @@ function ShowDetail() {
     const updated = qc.getQueryData<UserShowRow | null>(followKey);
     if (updated && updated.manual_override === null) {
       liftNotifiedRef.current = true;
-      toast.success("Reprise de suivi détectée");
+      toast.success("Suivi repris automatiquement.");
     }
   };
 
@@ -308,56 +352,9 @@ function ShowDetail() {
     },
   });
 
-  const addRewatch = useMutation({
-    mutationFn: async ({
-      episodeId,
-      currentCount,
-    }: {
-      episodeId: number;
-      currentCount: number;
-    }) => {
-      if (!user) throw new Error("no user");
-      const newCount = currentCount + 1;
-      const { error } = await supabase.from("watch_status").upsert(
-        {
-          user_id: user.id,
-          episode_id: episodeId,
-          watch_count: newCount,
-          watched_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,episode_id" },
-      );
-      if (error) throw error;
-      return newCount;
-    },
-    onMutate: async ({ episodeId, currentCount }) => {
-      await qc.cancelQueries({ queryKey: watchedKey });
-      const prev = qc.getQueryData<Record<number, { count: number }>>(watchedKey);
-      const prevOverride = qc.getQueryData<UserShowRow | null>(followKey)?.manual_override ?? null;
-      qc.setQueryData<Record<number, { count: number }>>(watchedKey, (old) => ({
-        ...(old ?? {}),
-        [episodeId]: { count: currentCount + 1 },
-      }));
-      return { prev, prevOverride };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
-      toast.error("Impossible d'ajouter le revisionnage");
-    },
-    onSettled: (_data, _err, { episodeId }, ctx) => {
-      qc.invalidateQueries({ queryKey: watchedKey });
-      setLockedEpisodes((prev) => {
-        const next = new Set(prev);
-        next.delete(episodeId);
-        return next;
-      });
-      notifyOverrideLift(ctx?.prevOverride);
-    },
-  });
-
   // Bulk (marquer/démarquer toute une saison). Réutilise le même verrou par
-  // épisode que toggleWatched/addRewatch pour empêcher un clic individuel
-  // concurrent pendant l'opération groupée.
+  // épisode que toggleWatched pour empêcher un clic individuel concurrent
+  // pendant l'opération groupée.
   const toggleSeason = useMutation({
     mutationFn: async ({
       action,
@@ -417,40 +414,54 @@ function ShowDetail() {
     },
   });
 
+  // État d'override optimiste TV (Abandonner / Reprendre le suivi / Ne plus
+  // suivre) : partagé entre le kebab-menu (hero) et la pastille de statut
+  // (ProgressCard), qui vivent maintenant dans deux endroits différents de la
+  // page mais doivent refléter exactement le même état pendant le court
+  // instant entre le clic et le refetch. Appelé inconditionnellement (règle
+  // des hooks) ; no-op tant que `userShow`/`user` ne sont pas encore chargés.
+  const tvOverride = useTvOverride({
+    userShow: userShow ?? null,
+    followKey,
+    onChanged: () => qc.invalidateQueries({ queryKey: followKey }),
+  });
+
+  const goToEpisode = (episode: EpisodeRow) => {
+    setOpenSeasons((prev) =>
+      prev.includes(String(episode.season_number))
+        ? prev
+        : [...prev, String(episode.season_number)],
+    );
+    scrollToIdSoon(`episode-${episode.id}`);
+  };
+
+  const goToSeason = (seasonNumber: number) => {
+    setOpenSeasons((prev) =>
+      prev.includes(String(seasonNumber)) ? prev : [...prev, String(seasonNumber)],
+    );
+    // Cible le trigger de l'accordéon (un vrai <button>, focusable), pas le
+    // conteneur `AccordionItem` (un <div> sans tabIndex) : sinon `.focus()`
+    // dans `scrollToIdSoon` est un no-op silencieux, cf. bug QA.
+    scrollToIdSoon(`season-trigger-${seasonNumber}`);
+  };
+
   if (isLoading || !data) {
     return (
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 animate-pulse rounded-full bg-surface-elevated" />
-          <div className="h-4 w-24 animate-pulse rounded bg-surface-elevated" />
+      <div>
+        <div className="h-72 w-full animate-pulse bg-surface-elevated" />
+        <div className="mx-5 mt-4 space-y-3">
+          <div className="h-28 w-full animate-pulse rounded-2xl bg-surface-elevated" />
+          <div className="h-20 w-full animate-pulse rounded-2xl bg-surface-elevated" />
         </div>
-        <div className="mt-4 flex gap-4">
-          <div className="h-40 w-28 shrink-0 animate-pulse rounded-md bg-surface-elevated" />
-          <div className="flex-1 space-y-2 pt-1">
-            <div className="h-6 w-3/4 animate-pulse rounded bg-surface-elevated" />
-            <div className="h-4 w-1/2 animate-pulse rounded bg-surface-elevated" />
-            <div className="h-8 w-24 animate-pulse rounded-md bg-surface-elevated" />
-          </div>
-        </div>
-        <div className="mt-4 space-y-2">
+        <div className="mx-5 mt-6 space-y-2">
           <div className="h-3 w-full animate-pulse rounded bg-surface-elevated" />
           <div className="h-3 w-5/6 animate-pulse rounded bg-surface-elevated" />
           <div className="h-3 w-2/3 animate-pulse rounded bg-surface-elevated" />
         </div>
-        <div className="mt-4 space-y-1.5">
-          <div className="h-3 w-20 animate-pulse rounded bg-surface-elevated" />
-          <div className="flex gap-2">
-            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
-            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
-            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
-            <div className="h-10 w-10 animate-pulse rounded-md bg-surface-elevated" />
-          </div>
-        </div>
-        <div className="mt-6 space-y-3">
+        <div className="mx-5 mt-6 space-y-3">
           <div className="h-5 w-28 animate-pulse rounded bg-surface-elevated" />
-          <div className="h-12 w-full animate-pulse rounded-md bg-surface-elevated" />
-          <div className="h-10 w-full animate-pulse rounded-md bg-surface-elevated" />
-          <div className="h-10 w-full animate-pulse rounded-md bg-surface-elevated" />
+          <div className="h-14 w-full animate-pulse rounded-xl bg-surface-elevated" />
+          <div className="h-14 w-full animate-pulse rounded-xl bg-surface-elevated" />
         </div>
       </div>
     );
@@ -481,81 +492,75 @@ function ShowDetail() {
           (e) => (watched?.[e.id]?.count ?? 0) === 0 && e.air_date && e.air_date <= today,
         )
       : undefined;
-  const anyWatched = episodes.some((e) => (watched?.[e.id]?.count ?? 0) > 0);
+  const hasAiredEpisodes =
+    mediaType === "tv" && episodes.some((e) => e.air_date && e.air_date <= today);
+  const totalWatchedEpisodes = episodes.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).length;
 
   return (
     <>
-      <div className="flex items-center gap-3 px-5 pt-6">
-        <BackButton fallbackTo="/search" />
-
-        <span className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-          {mediaType === "tv" ? "Série" : "Film"} · {year}
-          {statusLabel ? ` · ${statusLabel}` : ""}
-        </span>
-      </div>
-
-      <div className="mt-4 flex gap-4 px-5">
-        <div className="h-40 w-28 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
-          {show.poster_path && (
-            <img src={show.poster_path} alt={show.title} className="h-full w-full object-cover" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl leading-tight text-foreground">{show.title}</h1>
-          {show.tagline && (
-            <p className="mt-1 text-sm italic text-muted-foreground">{show.tagline}</p>
-          )}
-          {!!show.vote_average && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="font-counter text-sm text-cyan-accent">
-                {show.vote_average.toFixed(1)}
-                <span className="text-muted-foreground">/10</span>
-              </span>
-            </div>
-          )}
-          {!userShow && (
-            <button
-              onClick={() =>
-                requireAuth(() => follow.mutate(), {
-                  reason: "suivre cette série",
-                  intent: {
-                    kind: "follow",
-                    tmdbId: Number(tmdbId),
-                    mediaType: mediaType as "tv" | "movie",
-                  },
-                })
-              }
-              disabled={follow.isPending}
-              className="mt-3 inline-flex h-11 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Suivre
-            </button>
-          )}
-        </div>
-      </div>
-
-      {(show.genres ?? []).length > 0 && (
-        <div className="mx-5 mt-2 flex flex-wrap gap-2">
-          {show.genres!.map((genre) => (
-            <span
-              key={genre}
-              className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
-            >
-              {genre}
-            </span>
-          ))}
-        </div>
-      )}
+      <Hero
+        show={show}
+        mediaType={mediaType}
+        year={year}
+        statusLabel={statusLabel}
+        userShow={userShow ?? null}
+        onFollow={() =>
+          requireAuth(() => follow.mutate(), {
+            reason: "suivre cette série",
+            intent: {
+              kind: "follow",
+              tmdbId: Number(tmdbId),
+              mediaType: mediaType as "tv" | "movie",
+            },
+          })
+        }
+        followPending={follow.isPending}
+        tvOverride={tvOverride}
+      />
 
       {mediaType === "tv" && <NetworkLine networks={show.networks} />}
 
-      {show.overview && (
+      {mediaType === "tv" && userShow && (
         <div className="mx-5 mt-4">
+          <ProgressCard
+            status={userShow.status}
+            manualOverride={tvOverride.manualOverride}
+            recalculating={tvOverride.recalculating}
+            totalWatchedEpisodes={totalWatchedEpisodes}
+            totalEpisodes={episodes.length}
+            firstUnwatched={firstUnwatched}
+            hasAiredEpisodes={hasAiredEpisodes}
+            onResumeClick={goToEpisode}
+            onRestart={() => seasons[0] && goToSeason(seasons[0].season_number)}
+            onResumeFollowing={() => tvOverride.setOverride(null)}
+          />
+        </div>
+      )}
+
+      {mediaType === "tv" && nextUpcomingEpisode && (
+        <div className="mx-5 mt-3">
+          <NextEpisodeCard episode={nextUpcomingEpisode} />
+        </div>
+      )}
+
+      {mediaType !== "tv" && userShow && (
+        <div className="mx-5 mt-4">
+          <MovieStatusPicker
+            userShow={userShow}
+            onChange={() => qc.invalidateQueries({ queryKey: followKey })}
+          />
+        </div>
+      )}
+
+      {show.overview && (
+        <div className="mx-5 mt-6">
+          <p className="font-counter text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+            Synopsis
+          </p>
           <p
             ref={overviewRef}
             className={cn(
-              "text-sm leading-relaxed text-muted-foreground",
+              "mt-1.5 text-sm leading-relaxed text-muted-foreground",
               !overviewExpanded && "line-clamp-2",
             )}
           >
@@ -579,179 +584,154 @@ function ShowDetail() {
 
       <WhereToWatch showTitle={show.title} watchProviders={show.watch_providers} />
 
-      {mediaType === "tv" && nextUpcomingEpisode && (
-        <div className="mx-5 mt-4">
-          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-            Prochain épisode
-          </p>
-          <p className="mt-0.5 font-counter text-sm font-semibold text-foreground">
-            S{pad(nextUpcomingEpisode.season_number)}E{pad(nextUpcomingEpisode.episode_number)} ·{" "}
-            {new Date(nextUpcomingEpisode.air_date!).toLocaleDateString("fr-FR", {
-              day: "numeric",
-              month: "long",
-            })}
-          </p>
-        </div>
-      )}
-
-      {userShow && (
-        <div className="mx-5 mt-4">
-          <StatusPicker
-            userShow={userShow}
-            mediaType={mediaType}
-            showTitle={show.title}
-            onChange={() => qc.invalidateQueries({ queryKey: followKey })}
-          />
-        </div>
-      )}
-
-      {mediaType === "tv" && <Separator className="mx-5 mt-6 w-auto" />}
-
-      {mediaType === "tv" && userShow && !userShow.manual_override && firstUnwatched && (
-        <div className="mx-5 mt-6">
-          <button
-            type="button"
-            onClick={() => {
-              const target = document.getElementById(`episode-${firstUnwatched.id}`);
-              target?.scrollIntoView({ behavior: "smooth", block: "center" });
-              target?.focus({ preventScroll: true });
-            }}
-            className="-my-3 inline-flex items-center gap-1.5 py-3 text-sm font-medium text-foreground"
-          >
-            {anyWatched ? "Reprendre" : "Commencer avec"}{" "}
-            <span className="font-counter">
-              S{pad(firstUnwatched.season_number)}E{pad(firstUnwatched.episode_number)}
-            </span>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
       {mediaType === "tv" && (
-        <div className="mt-6 space-y-6 px-5 pb-24">
-          {seasons.map((s) => {
-            const eps = episodes.filter((e) => e.season_number === s.season_number);
-            const watchedCount = eps.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).length;
-            const last = eps[eps.length - 1]?.episode_number ?? 0;
+        <div className="mt-6 px-5 pb-24">
+          <p className="font-counter text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+            Saisons
+          </p>
+          <Accordion
+            type="multiple"
+            value={openSeasons}
+            onValueChange={setOpenSeasons}
+            className="mt-1"
+          >
+            {seasons.map((s) => {
+              const eps = episodes.filter((e) => e.season_number === s.season_number);
+              const watchedCount = eps.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).length;
+              const last = eps[eps.length - 1]?.episode_number ?? 0;
+              const seasonPct = eps.length ? Math.min(100, (watchedCount / eps.length) * 100) : 0;
 
-            // Épisodes "éligibles" au marquage groupé : ceux déjà diffusés.
-            // Les épisodes sans air_date connue ne sont pas considérés comme
-            // futurs (on ne les bloque pas faute de donnée), seuls ceux avec
-            // une air_date strictement postérieure à aujourd'hui le sont.
-            const eligibleEpisodes = eps.filter((e) => !(e.air_date && e.air_date > today));
-            const eligibleWatchedCount = eligibleEpisodes.filter(
-              (e) => (watched?.[e.id]?.count ?? 0) > 0,
-            ).length;
-            const seasonState: boolean | "indeterminate" =
-              eligibleEpisodes.length === 0 || eligibleWatchedCount === 0
-                ? false
-                : eligibleWatchedCount === eligibleEpisodes.length
-                  ? true
-                  : "indeterminate";
-            const seasonLocked = eps.some((e) => lockedEpisodes.has(e.id));
-            const seasonToggleDisabled =
-              seasonLocked || (eligibleEpisodes.length === 0 && watchedCount === 0);
+              // Épisodes "éligibles" au marquage groupé : ceux déjà diffusés.
+              // Les épisodes sans air_date connue ne sont pas considérés comme
+              // futurs (on ne les bloque pas faute de donnée), seuls ceux avec
+              // une air_date strictement postérieure à aujourd'hui le sont.
+              const eligibleEpisodes = eps.filter((e) => !(e.air_date && e.air_date > today));
+              const eligibleWatchedCount = eligibleEpisodes.filter(
+                (e) => (watched?.[e.id]?.count ?? 0) > 0,
+              ).length;
+              const seasonState: boolean | "indeterminate" =
+                eligibleEpisodes.length === 0 || eligibleWatchedCount === 0
+                  ? false
+                  : eligibleWatchedCount === eligibleEpisodes.length
+                    ? true
+                    : "indeterminate";
+              const seasonLocked = eps.some((e) => lockedEpisodes.has(e.id));
+              const seasonToggleDisabled =
+                seasonLocked || (eligibleEpisodes.length === 0 && watchedCount === 0);
 
-            const lockEpisodes = (ids: number[]) =>
-              setLockedEpisodes((prev) => {
-                const next = new Set(prev);
-                ids.forEach((id) => next.add(id));
-                return next;
-              });
+              const lockEpisodes = (ids: number[]) =>
+                setLockedEpisodes((prev) => {
+                  const next = new Set(prev);
+                  ids.forEach((id) => next.add(id));
+                  return next;
+                });
 
-            const markSeasonWatched = () =>
-              requireAuth(
-                () => {
-                  if (seasonLocked) return;
-                  const ids = eligibleEpisodes
-                    .filter((e) => (watched?.[e.id]?.count ?? 0) === 0)
-                    .map((e) => e.id);
-                  if (!ids.length) return;
-                  lockEpisodes(ids);
-                  toggleSeason.mutate({ action: "mark", episodeIds: ids });
-                },
-                { reason: "marquer cette saison" },
+              const markSeasonWatched = () =>
+                requireAuth(
+                  () => {
+                    if (seasonLocked) return;
+                    const ids = eligibleEpisodes
+                      .filter((e) => (watched?.[e.id]?.count ?? 0) === 0)
+                      .map((e) => e.id);
+                    if (!ids.length) return;
+                    lockEpisodes(ids);
+                    toggleSeason.mutate({ action: "mark", episodeIds: ids });
+                  },
+                  { reason: "marquer cette saison" },
+                );
+
+              const unmarkSeasonWatched = () =>
+                requireAuth(
+                  () => {
+                    if (seasonLocked) return;
+                    const ids = eps
+                      .filter((e) => (watched?.[e.id]?.count ?? 0) > 0)
+                      .map((e) => e.id);
+                    if (!ids.length) return;
+                    lockEpisodes(ids);
+                    toggleSeason.mutate({ action: "unmark", episodeIds: ids });
+                  },
+                  { reason: "démarquer cette saison" },
+                );
+
+              return (
+                <AccordionItem
+                  key={s.id}
+                  value={String(s.season_number)}
+                  id={`season-${s.season_number}`}
+                  className="scroll-mt-6 border-b border-white/[0.06] last:border-b-0"
+                >
+                  <AccordionTrigger
+                    id={`season-trigger-${s.season_number}`}
+                    className="py-4 hover:no-underline"
+                  >
+                    <span className="flex flex-1 items-center gap-3">
+                      <span className="font-display text-base text-foreground">
+                        Saison {s.season_number}
+                      </span>
+                      <span className="h-[3px] w-11 shrink-0 overflow-hidden rounded-full bg-white/[0.09]">
+                        <span
+                          className="block h-full rounded-full bg-cyan-accent"
+                          style={{ width: `${seasonPct}%` }}
+                        />
+                      </span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <VhsCounter
+                      seasonNumber={s.season_number}
+                      lastEpisode={last}
+                      watched={watchedCount}
+                      total={eps.length}
+                    />
+                    <SeasonToggle
+                      seasonNumber={s.season_number}
+                      state={seasonState}
+                      disabled={seasonToggleDisabled}
+                      onMark={markSeasonWatched}
+                      onUnmark={unmarkSeasonWatched}
+                    />
+                    <ul className="mt-3.5 flex flex-col">
+                      {eps.map((e) => {
+                        const count = watched?.[e.id]?.count ?? 0;
+                        const isWatched = count > 0;
+                        const isLocked = lockedEpisodes.has(e.id);
+                        const lockEpisode = () =>
+                          setLockedEpisodes((prev) => new Set(prev).add(e.id));
+                        return (
+                          <EpisodeRow
+                            key={e.id}
+                            episode={e}
+                            count={count}
+                            onToggleWatched={() =>
+                              requireAuth(
+                                () => {
+                                  if (lockedEpisodes.has(e.id)) return;
+                                  lockEpisode();
+                                  toggleWatched.mutate({ episodeId: e.id, isWatched });
+                                },
+                                {
+                                  reason: "marquer cet épisode",
+                                  intent: {
+                                    kind: "mark_watched",
+                                    tmdbId: Number(tmdbId),
+                                    mediaType: mediaType as "tv" | "movie",
+                                    seasonNumber: e.season_number,
+                                    episodeNumber: e.episode_number,
+                                  },
+                                },
+                              )
+                            }
+                            isTogglePending={isLocked}
+                          />
+                        );
+                      })}
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
               );
-
-            const unmarkSeasonWatched = () =>
-              requireAuth(
-                () => {
-                  if (seasonLocked) return;
-                  const ids = eps.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).map((e) => e.id);
-                  if (!ids.length) return;
-                  lockEpisodes(ids);
-                  toggleSeason.mutate({ action: "unmark", episodeIds: ids });
-                },
-                { reason: "démarquer cette saison" },
-              );
-
-            return (
-              <section key={s.id}>
-                <div className="mb-2 flex items-center justify-between">
-                  <h2 className="font-display text-lg text-foreground">Saison {s.season_number}</h2>
-                  <SeasonToggle
-                    seasonNumber={s.season_number}
-                    state={seasonState}
-                    disabled={seasonToggleDisabled}
-                    onMark={markSeasonWatched}
-                    onUnmark={unmarkSeasonWatched}
-                  />
-                </div>
-                <VhsCounter
-                  seasonNumber={s.season_number}
-                  lastEpisode={last}
-                  watched={watchedCount}
-                  total={eps.length}
-                />
-                <ul className="mt-3 space-y-1.5">
-                  {eps.map((e) => {
-                    const count = watched?.[e.id]?.count ?? 0;
-                    const isWatched = count > 0;
-                    const isLocked = lockedEpisodes.has(e.id);
-                    const lockEpisode = () => setLockedEpisodes((prev) => new Set(prev).add(e.id));
-                    return (
-                      <EpisodeRow
-                        key={e.id}
-                        episode={e}
-                        count={count}
-                        onToggleWatched={() =>
-                          requireAuth(
-                            () => {
-                              if (lockedEpisodes.has(e.id)) return;
-                              lockEpisode();
-                              toggleWatched.mutate({ episodeId: e.id, isWatched });
-                            },
-                            {
-                              reason: "marquer cet épisode",
-                              intent: {
-                                kind: "mark_watched",
-                                tmdbId: Number(tmdbId),
-                                mediaType: mediaType as "tv" | "movie",
-                                seasonNumber: e.season_number,
-                                episodeNumber: e.episode_number,
-                              },
-                            },
-                          )
-                        }
-                        onRewatch={() =>
-                          requireAuth(
-                            () => {
-                              if (lockedEpisodes.has(e.id)) return;
-                              lockEpisode();
-                              addRewatch.mutate({ episodeId: e.id, currentCount: count });
-                            },
-                            { reason: "ajouter un revisionnage" },
-                          )
-                        }
-                        isTogglePending={isLocked}
-                        isRewatchPending={isLocked}
-                      />
-                    );
-                  })}
-                </ul>
-              </section>
-            );
-          })}
+            })}
+          </Accordion>
         </div>
       )}
 
@@ -762,20 +742,460 @@ function ShowDetail() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Hero immersif
+// ---------------------------------------------------------------------------
+
+function Hero({
+  show,
+  mediaType,
+  year,
+  statusLabel,
+  userShow,
+  onFollow,
+  followPending,
+  tvOverride,
+}: {
+  show: ShowRow;
+  mediaType: string;
+  year: string;
+  statusLabel: string | undefined;
+  userShow: UserShowRow | null;
+  onFollow: () => void;
+  followPending: boolean;
+  tvOverride: ReturnType<typeof useTvOverride>;
+}) {
+  const reducedMotion = useReducedMotion();
+  const driftRef = useRef<HTMLDivElement>(null);
+
+  // Fondu/dérive léger du bloc titre au scroll (statique par ailleurs — pas de
+  // parallax sur le backdrop lui-même, cf. brief design : zéro jank iOS).
+  // L'app scrolle le document (pas de conteneur `overflow-y-auto` imbriqué,
+  // cf. `AppShell`), donc l'écouteur est posé sur `window`.
+  useEffect(() => {
+    const el = driftRef.current;
+    if (!el) return;
+    if (reducedMotion) {
+      // Repli neutre explicite : couvre à la fois le montage initial avec
+      // reduced-motion déjà actif, et le cas où l'utilisateur bascule le
+      // réglage OS en cours de session (le cleanup de l'effet précédent,
+      // ci-dessous, s'en charge aussi — les deux se recouvrent sans risque).
+      el.style.transform = "";
+      el.style.opacity = "";
+      return;
+    }
+    const onScroll = () => {
+      const st = window.scrollY;
+      const f = Math.min(st / 240, 1);
+      el.style.transform = `translateY(${st * 0.22}px)`;
+      el.style.opacity = String(1 - f * 0.85);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      // Ne jamais laisser le hero figé décalé/estompé si `reducedMotion`
+      // devient actif entre-temps (changement de réglage OS en cours de
+      // session) ou au démontage.
+      el.style.transform = "";
+      el.style.opacity = "";
+    };
+  }, [reducedMotion]);
+
+  return (
+    <section className="relative isolate flex min-h-[300px] flex-col overflow-hidden px-5 pb-5 pt-6">
+      <div aria-hidden className="absolute inset-0 -z-20">
+        {show.backdrop_path ? (
+          <img src={show.backdrop_path} alt="" className="h-full w-full object-cover object-top" />
+        ) : (
+          <div
+            className="h-full w-full"
+            style={{
+              background:
+                "radial-gradient(120% 90% at 72% 18%, rgba(255,138,61,0.30) 0%, rgba(255,138,61,0) 55%)," +
+                "radial-gradient(120% 100% at 20% 6%, rgba(77,217,196,0.22) 0%, rgba(77,217,196,0) 50%)," +
+                "linear-gradient(180deg, #1a2330 0%, #10161f 60%, var(--background) 100%)",
+            }}
+          />
+        )}
+      </div>
+      <div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 -z-10 h-[62%] bg-gradient-to-b from-background/0 via-background/75 to-background"
+      />
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 -z-10 h-24 bg-gradient-to-b from-background/70 to-transparent"
+      />
+
+      <div className="relative flex items-center justify-between gap-2.5">
+        <BackButton
+          fallbackTo="/search"
+          className="grid h-9 w-9 place-items-center rounded-full border border-border bg-background/50 text-foreground backdrop-blur-sm"
+        />
+        {mediaType === "tv" && userShow && (
+          <TvFollowMenu showTitle={show.title} tvOverride={tvOverride} />
+        )}
+      </div>
+
+      <div ref={driftRef} className="relative mt-auto flex items-end gap-3.5 will-change-transform">
+        <div className="h-[99px] w-[66px] shrink-0 overflow-hidden rounded-lg border border-white/[0.14] bg-gradient-to-br from-surface-elevated to-background shadow-[0_12px_28px_-10px_rgba(0,0,0,0.85)]">
+          {show.poster_path && (
+            <img src={show.poster_path} alt="" className="h-full w-full object-cover" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="mb-2 flex flex-wrap items-center gap-2 font-counter text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+            <span>
+              {mediaType === "tv" ? "Série" : "Film"} · {year}
+            </span>
+            {statusLabel && (
+              <span className="inline-flex items-center gap-1.5 text-primary">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                {statusLabel}
+              </span>
+            )}
+          </p>
+          <h1
+            className="font-display text-[28px] leading-[1.05] text-foreground line-clamp-2"
+            style={{ textShadow: "0 2px 20px rgba(0,0,0,0.6)" }}
+          >
+            {show.title}
+          </h1>
+          {show.tagline && (
+            <p className="mt-2 text-sm italic text-[#cfd6e2] line-clamp-1">« {show.tagline} »</p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3.5">
+            {!!show.vote_average && (
+              <span className="inline-flex items-baseline gap-0.5 rounded-full border border-cyan-accent/40 bg-cyan-accent/10 px-2.5 py-1 font-counter text-[13px] tabular-nums text-cyan-accent">
+                {show.vote_average.toFixed(1)}
+                <small className="text-[10px] text-cyan-accent/65">/10</small>
+              </span>
+            )}
+            {(show.genres ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {show.genres!.map((genre) => (
+                  <span
+                    key={genre}
+                    className="rounded-full border border-border bg-background/35 px-2.5 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          {!userShow && (
+            <div className="mt-4 flex flex-col items-start gap-1.5">
+              <button
+                type="button"
+                onClick={onFollow}
+                disabled={followPending}
+                className="inline-flex h-11 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground disabled:opacity-60"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Suivre
+              </button>
+              {mediaType === "tv" && (
+                <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Suivez cette série pour activer le compteur
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pastille de statut (calculée, lecture seule)
+// ---------------------------------------------------------------------------
+
+type PillTone = "amber" | "cyan" | "muted";
+
+const PILL_TONE_CLASSES: Record<PillTone, string> = {
+  amber: "border-primary/40 bg-primary/10 text-primary",
+  cyan: "border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent",
+  muted: "border-border text-muted-foreground",
+};
+
+const PILL_DOT_CLASSES: Record<PillTone, string> = {
+  amber: "bg-primary",
+  cyan: "bg-cyan-accent",
+  muted: "bg-muted-foreground",
+};
+
+// Calcule le libellé/ton de la pastille "Votre progression". Ajoute un état
+// "À jour" purement présentational, absent de `user_shows.status` (qui ne
+// vaut jamais "termine" tant que la série diffuse encore, cf.
+// `compute_tv_status` en base) : dérivé ici de `!firstUnwatched` sur les
+// épisodes déjà diffusés, jamais persisté, n'affecte aucun autre écran
+// (bibliothèque, etc.) qui continue de lire `STATUS_LABELS` tel quel.
+function tvPillState({
+  manualOverride,
+  recalculating,
+  status,
+  hasAiredEpisodes,
+  firstUnwatchedExists,
+}: {
+  manualOverride: string | null;
+  recalculating: boolean;
+  status: string;
+  hasAiredEpisodes: boolean;
+  firstUnwatchedExists: boolean;
+}): { label: string; tone: PillTone } {
+  if (recalculating) return { label: "Recalcul…", tone: "muted" };
+  if (manualOverride)
+    return { label: STATUS_LABELS[manualOverride] ?? manualOverride, tone: "muted" };
+  if (status === "termine") return { label: "Terminé", tone: "cyan" };
+  if (hasAiredEpisodes && !firstUnwatchedExists) return { label: "À jour", tone: "cyan" };
+  if (status === "en_cours") return { label: "En cours", tone: "amber" };
+  return { label: STATUS_LABELS[status] ?? status, tone: "muted" };
+}
+
+function StatusPill({ label, tone }: { label: string; tone: PillTone }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest",
+        PILL_TONE_CLASSES[tone],
+      )}
+    >
+      <span
+        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", PILL_DOT_CLASSES[tone])}
+        aria-hidden="true"
+      />
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Carte "Votre progression"
+// ---------------------------------------------------------------------------
+
+function ProgressCard({
+  status,
+  manualOverride,
+  recalculating,
+  totalWatchedEpisodes,
+  totalEpisodes,
+  firstUnwatched,
+  hasAiredEpisodes,
+  onResumeClick,
+  onRestart,
+  onResumeFollowing,
+}: {
+  status: string;
+  manualOverride: string | null;
+  recalculating: boolean;
+  totalWatchedEpisodes: number;
+  totalEpisodes: number;
+  firstUnwatched: EpisodeRow | undefined;
+  hasAiredEpisodes: boolean;
+  onResumeClick: (episode: EpisodeRow) => void;
+  onRestart: () => void;
+  onResumeFollowing: () => void;
+}) {
+  const { ref, inView } = useInViewOnce<HTMLDivElement>();
+  const reducedMotion = useReducedMotion();
+  const { display, bump } = useRollingNumber(totalWatchedEpisodes, {
+    enabled: inView,
+    reducedMotion,
+  });
+  const displayPct = totalEpisodes ? Math.min(100, (display / totalEpisodes) * 100) : 0;
+
+  const isAbandoned = !!manualOverride;
+  const isDone = !manualOverride && status === "termine";
+  const isCaughtUp = !manualOverride && status !== "termine" && hasAiredEpisodes && !firstUnwatched;
+
+  const pill = tvPillState({
+    manualOverride,
+    recalculating,
+    status,
+    hasAiredEpisodes,
+    firstUnwatchedExists: !!firstUnwatched,
+  });
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "rounded-2xl border border-white/[0.07] bg-white/[0.018] p-[18px]",
+        "opacity-0 translate-y-3 transition-[opacity,transform] duration-500 ease-out",
+        "motion-reduce:opacity-100 motion-reduce:translate-y-0 motion-reduce:transition-none",
+        inView && "opacity-100 translate-y-0",
+      )}
+    >
+      <div className="mb-4 flex items-center justify-between gap-2.5">
+        <span className="font-counter text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+          Votre progression
+        </span>
+        <StatusPill label={pill.label} tone={pill.tone} />
+      </div>
+
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <span className="flex items-baseline gap-1 font-counter tabular-nums">
+          <span
+            className={cn(
+              "text-[36px] leading-none transition-transform motion-reduce:transition-none",
+              isAbandoned ? "text-muted-foreground" : "text-cyan-accent",
+              bump && !isAbandoned && "scale-110",
+            )}
+          >
+            {display}
+          </span>
+          <span className="text-xl leading-none text-muted-foreground">/{totalEpisodes}</span>
+        </span>
+        <span className="font-counter text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
+          épisodes vus
+        </span>
+      </div>
+
+      <div className="h-1 overflow-hidden rounded-full bg-white/[0.08]">
+        <div
+          className={cn(
+            "h-full rounded-full transition-[width] duration-300 ease-out motion-reduce:transition-none",
+            isAbandoned ? "bg-muted-foreground/60" : "bg-cyan-accent",
+          )}
+          style={{ width: `${displayPct}%` }}
+        />
+      </div>
+
+      <p className="mt-3 text-[12.5px] text-muted-foreground">
+        <b className="font-medium text-foreground/80">{formatApproxHours(totalWatchedEpisodes)}</b>{" "}
+        de visionnage
+        {isAbandoned && " · en pause"}
+      </p>
+
+      {!isAbandoned && !isDone && firstUnwatched && (
+        <button
+          type="button"
+          onClick={() => onResumeClick(firstUnwatched)}
+          className="mt-3.5 block w-full border-t border-white/[0.06] pt-3.5 text-left"
+        >
+          <span className="mb-2 block font-counter text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+            À voir maintenant
+          </span>
+          <span className="flex items-center gap-2.5">
+            <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <Play className="h-3 w-3 translate-x-px" fill="currentColor" />
+            </span>
+            <span className="shrink-0 font-counter text-xs font-semibold text-primary">
+              S{pad(firstUnwatched.season_number)}E{pad(firstUnwatched.episode_number)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13.5px] text-foreground">
+              {firstUnwatched.title ?? "—"}
+            </span>
+          </span>
+        </button>
+      )}
+
+      {!isAbandoned && isCaughtUp && (
+        <div className="mt-3.5 flex items-center gap-2 border-t border-white/[0.06] pt-3.5 font-counter text-[11px] text-cyan-accent">
+          <Check className="h-3.5 w-3.5" />
+          Vous avez tout vu jusqu'ici.
+        </div>
+      )}
+
+      {isDone && (
+        <>
+          <div className="mt-3.5 flex items-center gap-2 border-t border-white/[0.06] pt-3.5 font-counter text-[11px] text-cyan-accent">
+            <Check className="h-3.5 w-3.5" />À jour sur toute la série.
+          </div>
+          {/* Navigation seule (scroll + ouverture de la saison 1) : la refonte
+              retire l'UI de rewatch (cf. EpisodeRow), donc ce lien ne
+              déclenche aucune mutation "tout remarquer non vu". */}
+          <button
+            type="button"
+            onClick={onRestart}
+            className="mt-3 flex h-11 w-full items-center gap-2 text-sm text-foreground"
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+            Revoir depuis le début
+            <ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </>
+      )}
+
+      {isAbandoned && (
+        <button
+          type="button"
+          onClick={onResumeFollowing}
+          className="mt-3.5 flex h-11 w-full items-center gap-2 border-t border-white/[0.06] pt-3.5 text-sm text-foreground"
+        >
+          <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+          Reprendre le suivi
+          <ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Carte "Prochain épisode" (à venir, distinct de "À voir maintenant")
+// ---------------------------------------------------------------------------
+
+function NextEpisodeCard({ episode }: { episode: EpisodeRow }) {
+  const { ref, inView } = useInViewOnce<HTMLDivElement>();
+  const daysUntil = Math.max(
+    0,
+    Math.ceil((new Date(episode.air_date!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+  );
+  const countdownLabel =
+    daysUntil === 0 ? "aujourd'hui" : daysUntil === 1 ? "demain" : `dans ${daysUntil} j`;
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "rounded-2xl border border-white/[0.07] bg-white/[0.018] p-[18px]",
+        "opacity-0 translate-y-3 transition-[opacity,transform] duration-500 ease-out",
+        "motion-reduce:opacity-100 motion-reduce:translate-y-0 motion-reduce:transition-none",
+        inView && "opacity-100 translate-y-0",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-counter text-[9.5px] uppercase tracking-[0.24em] text-cyan-accent">
+          Prochain épisode
+        </p>
+        <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1.5 font-counter text-[11px] text-cyan-accent">
+          {countdownLabel}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-snug text-foreground">
+        <span className="mr-1.5 font-counter text-[12.5px] font-semibold text-cyan-accent">
+          S{pad(episode.season_number)}E{pad(episode.episode_number)}
+        </span>
+        {episode.title ?? "—"}
+      </p>
+      <p className="mt-1.5 font-counter text-[11.5px] uppercase tracking-wide text-muted-foreground">
+        {new Date(episode.air_date!).toLocaleDateString("fr-FR", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        })}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Épisodes : lignes dépliables (résumé), coche séparée (stopPropagation)
+// ---------------------------------------------------------------------------
+
 function EpisodeRow({
   episode,
   count,
   onToggleWatched,
-  onRewatch,
   isTogglePending,
-  isRewatchPending,
 }: {
   episode: EpisodeRow;
   count: number;
   onToggleWatched: () => void;
-  onRewatch: () => void;
   isTogglePending: boolean;
-  isRewatchPending: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isWatched = count > 0;
@@ -785,18 +1205,39 @@ function EpisodeRow({
     <li
       id={`episode-${episode.id}`}
       tabIndex={-1}
-      className="scroll-mt-6 rounded-md border border-border bg-card px-3 py-2.5"
+      className="scroll-mt-6 border-t border-white/[0.06] first:border-t-0"
     >
-      <div className="flex items-center gap-3">
+      <div
+        role={hasOverview ? "button" : undefined}
+        tabIndex={hasOverview ? 0 : undefined}
+        aria-expanded={hasOverview ? expanded : undefined}
+        onClick={hasOverview ? () => setExpanded((v) => !v) : undefined}
+        onKeyDown={
+          hasOverview
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setExpanded((v) => !v);
+                }
+              }
+            : undefined
+        }
+        className={cn("flex items-start gap-3 py-3", hasOverview && "cursor-pointer")}
+      >
         <button
-          onClick={onToggleWatched}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleWatched();
+          }}
           disabled={isTogglePending}
           aria-label={isWatched ? "Marquer non vu" : "Marquer vu"}
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 ${
+          className={cn(
+            "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50",
             isWatched
               ? "border-cyan-accent bg-cyan-accent/10 text-cyan-accent"
-              : "border-border bg-surface-elevated text-muted-foreground hover:text-primary hover:border-primary/60"
-          }`}
+              : "border-border bg-surface-elevated text-muted-foreground hover:border-primary/60 hover:text-primary",
+          )}
         >
           {isWatched ? (
             count > 1 ? (
@@ -808,42 +1249,31 @@ function EpisodeRow({
             <Check className="h-4 w-4 opacity-40" />
           )}
         </button>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 pt-1.5">
           <div className="flex items-baseline gap-2">
-            <span className="font-counter text-[11px] tracking-widest text-muted-foreground">
+            <span className="shrink-0 font-counter text-[11px] tracking-widest text-muted-foreground">
               E{pad(episode.episode_number)}
             </span>
-            <span className="truncate text-sm text-foreground">{episode.title ?? "—"}</span>
+            <span className="text-[13.5px] leading-snug text-foreground">
+              {episode.title ?? "—"}
+            </span>
           </div>
-          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+          <p className="mt-1 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             {episode.air_date ?? "date inconnue"}
           </p>
         </div>
-        {isWatched && (
-          <button
-            onClick={onRewatch}
-            disabled={isRewatchPending}
-            aria-label="Ajouter un revisionnage"
-            className="shrink-0 rounded-full p-1.5 text-cyan-accent hover:text-cyan-accent/80 disabled:opacity-50"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </button>
-        )}
         {hasOverview && (
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-            aria-label={expanded ? "Masquer le synopsis" : "Afficher le synopsis"}
-            className="shrink-0 rounded-full p-3.5 text-muted-foreground hover:text-foreground"
-          >
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            />
-          </button>
+          <ChevronDown
+            className={cn(
+              "mt-2.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
         )}
       </div>
       {expanded && hasOverview && (
-        <p className="mt-2 pl-11 text-xs leading-relaxed text-muted-foreground">
+        <p className="pb-3.5 pl-14 pr-2 text-xs leading-relaxed text-muted-foreground">
           {episode.overview}
         </p>
       )}
@@ -856,37 +1286,6 @@ type UserShowRow = {
   status: string;
   manual_override: string | null;
 };
-
-// Pour les séries TV, `status` (à voir / en cours / terminé) est désormais
-// TOUJOURS dérivé automatiquement de la progression de visionnage côté SQL
-// (triggers sur watch_status/episodes/seasons/shows, cf. migrations
-// 20260706100000_auto_status.sql et 20260706110000_lift_abandon_on_new_watch.sql)
-// — l'utilisateur ne le choisit plus jamais directement. Le picker devient un
-// badge lecture-seule + un menu "Gérer le suivi" qui n'écrit que
-// `manual_override` ("Abandonner" / "Reprendre le suivi") ou supprime la
-// ligne `user_shows` ("Ne plus suivre"), jamais `status` directement.
-// "Archiver" n'existe plus comme action : les lignes déjà en `archive`
-// (valeur toujours valide en base, cf. migration) sont traitées comme un
-// override actif au même titre que `abandonne` (proposent "Reprendre le
-// suivi"). Pour les films (aucune donnée episodes/seasons pour eux dans ce
-// schéma), le comportement reste inchangé : un select manuel classique à 5
-// valeurs.
-function StatusPicker({
-  userShow,
-  mediaType,
-  showTitle,
-  onChange,
-}: {
-  userShow: UserShowRow;
-  mediaType: string;
-  showTitle: string;
-  onChange: () => void;
-}) {
-  if (mediaType !== "tv") {
-    return <MovieStatusPicker userShow={userShow} onChange={onChange} />;
-  }
-  return <TvStatusBadge userShow={userShow} showTitle={showTitle} onChange={onChange} />;
-}
 
 function MovieStatusPicker({
   userShow,
@@ -925,81 +1324,67 @@ function MovieStatusPicker({
   );
 }
 
-// Couleurs du badge alignées sur les indicateurs déjà utilisés ailleurs dans
-// l'app (rail "Suivi" plus haut, ready-list-item, calendar-timeline) : ambre
-// pour "en cours", cyan pour "terminé", neutre (bordure seule, sans fond)
-// pour à voir / abandonné / archivé.
-const TV_STATUS_BADGE_STYLES: Record<string, string> = {
-  en_cours: "border-primary/40 bg-primary/10 text-primary",
-  termine: "border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent",
-  a_voir: "border-border text-muted-foreground",
-  abandonne: "border-border text-muted-foreground",
-  archive: "border-border text-muted-foreground",
-};
+// ---------------------------------------------------------------------------
+// Override TV (Abandonner / Reprendre le suivi / Ne plus suivre) — état
+// optimiste partagé entre le kebab-menu (hero) et la pastille de statut
+// (ProgressCard). Extrait de l'ancien `TvStatusBadge` : logique de mutation
+// strictement inchangée, seul l'endroit où elle est consommée a changé (2
+// composants distincts au lieu d'un seul badge+menu).
+// ---------------------------------------------------------------------------
 
-function TvStatusBadge({
+function useTvOverride({
   userShow,
-  showTitle,
-  onChange,
+  followKey,
+  onChanged,
 }: {
-  userShow: UserShowRow;
-  showTitle: string;
-  onChange: () => void;
+  userShow: UserShowRow | null;
+  followKey: unknown[];
+  onChanged: () => void;
 }) {
   const { user } = useAuth();
   const qc = useQueryClient();
-  // Même clé que celle utilisée par le composant parent pour `userShow`
-  // (reconstruite localement plutôt que passée en prop, `userShow.show_id`
-  // étant strictement égal au `show?.id` du parent une fois cette ligne
-  // chargée). Sert uniquement à annuler un refetch obsolète, cf. setOverride.
-  const followKey = ["user-show", user?.id, userShow.show_id];
   const [pending, setPending] = useState(false);
-  // Contrôlé (plutôt que laissé non contrôlé) pour pouvoir fermer
-  // explicitement le menu quand on ouvre l'AlertDialog de confirmation
-  // depuis l'item "Ne plus suivre" (cf. onSelect ci-dessous), et pour piloter
-  // la rotation du chevron du trigger comme les autres disclosures du
-  // fichier.
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmUnfollowOpen, setConfirmUnfollowOpen] = useState(false);
   const [unfollowPending, setUnfollowPending] = useState(false);
   // Optimistic UI (cf. CLAUDE.md : jamais d'attente visible sur une action de
   // tracking) : au clic, on affiche immédiatement le résultat attendu, sans
-  // attendre la requête ni le refetch déclenché par onChange(). Pour
+  // attendre la requête ni le refetch déclenché par onChanged(). Pour
   // "Abandonner" le nouveau manual_override est connu à l'avance, donc
   // affiché tel quel. Pour "Reprendre le suivi", le statut réel dépend du
   // recalcul serveur (trigger SQL) qu'on ne peut pas prédire côté client : on
-  // affiche un badge "Recalcul…" transitoire jusqu'à ce que `userShow`
-  // reflète la valeur confirmée.
+  // affiche "Recalcul…" transitoire jusqu'à ce que `userShow` reflète la
+  // valeur confirmée.
   const [optimistic, setOptimistic] = useState<{
     manualOverride: "abandonne" | null;
     recalculating: boolean;
   } | null>(null);
 
-  // Une fois que la donnée serveur rattrape la valeur optimiste (après le
-  // refetch déclenché par onChange()), on efface l'état local : `userShow`
-  // fait alors foi, statut recalculé inclus.
   useEffect(() => {
-    if (optimistic && userShow.manual_override === optimistic.manualOverride) {
+    if (optimistic && userShow?.manual_override === optimistic.manualOverride) {
       setOptimistic(null);
     }
-  }, [userShow.manual_override, optimistic]);
+  }, [userShow?.manual_override, optimistic]);
 
-  const manualOverride = optimistic ? optimistic.manualOverride : userShow.manual_override;
+  const manualOverride = optimistic
+    ? optimistic.manualOverride
+    : (userShow?.manual_override ?? null);
   const recalculating = optimistic?.recalculating ?? false;
 
   const setOverride = async (next: "abandonne" | null) => {
-    // Annule tout refetch de `followKey` encore en vol (déclenché par un
-    // clic précédent via onChange()) avant d'écrire un nouvel état
-    // optimiste : sans ça, une réponse obsolète peut résoudre après celle
-    // de cette action et écraser le cache avec une donnée périmée, laissant
-    // le badge bloqué sur "Recalcul…" (cf. commentaire QA ci-dessus).
+    if (!userShow || !user) return;
+    // Annule tout refetch de `followKey` encore en vol (déclenché par un clic
+    // précédent via onChanged()) avant d'écrire un nouvel état optimiste :
+    // sans ça, une réponse obsolète peut résoudre après celle de cette action
+    // et écraser le cache avec une donnée périmée, laissant l'état bloqué sur
+    // "Recalcul…".
     await qc.cancelQueries({ queryKey: followKey });
     setOptimistic({ manualOverride: next, recalculating: next === null });
     setPending(true);
     const { error } = await supabase
       .from("user_shows")
       .update({ manual_override: next })
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .eq("show_id", userShow.show_id);
     setPending(false);
     if (error) {
@@ -1007,24 +1392,20 @@ function TvStatusBadge({
       toast.error(error.message);
       return;
     }
-    onChange();
+    onChanged();
   };
 
   // "Ne plus suivre" : suppression réelle de la ligne user_shows (jamais de
   // watch_status touché, cf. CLAUDE.md). Contrairement à setOverride, pas
-  // d'état optimiste local : après succès, onChange() invalide `followKey`
-  // et le composant parent fait redevenir `userShow` null au refetch, ce qui
-  // démonte ce composant et fait réapparaître le bouton "Suivre" — même
-  // mécanisme que pour un follow initial, en sens inverse. Le clic sur
-  // l'AlertDialogAction fait un preventDefault (cf. JSX plus bas) pour garder
-  // la boîte de dialogue ouverte, boutons désactivés, le temps de la requête,
-  // plutôt que de la fermer instantanément sans retour visuel.
+  // d'état optimiste local : après succès, onChanged() invalide `followKey`
+  // et le composant parent fait redevenir `userShow` null au refetch.
   const handleUnfollow = async () => {
+    if (!userShow || !user) return;
     setUnfollowPending(true);
     try {
-      await unfollowShow(user!.id, userShow.show_id);
+      await unfollowShow(user.id, userShow.show_id);
       setConfirmUnfollowOpen(false);
-      onChange();
+      onChanged();
       qc.invalidateQueries({ queryKey: ["followed-keys", user?.id] });
       qc.invalidateQueries({ queryKey: ["home-schedule", user?.id] });
     } catch (err) {
@@ -1034,98 +1415,100 @@ function TvStatusBadge({
     }
   };
 
-  // Statut "effectif" affiché par le badge : l'override s'il est actif,
-  // sinon le statut calculé. `abandonne`/`archive` partagent le même style
-  // neutre que `a_voir` (cf. TV_STATUS_BADGE_STYLES) — sans texte de légende
-  // sous le badge, un signal non-textuel (icône Ban) est nécessaire pour ne
-  // pas rendre un statut figé indiscernable de "à voir".
-  const effectiveStatus = manualOverride ?? userShow.status;
-  const isOverrideState =
-    !recalculating && (effectiveStatus === "abandonne" || effectiveStatus === "archive");
+  return {
+    manualOverride,
+    recalculating,
+    pending,
+    menuOpen,
+    setMenuOpen,
+    confirmUnfollowOpen,
+    setConfirmUnfollowOpen,
+    unfollowPending,
+    setOverride,
+    handleUnfollow,
+  };
+}
 
-  const badgeLabel = recalculating
-    ? "Recalcul…"
-    : manualOverride
-      ? STATUS_LABELS[manualOverride]
-      : (STATUS_LABELS[userShow.status] ?? userShow.status);
-  const badgeStyle = recalculating
-    ? "border-border text-muted-foreground"
-    : (TV_STATUS_BADGE_STYLES[effectiveStatus] ?? "border-border text-muted-foreground");
-
-  const actionButtonClass =
-    "h-11 gap-1.5 border-border bg-card text-foreground hover:bg-surface-elevated";
+// Kebab menu (hero) : actions de suivi rares (Abandonner / Reprendre / Ne
+// plus suivre). Le statut lisible directement vit dans `ProgressCard`
+// (`StatusPill`), pas ici — ce menu ne rend plus aucun badge.
+function TvFollowMenu({
+  showTitle,
+  tvOverride,
+}: {
+  showTitle: string;
+  tvOverride: ReturnType<typeof useTvOverride>;
+}) {
+  const {
+    manualOverride,
+    pending,
+    menuOpen,
+    setMenuOpen,
+    confirmUnfollowOpen,
+    setConfirmUnfollowOpen,
+    unfollowPending,
+    setOverride,
+    handleUnfollow,
+  } = tvOverride;
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest ${badgeStyle}`}
-        >
-          {isOverrideState && <Ban className="h-3 w-3" aria-hidden="true" />}
-          {badgeLabel}
-        </span>
-
-        {/* modal={false} : évite le bug Radix connu (radix-ui/primitives#3317,
-            shadcn-ui/ui#7124) où le pointer-events:none posé sur <body> par un
-            DropdownMenu modal peut ne jamais être relâché quand un AlertDialog
-            s'ouvre par-dessus (cf. onSelect "Ne plus suivre" ci-dessous), ce
-            qui gèlerait toute la page. */}
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pending || unfollowPending}
-              className={actionButtonClass}
-            >
-              Gérer le suivi
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`}
-              />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {manualOverride ? (
-              <DropdownMenuItem onClick={() => setOverride(null)}>
-                <RotateCcw className="h-3.5 w-3.5" />
-                Reprendre le suivi
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => setOverride("abandonne")}>
-                <Ban className="h-3.5 w-3.5" />
-                Abandonner
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={(e) => {
-                // preventDefault : évite la fermeture "par défaut" du menu
-                // (avec son retour de focus immédiat sur le trigger) pendant
-                // que l'AlertDialog s'ouvre. On ferme le menu nous-mêmes juste
-                // après via setMenuOpen(false), pour ne jamais le laisser
-                // réapparaître visuellement derrière une fois l'AlertDialog
-                // fermé (annulation ou confirmation).
-                e.preventDefault();
-                setMenuOpen(false);
-                setConfirmUnfollowOpen(true);
-              }}
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Ne plus suivre
+      {/* modal={false} : évite le bug Radix connu (radix-ui/primitives#3317,
+          shadcn-ui/ui#7124) où le pointer-events:none posé sur <body> par un
+          DropdownMenu modal peut ne jamais être relâché quand un AlertDialog
+          s'ouvre par-dessus (cf. onSelect "Ne plus suivre" ci-dessous), ce
+          qui gèlerait toute la page. */}
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Gérer le suivi"
+            disabled={pending || unfollowPending}
+            className="grid h-9 w-9 place-items-center rounded-full border border-border bg-background/50 text-foreground backdrop-blur-sm disabled:opacity-50"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {manualOverride ? (
+            <DropdownMenuItem onClick={() => setOverride(null)}>
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reprendre le suivi
             </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          ) : (
+            <DropdownMenuItem onClick={() => setOverride("abandonne")}>
+              <Ban className="h-3.5 w-3.5" />
+              Abandonner
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={(e) => {
+              // preventDefault : évite la fermeture "par défaut" du menu (avec
+              // son retour de focus immédiat sur le trigger) pendant que
+              // l'AlertDialog s'ouvre. On ferme le menu nous-mêmes juste après
+              // via setMenuOpen(false), pour ne jamais le laisser réapparaître
+              // visuellement derrière une fois l'AlertDialog fermé
+              // (annulation ou confirmation).
+              e.preventDefault();
+              setMenuOpen(false);
+              setConfirmUnfollowOpen(true);
+            }}
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Ne plus suivre
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <AlertDialog open={confirmUnfollowOpen} onOpenChange={setConfirmUnfollowOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Ne plus suivre {showTitle} ?</AlertDialogTitle>
             <AlertDialogDescription>
-              La série sera retirée de votre bibliothèque. Votre historique d'épisodes vus est
-              conservé — vous le retrouverez si vous suivez à nouveau la série.
+              La série disparaît de votre bibliothèque, pas votre historique : chaque épisode vu
+              reste enregistré, prêt à être retrouvé — ou exporté — quand vous le voulez.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

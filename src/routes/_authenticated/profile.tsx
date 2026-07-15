@@ -7,16 +7,15 @@ import { useAuth } from "@/hooks/use-auth";
 import { ScreenHeader } from "@/components/screen-header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { estimateWatchMinutes } from "@/lib/watch-time";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfileScreen,
 });
 
-const AVG_EPISODE_MIN = 42;
 const MAX_VISIBLE_WARNINGS = 5;
 
 type Unmatched = { key: string; title: string; year: number | null; occurrences: number };
-
 
 type ImportRun = {
   id: number;
@@ -55,7 +54,7 @@ function ProfileScreen() {
         0,
       );
       const inProgress = (showsRes.data ?? []).filter((s) => s.status === "en_cours").length;
-      const minutes = episodesWatched * AVG_EPISODE_MIN;
+      const minutes = estimateWatchMinutes(episodesWatched);
       return {
         episodesWatched,
         inProgress,
@@ -144,8 +143,8 @@ function ProfileScreen() {
             Historique
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Récupérez vos années de tracking depuis TV Time ou Betaseries, avec un guide pas à
-            pas. Export JSON dispo à tout moment.
+            Récupérez vos années de tracking depuis TV Time ou Betaseries, avec un guide pas à pas.
+            Export JSON dispo à tout moment.
           </p>
           <div className="mt-4 space-y-2">
             <Link
@@ -168,7 +167,6 @@ function ProfileScreen() {
             </Button>
           </div>
         </div>
-
 
         {/* Historique des imports */}
         {importRuns && importRuns.length > 0 && (
@@ -252,4 +250,3 @@ function StatCard({ label, value, suffix }: { label: string; value: number; suff
     </div>
   );
 }
-
