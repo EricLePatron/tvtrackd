@@ -608,6 +608,14 @@ function ShowDetail() {
               const watchedCount = eps.filter((e) => (watched?.[e.id]?.count ?? 0) > 0).length;
               const last = eps[eps.length - 1]?.episode_number ?? 0;
               const seasonPct = eps.length ? Math.min(100, (watchedCount / eps.length) * 100) : 0;
+              // Lisibilité de l'état accordéon fermé : "vue" seulement si
+              // TOUS les épisodes de la saison sont marqués vus (même total
+              // que la mini-barre, `eps.length` — pas `eligibleEpisodes`
+              // ci-dessous). Une saison encore en diffusion n'atteint donc
+              // jamais cet état tant qu'il reste des épisodes à venir non
+              // vus : elle affiche le compteur (ex. 08/10), pas le check —
+              // c'est le comportement voulu.
+              const isSeasonDone = eps.length > 0 && watchedCount === eps.length;
 
               // Épisodes "éligibles" au marquage groupé : ceux déjà diffusés.
               // Les épisodes sans air_date connue ne sont pas considérés comme
@@ -673,16 +681,40 @@ function ShowDetail() {
                     id={`season-trigger-${s.season_number}`}
                     className="py-4 hover:no-underline"
                   >
-                    <span className="flex flex-1 items-center gap-3">
+                    <span className="flex flex-1 items-center justify-between gap-3">
                       <span className="font-display text-base text-foreground">
                         Saison {s.season_number}
                       </span>
-                      <span className="h-[3px] w-11 shrink-0 overflow-hidden rounded-full bg-white/[0.09]">
-                        <span
-                          className="block h-full rounded-full bg-cyan-accent"
-                          style={{ width: `${seasonPct}%` }}
-                        />
-                      </span>
+                      {/* État lisible accordéon fermé : terminée (check +
+                          "Vue", pas de barre) / en cours (compteur cyan +
+                          barre) / pas commencée (compteur muted + barre
+                          vide) — cf. décision produit, mêmes données que la
+                          mini-barre (watchedCount/eps.length). */}
+                      {isSeasonDone ? (
+                        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap font-counter text-[10px] uppercase tracking-[0.14em] text-cyan-accent">
+                          <Check className="h-[15px] w-[15px]" aria-hidden="true" />
+                          Vue
+                        </span>
+                      ) : (
+                        <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                          <span className="font-counter text-[12.5px] tabular-nums">
+                            <span
+                              className={
+                                watchedCount > 0 ? "text-cyan-accent" : "text-muted-foreground"
+                              }
+                            >
+                              {pad(watchedCount)}
+                            </span>
+                            <span className="text-muted-foreground">/{pad(eps.length)}</span>
+                          </span>
+                          <span className="h-[3px] w-11 shrink-0 overflow-hidden rounded-full bg-white/[0.09]">
+                            <span
+                              className="block h-full rounded-full bg-cyan-accent"
+                              style={{ width: `${seasonPct}%` }}
+                            />
+                          </span>
+                        </span>
+                      )}
                     </span>
                   </AccordionTrigger>
                   <AccordionContent>
