@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
     if (!q || typeof q !== "string" || q.trim().length < 2) {
       return Response.json({ results: [] }, { headers: corsHeaders });
     }
-    const url = new URL("https://api.themoviedb.org/3/search/multi");
+    const url = new URL("https://api.themoviedb.org/3/search/tv");
     url.searchParams.set("query", q);
     url.searchParams.set("language", "fr-FR");
     url.searchParams.set("include_adult", "false");
