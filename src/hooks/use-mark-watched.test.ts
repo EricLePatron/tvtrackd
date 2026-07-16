@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { markWatchedOnError, markWatchedOnMutate, markWatchedOnSuccess } from "./use-mark-watched";
+import { markWatchedOnMutate, markWatchedOnSettled } from "./use-mark-watched";
 import type { ActiveStatus, HomeData, ScheduleEpisode, ShowLite } from "@/lib/schedule";
 
 /**
- * Exercises `markWatchedOnMutate`/`markWatchedOnError`/`markWatchedOnSuccess`
- * directly against a plain `new QueryClient()` — no React rendering needed,
- * these are exported specifically to be testable this way (see their doc
- * comments in `use-mark-watched.ts`).
+ * Exercises `markWatchedOnMutate`/`markWatchedOnSettled` directly against a
+ * plain `new QueryClient()` — no React rendering needed, these are exported
+ * specifically to be testable this way (see their doc comments in
+ * `use-mark-watched.ts`). Both take `userId` as a plain, explicit parameter —
+ * never a reactive `user` read from `useAuth()` — which is the whole point
+ * of the fix in this lot (see the "course logout" test below).
  */
 
 const show = (id: number, title = `Show ${id}`): ShowLite => ({
@@ -49,11 +51,11 @@ const ZONE_B = {
   countdown: null,
 };
 
-function seedHomeData(qc: QueryClient, data: HomeData) {
-  qc.setQueryData(homeKey, data);
+function seedHomeData(qc: QueryClient, userId: string, data: HomeData) {
+  qc.setQueryData(["home-schedule", userId], data);
 }
 
-describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () => {
+describe("markWatchedOnMutate / markWatchedOnSettled", () => {
   it('no-ops when ["home-schedule", userId] isn\'t cached at all (calendar-only session)', () => {
     const qc = new QueryClient();
 
@@ -62,9 +64,9 @@ describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () =
     expect(patched).toBe(false);
     expect(qc.getQueryData(homeKey)).toBeUndefined();
 
-    // onError/onSuccess must also be safe no-ops with no prior batch state.
-    expect(() => markWatchedOnError(qc, USER_ID, 999)).not.toThrow();
-    expect(() => markWatchedOnSuccess(qc, USER_ID, 999)).not.toThrow();
+    // onSettled (both outcomes) must also be safe no-ops with no prior batch state.
+    expect(() => markWatchedOnSettled(qc, USER_ID, 999, "error")).not.toThrow();
+    expect(() => markWatchedOnSettled(qc, USER_ID, 999, "success")).not.toThrow();
     expect(qc.getQueryData(homeKey)).toBeUndefined();
   });
 
@@ -102,7 +104,7 @@ describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () =
         heroSeasonEpisodeCount: 2, // A's season 1 total (101 + 102)
       },
     };
-    seedHomeData(qc, initial);
+    seedHomeData(qc, USER_ID, initial);
 
     // --- Sanity check on the seeded state (before any tap) ---
     let cur = qc.getQueryData<HomeData>(homeKey)!;
@@ -140,8 +142,8 @@ describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () =
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
 
-    // --- A's mutation fails (network error) ---
-    markWatchedOnError(qc, USER_ID, 101);
+    // --- A's mutation fails (network error) — settled via markWatchedOnSettled(..., "error") ---
+    markWatchedOnSettled(qc, USER_ID, 101, "error");
 
     cur = qc.getQueryData<HomeData>(homeKey)!;
     // A reverts fully (back to pointing at 101, original heroProgress).
@@ -156,8 +158,8 @@ describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () =
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
 
-    // --- B's mutation eventually succeeds ---
-    markWatchedOnSuccess(qc, USER_ID, 201);
+    // --- B's mutation eventually succeeds — settled via markWatchedOnSettled(..., "success") ---
+    markWatchedOnSettled(qc, USER_ID, 201, "success");
 
     // No cache rewrite on success — still showing B's optimistic state,
     // untouched by the success bookkeeping itself.
@@ -196,7 +198,7 @@ describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () =
         heroSeasonEpisodeCount: 1, // fetched for heroShow's season 1
       },
     };
-    seedHomeData(qc, initial);
+    seedHomeData(qc, USER_ID, initial);
 
     markWatchedOnMutate(qc, USER_ID, { episodeId: 101, showId: 1 });
 
@@ -204,5 +206,132 @@ describe("markWatchedOnMutate / markWatchedOnError / markWatchedOnSuccess", () =
     expect(cur.hero?.show.id).toBe(2); // rotated — show 1 has no ready episode left
     expect(cur.heroProgress).toBeNull();
     expect(cur.raw.heroSeasonEpisodeCount).toBeNull();
+  });
+
+  it("[course logout] onSettled with a userId frozen at onMutate time (not a 'live' one) always drains inFlight, so a later mutate recaptures a fresh base", () => {
+    // Reproduces the blocking bug fixed in this lot: the OLD code re-read a
+    // reactive `user` inside onError/onSuccess (`if (user) ...`) — if the
+    // user logged out while a mutation was in flight, that guard skipped the
+    // cleanup entirely, leaving the episodeId stuck in `inFlight` forever,
+    // which in turn made `markWatchedOnMutate` never recapture `base` again
+    // (`if (!batch || batch.inFlight.size === 0)` never becomes true).
+    //
+    // `markWatchedOnSettled` never reads any reactive auth state — it only
+    // ever takes `userId` as a plain parameter. This test locks in that the
+    // hook must call it with the userId FROZEN in onMutate's context
+    // (`{ userId: user.id }`), by simulating exactly that: settling with the
+    // same userId regardless of what "live" auth state might be by then.
+    const qc = new QueryClient();
+    const showA = show(1, "Show A");
+    const v1: HomeData = {
+      today: TODAY,
+      followedActiveCount: 1,
+      hero: null,
+      heroProgress: null,
+      reprendre: [],
+      nouveau: [],
+      readyCount: 0,
+      ...ZONE_B,
+      raw: {
+        episodes: [ep(showA, 101, 1, 1, "2026-01-01"), ep(showA, 102, 1, 2, "2026-01-08")],
+        showStatusByShowId: new Map<number, ActiveStatus>([[1, "en_cours"]]),
+        lastWatchedAtByShowId: new Map(),
+        watchedEpisodeIds: new Set(),
+        heroSeasonEpisodeCount: 2,
+      },
+    };
+    seedHomeData(qc, USER_ID, v1);
+
+    markWatchedOnMutate(qc, USER_ID, { episodeId: 101, showId: 1 });
+    let cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.hero?.nextEpisode.id).toBe(102);
+
+    // The mutation settles (success) — the hook always calls this with the
+    // FROZEN ctx.userId, never a possibly-null "live" user.
+    markWatchedOnSettled(qc, USER_ID, 101, "success");
+
+    // A legitimate server refetch lands in the meantime (triggered by the
+    // real onSettled's invalidateQueries): server confirms 101 watched AND
+    // reveals a brand-new episode (103) the client never knew about before.
+    // hero/heroProgress/etc. would normally be filled in by the real queryFn
+    // via deriveHomeView — irrelevant to this test, only `raw` matters (it's
+    // what `markWatchedOnMutate` reads to recapture `base`).
+    const v2: HomeData = {
+      ...v1,
+      hero: null,
+      heroProgress: null,
+      raw: {
+        episodes: [
+          ep(showA, 101, 1, 1, "2026-01-01"),
+          ep(showA, 102, 1, 2, "2026-01-08"),
+          ep(showA, 103, 1, 3, "2026-01-15"),
+        ],
+        showStatusByShowId: new Map<number, ActiveStatus>([[1, "en_cours"]]),
+        lastWatchedAtByShowId: new Map([[1, "2026-07-08T00:00:00.000Z"]]),
+        watchedEpisodeIds: new Set([101]),
+        heroSeasonEpisodeCount: 3, // official count grew server-side
+      },
+    };
+    seedHomeData(qc, USER_ID, v2);
+
+    // If the batch had been left stuck (bug), `inFlight` would still contain
+    // the stale `101` entry and this call would reuse the OLD `base` (v1) —
+    // episode 103 (unknown to v1) could never appear, and the total would
+    // stay wrongly capped at 2. With the fix, the batch fully drained above,
+    // so this recaptures `base` fresh from v2.
+    markWatchedOnMutate(qc, USER_ID, { episodeId: 102, showId: 1 });
+
+    cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.hero?.nextEpisode.id).toBe(103); // only reachable if `base` was refreshed to v2
+    expect(cur.heroProgress).toEqual({ watched: 2, total: 3 });
+  });
+
+  it("[multi-userId isolation] a tap for user A never writes into user B's HomeData/batch on the same QueryClient", () => {
+    const qc = new QueryClient();
+    const userA = "user-a";
+    const userB = "user-b";
+    const showA = show(1, "Show A");
+    const showB = show(2, "Show B");
+
+    const dataFor = (s: ShowLite, episodeId: number): HomeData => ({
+      today: TODAY,
+      followedActiveCount: 1,
+      hero: null,
+      heroProgress: null,
+      reprendre: [],
+      nouveau: [],
+      readyCount: 0,
+      ...ZONE_B,
+      raw: {
+        episodes: [ep(s, episodeId, 1, 1, "2026-01-01")],
+        showStatusByShowId: new Map<number, ActiveStatus>([[s.id, "en_cours"]]),
+        lastWatchedAtByShowId: new Map(),
+        watchedEpisodeIds: new Set(),
+        heroSeasonEpisodeCount: 1,
+      },
+    });
+
+    const initialA = dataFor(showA, 101);
+    const initialB = dataFor(showB, 201);
+    seedHomeData(qc, userA, initialA);
+    seedHomeData(qc, userB, initialB);
+
+    markWatchedOnMutate(qc, userA, { episodeId: 101, showId: 1 });
+
+    // User A's own cache entry is patched...
+    const curA = qc.getQueryData<HomeData>(["home-schedule", userA])!;
+    expect(curA.raw.watchedEpisodeIds.has(101)).toBe(true);
+
+    // ...but user B's entry is entirely untouched — same object identity as
+    // what was seeded, not just deep-equal.
+    const curB = qc.getQueryData<HomeData>(["home-schedule", userB]);
+    expect(curB).toBe(initialB);
+    expect(curB!.raw.watchedEpisodeIds.has(201)).toBe(false);
+
+    // Settling user A's mutation must not affect user B's (nonexistent)
+    // batch — a settle call for an episode B never touched is a safe no-op.
+    expect(() => markWatchedOnSettled(qc, userB, 201, "error")).not.toThrow();
+    const curBAfter = qc.getQueryData<HomeData>(["home-schedule", userB]);
+    expect(curBAfter).toBe(initialB);
   });
 });
