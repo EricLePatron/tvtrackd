@@ -304,6 +304,18 @@ function ShowDetail() {
     }
   };
 
+  // Note (Lot 1 Home optimistic mark-watched) : `toggleWatched`/`toggleSeason`
+  // ci-dessous font un rollback par snapshot complet (`ctx.prev` capturé à
+  // l'onMutate) — ce schéma N'EST PAS concurrency-safe entre deux mutations
+  // qui se chevauchent (le rollback de la plus ancienne peut écraser
+  // l'optimisme d'une mutation plus récente encore en vol). C'est atténué ici
+  // par `lockedEpisodes` (verrou explicite empêchant deux mutations
+  // concurrentes sur le même épisode) mais reste un point faible générique
+  // face à des épisodes DIFFÉRENTS mutés coup sur coup. `useMarkWatched`
+  // (Home, `use-mark-watched.ts`) adopte volontairement un modèle plus
+  // robuste (base + ensemble d'ids "en vol", jamais un snapshot complet) —
+  // ne pas "réaligner" ce fichier dessus par réflexe, c'est un choix
+  // scope-limité au Lot 1 Home, pas un refactor de cette page.
   const toggleWatched = useMutation({
     mutationFn: async ({ episodeId, isWatched }: { episodeId: number; isWatched: boolean }) => {
       if (!user) throw new Error("no user");
