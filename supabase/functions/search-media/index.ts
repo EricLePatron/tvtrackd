@@ -27,20 +27,18 @@ Deno.serve(async (req) => {
     }
     const data = await res.json();
 
-    const results = (data.results ?? [])
-      .filter((r: any) => r.media_type === "tv" || r.media_type === "movie")
-      .map((r: any) => {
-        const title = r.title ?? r.name ?? "";
-        const date = r.release_date ?? r.first_air_date ?? "";
-        return {
-          tmdb_id: r.id,
-          media_type: r.media_type as "tv" | "movie",
-          title,
-          overview: r.overview ?? "",
-          poster_url: r.poster_path ? `${TMDB_IMG}${r.poster_path}` : null,
-          year: date ? Number(date.slice(0, 4)) : null,
-        };
-      });
+    const results = (data.results ?? []).map((r: any) => {
+      const title = r.name ?? r.title ?? "";
+      const date = r.first_air_date ?? r.release_date ?? "";
+      return {
+        tmdb_id: r.id,
+        media_type: "tv" as const,
+        title,
+        overview: r.overview ?? "",
+        poster_url: r.poster_path ? `${TMDB_IMG}${r.poster_path}` : null,
+        year: date ? Number(date.slice(0, 4)) : null,
+      };
+    });
 
     return Response.json({ results }, { headers: corsHeaders });
   } catch (err) {
