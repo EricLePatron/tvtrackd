@@ -21,6 +21,7 @@ import { useInViewOnce } from "@/hooks/use-in-view-once";
 import { useRollingNumber } from "@/hooks/use-rolling-number";
 import { followShow, unfollowShow } from "@/lib/follow-show";
 import { formatApproxHours } from "@/lib/watch-time";
+import { formatCountdownLabel } from "@/lib/schedule";
 import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
@@ -1204,8 +1205,7 @@ function NextEpisodeCard({ episode }: { episode: EpisodeRow }) {
     0,
     Math.ceil((new Date(episode.air_date!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
   );
-  const countdownLabel =
-    daysUntil === 0 ? "aujourd'hui" : daysUntil === 1 ? "demain" : `dans ${daysUntil} j`;
+  const countdownLabel = formatCountdownLabel(daysUntil);
 
   return (
     <div

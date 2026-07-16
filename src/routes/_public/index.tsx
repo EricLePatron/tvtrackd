@@ -483,7 +483,9 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      <h2 className="font-display text-base text-foreground">Programme à venir</h2>
+      <h2 className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+        Programme à venir
+      </h2>
       <Link
         to="/calendar"
         className="font-counter text-[10px] uppercase tracking-widest text-primary"

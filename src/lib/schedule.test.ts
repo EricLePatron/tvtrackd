@@ -5,6 +5,7 @@ import {
   buildReadyItems,
   computeSeasonTally,
   deriveHomeView,
+  formatCountdownLabel,
   formatReadyLabel,
   getDayLabelParts,
   HERO_STALE_DAYS,
@@ -266,6 +267,24 @@ describe("formatReadyLabel", () => {
   it("returns null (no label at all) at the 30j boundary and beyond", () => {
     expect(formatReadyLabel({ isLate: true, lateDays: 30 })).toBeNull();
     expect(formatReadyLabel({ isLate: true, lateDays: 90 })).toBeNull();
+  });
+});
+
+describe("formatCountdownLabel", () => {
+  // Lot 2 (unification du vocabulaire countdown Home/fiche série) — extrait
+  // à l'identique du ternaire de `NextEpisodeCard` (show.$mediaType.$tmdbId.tsx),
+  // consommé aussi par `NothingNowCountdownTicket` (empty-states.tsx).
+  it('returns "aujourd\'hui" for 0 days', () => {
+    expect(formatCountdownLabel(0)).toBe("aujourd'hui");
+  });
+
+  it('returns "demain" for 1 day', () => {
+    expect(formatCountdownLabel(1)).toBe("demain");
+  });
+
+  it('returns "dans Nj" (abbreviated "j", never "jours") for 2+ days', () => {
+    expect(formatCountdownLabel(2)).toBe("dans 2 j");
+    expect(formatCountdownLabel(10)).toBe("dans 10 j");
   });
 });
 

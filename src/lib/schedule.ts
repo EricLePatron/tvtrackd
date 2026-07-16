@@ -489,6 +489,25 @@ export function nextCountdown(
 }
 
 /**
+ * "aujourd'hui" / "demain" / "dans Nj" — vocabulaire de référence du
+ * countdown, extrait à l'identique de `NextEpisodeCard` (fiche série,
+ * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NothingNowCountdownTicket`,
+ * `empty-states.tsx`) et la fiche partagent la même formulation plutôt que
+ * deux implémentations qui redivergeraient silencieusement. Volontairement
+ * "j" abrégé, jamais "jours" — aligné caractère pour caractère sur la fiche.
+ * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : les deux appelants
+ * actuels le garantissent déjà — `nextCountdown` ci-dessus ne considère que
+ * des épisodes strictement futurs (`daysUntil` toujours >= 1 en pratique),
+ * et `NextEpisodeCard` clampe son propre calcul via `Math.max(0, ...)` avant
+ * d'appeler cette fonction.
+ */
+export function formatCountdownLabel(daysUntil: number): string {
+  if (daysUntil === 0) return "aujourd'hui";
+  if (daysUntil === 1) return "demain";
+  return `dans ${daysUntil} j`;
+}
+
+/**
  * Raw scheduling inputs behind the Home screen's derived view (`HomeData`
  * below) — everything `deriveHomeView` needs to re-run `buildReadyItems` /
  * `selectHero` / `computeSeasonTally` from scratch. Kept alongside the
