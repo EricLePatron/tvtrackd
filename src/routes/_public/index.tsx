@@ -12,17 +12,14 @@ import {
   addDaysToDateString,
   bucketUpcoming,
   buildLastWatchedAtByShow,
-  buildReadyItems,
-  computeSeasonTally,
   countUpcomingEntries,
+  deriveHomeView,
   groupUpcomingByDay,
-  isSeasonTallyReliable,
   nextCountdown,
   resolveHomeState,
-  selectHero,
   formatReadyLabel,
   type ActiveStatus,
-  type DayGroup,
+  type HomeData,
   type ReadyItem,
   type ScheduleEpisode,
 } from "@/lib/schedule";
@@ -66,20 +63,6 @@ function pad(n: number) {
 /** Rows shown before "Reprendre" collapses into a "Voir tout" link. */
 const REPRENDRE_VISIBLE_COUNT = 3;
 
-type HomeData = {
-  today: string;
-  followedActiveCount: number;
-  hero: ReadyItem | null;
-  /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
-  heroProgress: { watched: number; total: number } | null;
-  reprendre: ReadyItem[];
-  nouveau: ReadyItem[];
-  readyCount: number;
-  dayGroups: DayGroup[];
-  upcomingCount: number;
-  countdown: ReturnType<typeof nextCountdown>;
-};
-
 function HomeScreen() {
   const { user } = useAuth();
   // The anonymous demo hero already carries its own "Créer un compte" /
@@ -117,6 +100,13 @@ function HomeScreen() {
           dayGroups: [],
           upcomingCount: 0,
           countdown: null,
+          raw: {
+            episodes: [],
+            showStatusByShowId: new Map(),
+            lastWatchedAtByShowId: new Map(),
+            watchedEpisodeIds: new Set(),
+            heroSeasonEpisodeCount: null,
+          },
         };
       }
 
@@ -174,23 +164,30 @@ function HomeScreen() {
         ).map((r) => ({ show_id: r.episode.show_id, watched_at: r.watched_at })),
       );
 
-      const ready = buildReadyItems(episodes, watchedSet, showStatusByShowId, today);
       // `reprendreDormant` isn't consumed by the UI this lot — dormant shows
       // are only reachable through /library — but the split itself already
       // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
-      const { hero, reprendre, nouveau } = selectHero(ready, today, lastWatchedAtByShowId);
+      //
+      // First pass without the hero's official season episode count (not
+      // known yet — depends on which show wins hero, computed just below).
+      // `hero`/`reprendre`/`nouveau`/`readyCount` are already final at this
+      // point (none of them depend on `heroSeasonEpisodeCount`); only
+      // `heroProgress` is discarded and recomputed in the second pass below.
+      const rawWithoutHeroCount = {
+        episodes,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        watchedEpisodeIds: watchedSet,
+        heroSeasonEpisodeCount: null,
+      };
+      const { hero, reprendre, nouveau, readyCount } = deriveHomeView(rawWithoutHeroCount, today);
 
+      let heroSeasonEpisodeCount: number | null = null;
       let heroProgress: { watched: number; total: number } | null = null;
       if (hero) {
-        const tally = computeSeasonTally(
-          episodes,
-          watchedSet,
-          hero.show.id,
-          hero.nextEpisode.season_number,
-        );
         // One cheap single-row lookup (unique-indexed on show_id+season_number)
         // for the hero's own season only — never for every followed show —
-        // to know the season's OFFICIAL episode count and confirm `tally`
+        // to know the season's OFFICIAL episode count and confirm the tally
         // isn't undercounted by the 90-day future cap above. See
         // `isSeasonTallyReliable` for why an unreliable tally hides the
         // fraction/bar entirely rather than risking a falsely-~100% bar.
@@ -200,8 +197,14 @@ function HomeScreen() {
           .eq("show_id", hero.show.id)
           .eq("season_number", hero.nextEpisode.season_number)
           .maybeSingle();
-        heroProgress = isSeasonTallyReliable(tally, seasonRow?.episode_count) ? tally : null;
+        heroSeasonEpisodeCount = seasonRow?.episode_count ?? null;
+        heroProgress = deriveHomeView(
+          { ...rawWithoutHeroCount, heroSeasonEpisodeCount },
+          today,
+        ).heroProgress;
       }
+
+      const raw = { ...rawWithoutHeroCount, heroSeasonEpisodeCount };
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
@@ -214,10 +217,11 @@ function HomeScreen() {
         heroProgress,
         reprendre,
         nouveau,
-        readyCount: ready.length,
+        readyCount,
         dayGroups,
         upcomingCount,
         countdown,
+        raw,
       };
     },
   });

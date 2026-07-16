@@ -4,12 +4,14 @@ import {
   buildLibraryProgress,
   buildReadyItems,
   computeSeasonTally,
+  deriveHomeView,
   formatReadyLabel,
   getDayLabelParts,
   HERO_STALE_DAYS,
   isSeasonTallyReliable,
   selectHero,
   type ActiveStatus,
+  type HomeRawInputs,
   type ScheduleEpisode,
   type ShowLite,
 } from "./schedule";
@@ -600,5 +602,209 @@ describe("isSeasonTallyReliable", () => {
     // season (a hero always points at an already-aired episode, so its
     // season has at least one).
     expect(isSeasonTallyReliable({ total: 0 }, 0)).toBe(false);
+  });
+});
+
+describe("deriveHomeView", () => {
+  // Lot 1 (Home optimistic mark-watched): `deriveHomeView` is the exact
+  // pipeline `useMarkWatched`'s `onMutate` re-runs locally against an
+  // optimistic `watchedEpisodeIds` (current set + the tapped episode) to
+  // advance/rotate the hero without duplicating `buildReadyItems`/
+  // `selectHero`'s actual rules — see `src/hooks/use-mark-watched.ts`.
+  function raw(over: Partial<HomeRawInputs> & Pick<HomeRawInputs, "episodes">): HomeRawInputs {
+    return {
+      showStatusByShowId: new Map(),
+      lastWatchedAtByShowId: new Map(),
+      watchedEpisodeIds: new Set(),
+      heroSeasonEpisodeCount: null,
+      ...over,
+    };
+  }
+
+  it("advances the hero in place (same show/season) when a ready backlog episode is marked watched but backlog remains", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
+    const showStatusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const before = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        watchedEpisodeIds: new Set(),
+        heroSeasonEpisodeCount: 2,
+      }),
+      TODAY,
+    );
+    expect(before.hero?.nextEpisode.id).toBe(101);
+    expect(before.hero?.extraCount).toBe(1);
+    expect(before.heroProgress).toEqual({ watched: 0, total: 2 });
+
+    // Simulates onMutate: episode 101 added to the optimistic watched set,
+    // `heroSeasonEpisodeCount` reused (same show/season as before).
+    const after = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        watchedEpisodeIds: new Set([101]),
+        heroSeasonEpisodeCount: 2,
+      }),
+      TODAY,
+    );
+
+    expect(after.hero?.show.id).toBe(1);
+    expect(after.hero?.nextEpisode.id).toBe(102); // advanced to the next ready episode
+    expect(after.hero?.extraCount).toBe(0);
+    expect(after.heroProgress).toEqual({ watched: 1, total: 2 }); // ticked up, same total
+  });
+
+  it("drops the show and rotates the hero to the next candidate once its entire ready backlog is cleared", () => {
+    const heroShow = show(1, "Hero Show"); // only one ready episode — its whole backlog
+    const nextCandidate = show(2, "Next Candidate");
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2026-01-01"),
+      ep(nextCandidate, 201, 1, 1, "2026-02-01"),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "a_voir"],
+    ]);
+
+    const before = deriveHomeView(raw({ episodes, showStatusByShowId }), TODAY);
+    expect(before.hero?.show.id).toBe(1); // en_cours always wins the hero slot over a_voir
+
+    const after = deriveHomeView(
+      raw({ episodes, showStatusByShowId, watchedEpisodeIds: new Set([101]) }),
+      TODAY,
+    );
+
+    expect(after.hero?.show.id).toBe(2); // rotated — show 1 has no ready episode left at all
+    expect(after.readyCount).toBe(1);
+  });
+
+  it("clears the hero entirely (hero: null, readyCount: 0) when the last ready episode overall is marked watched", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
+    const showStatusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const after = deriveHomeView(
+      raw({ episodes, showStatusByShowId, watchedEpisodeIds: new Set([101]) }),
+      TODAY,
+    );
+
+    expect(after.hero).toBeNull();
+    expect(after.readyCount).toBe(0);
+    expect(after.reprendre).toEqual([]);
+    expect(after.nouveau).toEqual([]);
+  });
+
+  it("hides heroProgress (null) once the hero has rotated to a show/season whose official episode count isn't known", () => {
+    // Mirrors `useMarkWatched`'s onMutate: `heroSeasonEpisodeCount` is only
+    // ever reused when the recomputed hero is the SAME show+season as
+    // before — a rotation resets it to `null` rather than reusing a count
+    // that belonged to a different season, even if the new season happens
+    // to be fully aired (which would otherwise look "reliable").
+    const heroShow = show(1, "Hero Show");
+    const nextCandidate = show(2, "Next Candidate");
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2026-01-01"),
+      ep(nextCandidate, 201, 1, 1, "2026-02-01"),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "a_voir"],
+    ]);
+
+    const after = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        watchedEpisodeIds: new Set([101]),
+        heroSeasonEpisodeCount: null, // reset by the caller on rotation
+      }),
+      TODAY,
+    );
+
+    expect(after.hero?.show.id).toBe(2);
+    expect(after.heroProgress).toBeNull();
+  });
+
+  it("re-eligibilizes a dormant show for 'reprendre' once its lastWatchedAt is refreshed to today", () => {
+    const heroShow = show(1, "Hero Show"); // freshest — wins the hero slot
+    const dormant = show(2, "Dormant Show"); // >=30j since last watch, two ready episodes left
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2025-12-01"),
+      ep(dormant, 201, 1, 1, "2026-01-01"),
+      ep(dormant, 202, 1, 2, "2026-01-08"),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+
+    const before = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        lastWatchedAtByShowId: new Map([
+          [1, "2026-07-07T00:00:00.000Z"], // 1j — fresh
+          [2, "2026-05-01T00:00:00.000Z"], // ~68j — dormant
+        ]),
+      }),
+      TODAY,
+    );
+    expect(before.reprendre).toEqual([]); // dormant (>=30j) — not in the visible "reprendre" list
+
+    // Simulates onMutate marking one of the dormant show's ready episodes,
+    // which also refreshes its `lastWatchedAtByShowId` entry to "now".
+    const after = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        watchedEpisodeIds: new Set([201]),
+        lastWatchedAtByShowId: new Map([
+          [1, "2026-07-07T00:00:00.000Z"],
+          [2, "2026-07-08T00:00:00.000Z"], // refreshed to "today" by the mark-watched tap
+        ]),
+      }),
+      TODAY,
+    );
+
+    expect(after.reprendre.map((i) => i.show.id)).toEqual([2]); // no longer dormant
+  });
+
+  it("is idempotent when the same episode id is already present in watchedEpisodeIds (protects against an accidental double-dispatch)", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01"), ep(s, 102, 1, 2, "2026-01-08")];
+    const showStatusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+    const r = raw({
+      episodes,
+      showStatusByShowId,
+      watchedEpisodeIds: new Set([101]),
+      heroSeasonEpisodeCount: 2,
+    });
+
+    const first = deriveHomeView(r, TODAY);
+    // Re-running with the id already present (as a second, redundant
+    // mutate() for the same episode would) must produce an identical view.
+    const second = deriveHomeView(r, TODAY);
+
+    expect(second).toEqual(first);
+    expect(second.hero?.nextEpisode.id).toBe(102);
+  });
+
+  it("never returns Zone B fields ('Programme à venir') at all — structurally cannot touch dayGroups/upcomingCount/countdown", () => {
+    // `deriveHomeView` doesn't even accept episodes/watched data scoped to
+    // the future, nor does it return anything for that part of `HomeData` —
+    // `useMarkWatched`'s onMutate spreads `{ ...prevHome, ...view }`, so
+    // `dayGroups`/`upcomingCount`/`countdown` are guaranteed to survive
+    // unchanged from the previous `HomeData` snapshot. This test pins the
+    // exact key set `deriveHomeView` returns, so a future change can't
+    // silently start returning (and therefore overwriting) those fields.
+    const s = show(1);
+    const result = deriveHomeView(raw({ episodes: [ep(s, 101, 1, 1, "2026-01-01")] }), TODAY);
+
+    expect(Object.keys(result).sort()).toEqual(
+      ["hero", "heroProgress", "nouveau", "readyCount", "reprendre"].sort(),
+    );
   });
 });
