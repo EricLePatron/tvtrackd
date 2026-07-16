@@ -208,19 +208,26 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.raw.heroSeasonEpisodeCount).toBeNull();
   });
 
-  it("[course logout] onSettled with a userId frozen at onMutate time (not a 'live' one) always drains inFlight, so a later mutate recaptures a fresh base", () => {
-    // Reproduces the blocking bug fixed in this lot: the OLD code re-read a
-    // reactive `user` inside onError/onSuccess (`if (user) ...`) — if the
-    // user logged out while a mutation was in flight, that guard skipped the
-    // cleanup entirely, leaving the episodeId stuck in `inFlight` forever,
-    // which in turn made `markWatchedOnMutate` never recapture `base` again
-    // (`if (!batch || batch.inFlight.size === 0)` never becomes true).
-    //
-    // `markWatchedOnSettled` never reads any reactive auth state — it only
-    // ever takes `userId` as a plain parameter. This test locks in that the
-    // hook must call it with the userId FROZEN in onMutate's context
-    // (`{ userId: user.id }`), by simulating exactly that: settling with the
-    // same userId regardless of what "live" auth state might be by then.
+  // TODO: la régression réelle corrigée dans ce lot (relecture RÉACTIVE de
+  // `user` depuis `useAuth()` dans les callbacks `onError`/`onSuccess` du
+  // hook, plutôt que le `userId` figé au `onMutate`) vit dans le câblage React
+  // de `useMarkWatched` lui-même, pas dans `markWatchedOnSettled`. La couvrir
+  // vraiment demanderait un `renderHook(useMarkWatched)` + un mock de
+  // `useAuth` simulant un `user` qui devient `null` en plein vol d'une
+  // mutation — non ajouté ici : `@testing-library/react` n'est pas
+  // installable dans ce sandbox (registre npm privé bloqué, cf. les autres
+  // limitations déjà documentées dans ce fichier/repo). À faire dans un
+  // environnement CI avec accès npm.
+  it("[markWatchedOnSettled] always drains inFlight regardless of the outcome, so a later mutate recaptures a fresh base", () => {
+    // NE reproduit PAS le bug de câblage du hook (voir le TODO ci-dessus) —
+    // cet appel direct à `markWatchedOnSettled(qc, USER_ID, ...)` avec un
+    // `USER_ID` constant ne passe jamais par `onMutate`/`onError`/`onSettled`
+    // de `useMarkWatched`, l'endroit où vivait la relecture réactive de
+    // `user`. Ce test aurait donc été vert même sur le code buggé de
+    // `b1d3764` : c'est un test de non-régression de `markWatchedOnSettled`
+    // EN ISOLATION (elle draine bien `inFlight` quel que soit `outcome`, ce
+    // qui permet à `markWatchedOnMutate` de recapturer une base fraîche),
+    // pas un test de la correction du bug de closure elle-même.
     const qc = new QueryClient();
     const showA = show(1, "Show A");
     const v1: HomeData = {
