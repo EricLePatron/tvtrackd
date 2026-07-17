@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Download } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
@@ -310,30 +310,49 @@ function AnonymousHome() {
         progress={{ watched: demoWatched, total: 8 }}
       />
 
-      <div className="mt-5 rounded-xl border border-border bg-card p-6 text-center">
-        <p className="text-sm text-muted-foreground">
-          Suivez vos séries épisode par épisode, sans jamais perdre votre historique.
+      {/* Carte "portabilité" — différenciateur n°1 (CLAUDE.md, jobs-to-be-done
+          #2 "mémoire durable") : reprend le vocabulaire "carte fine" déjà
+          validé sur la fiche série (ProgressCard/NextEpisodeCard), y compris
+          le pattern micro-ligne séparée par un filet. Statique, sans
+          useInViewOnce — la seule animation de cet écran reste le bump du
+          HeroTicket démo ci-dessus. */}
+      <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.018] p-[18px]">
+        <p className="font-counter text-[10px] uppercase tracking-[0.24em] text-primary">
+          Mémoire durable
         </p>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          Calendrier, statuts, rewatchs — tout au même endroit.
+        <h2 className="mt-2 font-display text-lg leading-snug text-foreground">
+          Votre historique vous suit, pour toujours.
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Export complet disponible à tout moment, dès votre première série ajoutée — jamais en
+          dernier recours.
         </p>
-        <div className="mt-5 flex flex-col gap-2">
-          <Link
-            to="/auth"
-            search={{ mode: "signup" }}
-            className="inline-flex h-12 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
-          >
-            Créer un compte
-          </Link>
-          <Link
-            to="/auth"
-            search={{ mode: "signin" }}
-            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground"
-          >
-            J'ai déjà un compte
-          </Link>
+        <div className="mt-3.5 flex items-center gap-2 border-t border-white/[0.06] pt-3.5 text-xs text-muted-foreground">
+          <Download className="h-3.5 w-3.5 shrink-0 text-cyan-accent" aria-hidden="true" />
+          Exportez tout, quand vous voulez — format JSON.
         </div>
       </div>
+
+      <div className="mt-5 flex flex-col gap-2">
+        <Link
+          to="/auth"
+          search={{ mode: "signup" }}
+          className="inline-flex h-12 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+        >
+          Créer un compte
+        </Link>
+        <Link
+          to="/auth"
+          search={{ mode: "signin" }}
+          className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground"
+        >
+          J'ai déjà un compte
+        </Link>
+      </div>
+
+      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+        Vous arrivez de TV Time ou Betaseries ? Votre import démarre juste après l'inscription.
+      </p>
     </div>
   );
 }
