@@ -152,6 +152,7 @@ export type Database = {
           networks: Json | null
           overview: string | null
           poster_path: string | null
+          providers_cached_at: string | null
           status: string | null
           tagline: string | null
           title: string
@@ -169,6 +170,7 @@ export type Database = {
           networks?: Json | null
           overview?: string | null
           poster_path?: string | null
+          providers_cached_at?: string | null
           status?: string | null
           tagline?: string | null
           title: string
@@ -186,6 +188,7 @@ export type Database = {
           networks?: Json | null
           overview?: string | null
           poster_path?: string | null
+          providers_cached_at?: string | null
           status?: string | null
           tagline?: string | null
           title?: string
