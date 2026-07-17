@@ -65,7 +65,10 @@ export function NothingNowCountdownTicket({
   return (
     <div className="mx-5">
       <div className="rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
-        <p className="font-counter text-[11px] uppercase tracking-widest text-primary">
+        {/* Cyan, pas ambre — même sémantique que NextEpisodeCard sur la fiche
+            série (anticipation/info, pas une action) ; seul accent de
+            couleur de ce ticket, rien d'autre à basculer ici. */}
+        <p className="font-counter text-[11px] uppercase tracking-widest text-cyan-accent">
           Prochain épisode {dayLabel}
         </p>
         <p className="mt-2 font-display text-lg text-foreground">{countdown.show.title}</p>

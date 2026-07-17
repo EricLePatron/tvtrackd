@@ -503,7 +503,17 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      <h2 className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+      {/* Remonté au niveau de ses propres enfants (les <h3> "Demain"/"Cette
+          semaine"/"Plus tard" dans upcoming-section.tsx sont en
+          font-display text-sm text-foreground) : un h2 plus petit et muted
+          que ses h3 inversait la hiérarchie parent/enfant. Reste dans la
+          famille eyebrow mono (font-counter, uppercase, tracking-widest,
+          cf. "Reprendre"/"À commencer") — seuls la taille et la couleur
+          montent au niveau des enfants, pas la famille de police. Correctif
+          scopé à ce composant (Home uniquement) : `UpcomingBucketRails`
+          n'est aujourd'hui consommé que par cette page (pas encore par
+          /calendar), donc aucun impact sur cet écran. */}
+      <h2 className="font-counter text-sm uppercase tracking-widest text-foreground">
         Programme à venir
       </h2>
       <Link
@@ -687,15 +697,23 @@ function HeroTicket({
             ProgressCard) : le grand chiffre est cyan EN PERMANENCE (jamais
             seulement pendant le bump), avec le même glow léger et continu.
             Le S/E, avant inline avec la fraction, est relégué en label
-            secondaire ambre AU-DESSUS, réutilisant l'eyebrow déjà présent
-            plus haut sur ce même ticket. Le bloc [grand chiffre + barre]
+            secondaire AU-DESSUS, réutilisant la position de l'eyebrow déjà
+            présent plus haut sur ce même ticket — mais en `text-muted-foreground`,
+            PAS ambre : l'eyebrow du haut (badge/`formatReadyLabel`, "Ce
+            soir"/"En retard · Nj") et le S/E partagaient exactement la même
+            classe ambre, un effet "deux étiquettes qui se répètent" relevé
+            en revue design. Répartition finale à 3 tons sur ce ticket :
+            cyan = vu/progression (chiffre + barre), ambre = urgence
+            temporelle (eyebrow du haut, seul), muted = identifiant neutre
+            de l'épisode (S/E) — ça évite aussi le déséquilibre "tout cyan"
+            relevé par la même revue. Le bloc [grand chiffre + barre]
             n'existe QUE si `progress` est fourni — jamais de placeholder
             quand la fraction n'est pas fiable (rotation en vol, cf. Lot 1) :
             le S/E seul, rendu inconditionnellement, porte alors toute
             l'information plutôt que de laisser un chiffre inventé.
           */}
           <div className="min-w-0 flex-1">
-            <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-primary">
+            <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
               S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
             </p>
             {progress && (
