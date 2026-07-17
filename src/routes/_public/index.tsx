@@ -5,6 +5,7 @@ import { Check, Download } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { useInViewOnce } from "@/hooks/use-in-view-once";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -560,6 +561,14 @@ function HeroTicket({
   const [display, setDisplay] = useState(progress?.watched ?? 0);
   const [bump, setBump] = useState(false);
   const prefersReducedMotion = useReducedMotion();
+  // Reveal d'entrée — UNIQUEMENT sur ce ticket (jamais par item de liste,
+  // cf. ReadyListItem/StartCard, non concernés). Même pattern que
+  // ProgressCard/NextEpisodeCard (fiche série) : `useInViewOnce` plutôt que
+  // les utilitaires `animate-in` de tw-animate-css, réservés aux primitives
+  // Radix ailleurs dans l'app. Se rejoue à chaque rotation du hero (remount
+  // via la clé composite posée par HomeContent), jamais lors d'une simple
+  // avance sur place (même clé = pas de remount = `inView` déjà `true`).
+  const { ref: revealRef, inView } = useInViewOnce<HTMLDivElement>();
   // Last {watched, total} pair this effect has seen — the backstop below
   // compares against this rather than the (possibly still-tweening)
   // `display` state, so the comparison is stable regardless of where a
@@ -600,10 +609,12 @@ function HeroTicket({
     }
 
     if (prefersReducedMotion) {
-      // No tween, no scale — jump straight to the new value. The cyan color
-      // cue (via `bump`, applied below without `scale-110`) is kept: a color
-      // swap isn't the kind of motion `prefers-reduced-motion` is meant to
-      // suppress.
+      // No tween, no scale — jump straight to the new value. `bump` is still
+      // set (harmless): since Lot 4, the render below already gates
+      // `scale-110` on `!prefersReducedMotion`, and the counter/bar are cyan
+      // in permanence regardless of `bump` — this branch no longer has any
+      // visible consequence when reduced motion is on, but is left as-is
+      // (not a logic change) rather than special-cased away.
       setDisplay(progress.watched);
       setBump(true);
       const timeoutId = setTimeout(() => setBump(false), 200);
@@ -670,42 +681,49 @@ function HeroTicket({
 
         <div className="mt-4 flex items-end justify-between gap-3">
           {/*
-            Sober mechanical counter: one uniform-size mono line (no boxed
-            pastille, no S-vs-E size mismatch), a discreet fraction on the
-            right (only when season-progress data is available), and a thin
-            2px amber bar underneath — never a bordered/backdrop-blur box.
+            Compteur signature élevé (Lot 4) — même grammaire que VhsCounter
+            (variante "detail", la référence situationnelle la plus proche :
+            une rangée horizontale compacte, pas la carte verticale dédiée de
+            ProgressCard) : le grand chiffre est cyan EN PERMANENCE (jamais
+            seulement pendant le bump), avec le même glow léger et continu.
+            Le S/E, avant inline avec la fraction, est relégué en label
+            secondaire ambre AU-DESSUS, réutilisant l'eyebrow déjà présent
+            plus haut sur ce même ticket. Le bloc [grand chiffre + barre]
+            n'existe QUE si `progress` est fourni — jamais de placeholder
+            quand la fraction n'est pas fiable (rotation en vol, cf. Lot 1) :
+            le S/E seul, rendu inconditionnellement, porte alors toute
+            l'information plutôt que de laisser un chiffre inventé.
           */}
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between gap-3">
-              {/* Deliberately `text-foreground` (white), not `text-primary`
-                  (amber): unlike `VhsCounter`'s S/E line (always amber, see
-                  its own comment), the hero's S/E is the validated sober
-                  design — amber is reserved for the progress bar below, the
-                  S/E line itself stays neutral. Do not "fix" this to match
-                  VhsCounter's amber convention; it's an intentional,
-                  validated divergence for this specific ticket. */}
-              <span className="font-counter text-base uppercase tracking-widest text-foreground">
-                S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-              </span>
-              {progress && (
-                <span
-                  className={`font-counter text-xs uppercase tracking-widest transition-transform ${
-                    bump ? "text-cyan-accent" : "text-muted-foreground"
-                  } ${bump && !prefersReducedMotion ? "scale-110" : ""}`}
-                >
-                  {pad(display)} / {pad(progress.total)}
-                </span>
-              )}
-            </div>
+            <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-primary">
+              S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
+            </p>
             {progress && (
-              <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
-                <div
-                  className={`h-full transition-[width,background-color] duration-300 ease-out ${
-                    bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
-                  }`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+              <>
+                <div className="mt-1 flex items-baseline gap-1 font-counter tabular-nums">
+                  <span
+                    className={`text-[28px] leading-none tracking-tight text-cyan-accent transition-transform motion-reduce:transition-none ${
+                      bump && !prefersReducedMotion ? "scale-110" : ""
+                    }`}
+                    style={{ textShadow: "0 0 14px rgba(77,217,196,0.35)" }}
+                  >
+                    {pad(display)}
+                  </span>
+                  <span className="text-lg leading-none text-muted-foreground">
+                    /{pad(progress.total)}
+                  </span>
+                </div>
+                {/* Barre 2px cyan en permanence (jamais ambre) — même
+                    quantité que le grand chiffre au-dessus, donc même
+                    langage de couleur ; le bump reste purement transitoire
+                    (scale sur le chiffre), plus de bascule de couleur ici. */}
+                <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
+                  <div
+                    className="h-full bg-cyan-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </>
             )}
           </div>
           {interactive && (
@@ -727,11 +745,9 @@ function HeroTicket({
   const className =
     "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[16/10]";
 
-  if (!interactive) {
-    return <div className={className}>{body}</div>;
-  }
-
-  return (
+  const cardBody = !interactive ? (
+    <div className={className}>{body}</div>
+  ) : (
     <Link
       to="/show/$mediaType/$tmdbId"
       params={{
@@ -742,5 +758,19 @@ function HeroTicket({
     >
       {body}
     </Link>
+  );
+
+  // Reveal posé sur un `<div>` conteneur qui ENVELOPPE le Link/div plutôt
+  // que sur `Link` lui-même — évite de dépendre du transfert de `ref` de
+  // TanStack Router pour ce composant.
+  return (
+    <div
+      ref={revealRef}
+      className={`opacity-0 translate-y-3 transition-[opacity,transform] duration-500 ease-out motion-reduce:opacity-100 motion-reduce:translate-y-0 motion-reduce:transition-none ${
+        inView ? "opacity-100 translate-y-0" : ""
+      }`}
+    >
+      {cardBody}
+    </div>
   );
 }
