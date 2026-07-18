@@ -96,9 +96,7 @@ export function StarRating({ showId }: Props) {
             <Star
               className={cn(
                 "h-6 w-6 transition-colors",
-                n <= current
-                  ? "fill-[hsl(var(--accent-amber))] text-[hsl(var(--accent-amber))]"
-                  : "text-muted-foreground/40",
+                n <= current ? "fill-primary text-primary" : "text-muted-foreground/40",
               )}
             />
           </button>
