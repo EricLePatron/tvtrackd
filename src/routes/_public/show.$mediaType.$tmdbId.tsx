@@ -64,6 +64,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { SimilarRail } from "@/components/show/similar-rail";
+import { StarRating } from "@/components/show/star-rating";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   component: ShowDetail,
@@ -589,6 +590,8 @@ function ShowDetail() {
           )}
         </div>
       )}
+
+      <StarRating showId={show.id} />
 
       <WhereToWatch showTitle={show.title} watchProviders={show.watch_providers} />
 
