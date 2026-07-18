@@ -156,12 +156,25 @@ function LibraryScreen() {
     [rows, active],
   );
 
-  // Show ids of the CURRENT tab only — scopes both the recency query (below)
-  // and, on "En cours", the progress query further down. Sorted for a stable
-  // query key.
+  // Show ids of the CURRENT tab only — scopes the "En cours" progress query
+  // further down. Sorted for a stable query key.
   const activeShowIds = useMemo(
-    () => filtered.map((r) => r.show!.id).sort((a, b) => a - b),
+    () => filtered.map((r) => r.show.id).sort((a, b) => a - b),
     [filtered],
+  );
+
+  // Show ids of the WHOLE library (every tab), sorted — the recency query key
+  // below. Keyed on the full set (not the active tab) so it's fetched ONCE and
+  // reused across tab switches: switching tabs never refetches it, so the
+  // default "Activité récente" order and the Actif/En pause split are stable
+  // (no re-sort flash) as soon as the library has loaded.
+  const allShowIds = useMemo(
+    () =>
+      rows
+        .filter((r) => r.show)
+        .map((r) => r.show!.id)
+        .sort((a, b) => a - b),
+    [rows],
   );
 
   // Lightweight "last watched per show" query — feeds the default "Activité
@@ -172,24 +185,25 @@ function LibraryScreen() {
   // (src/routes/_public/index.tsx) — one row per *watched* episode of a
   // followed show, not a full episode fetch, so its cost scales with watch
   // history, not with series length.
-  const { data: lastWatchedAtByShowId = new Map<number, string>() } = useQuery({
-    queryKey: ["library-recency", user?.id, activeShowIds],
-    enabled: !!user && activeShowIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("watch_status")
-        .select("watched_at, episode:episodes!inner(show_id)")
-        .eq("user_id", user!.id)
-        .in("episode.show_id", activeShowIds);
-      if (error) throw error;
-      return buildLastWatchedAtByShow(
-        (data as unknown as { watched_at: string; episode: { show_id: number } }[]).map((r) => ({
-          show_id: r.episode.show_id,
-          watched_at: r.watched_at,
-        })),
-      );
-    },
-  });
+  const { data: lastWatchedAtByShowId = new Map<number, string>(), isLoading: recencyLoading } =
+    useQuery({
+      queryKey: ["library-recency", user?.id, allShowIds],
+      enabled: !!user && allShowIds.length > 0,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("watch_status")
+          .select("watched_at, episode:episodes!inner(show_id)")
+          .eq("user_id", user!.id)
+          .in("episode.show_id", allShowIds);
+        if (error) throw error;
+        return buildLastWatchedAtByShow(
+          (data as unknown as { watched_at: string; episode: { show_id: number } }[]).map((r) => ({
+            show_id: r.episode.show_id,
+            watched_at: r.watched_at,
+          })),
+        );
+      },
+    });
 
   // Progress data (compteur S·E) — scoped to the "En cours" tab ONLY, per
   // product decision: "Terminé" renders a static "Vue" chip (no query
@@ -367,10 +381,15 @@ function LibraryScreen() {
           </Select>
         </div>
 
-        {isLoading ? (
-          <p className="mt-8 text-center font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
-            Chargement…
-          </p>
+        {isLoading || (filtered.length > 0 && recencyLoading) ? (
+          // Hold a stable skeleton until BOTH the library rows and the (global,
+          // one-shot) recency data are in: the default "Activité récente" order
+          // and the Actif/En pause split both depend on recency, so painting
+          // before it resolves would show cards that then re-sort/re-group — the
+          // cold-load flash flagged in review. Recency is fetched once and
+          // cached across tabs, so this skeleton only appears on the library's
+          // first load, not on every tab switch.
+          <SkeletonGrid />
         ) : filtered.length === 0 ? (
           <EmptyState status={active} />
         ) : active === "en_cours" ? (
@@ -399,6 +418,19 @@ function LibraryScreen() {
         )}
       </div>
     </>
+  );
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="mt-5 grid grid-cols-3 gap-3" aria-hidden="true">
+      {Array.from({ length: 9 }).map((_, i) => (
+        <div key={i}>
+          <div className="aspect-[2/3] animate-pulse rounded-lg bg-surface-elevated" />
+          <div className="mt-1.5 h-4 w-4/5 animate-pulse rounded bg-surface-elevated" />
+        </div>
+      ))}
+    </div>
   );
 }
 

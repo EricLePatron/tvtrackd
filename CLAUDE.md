@@ -99,6 +99,8 @@ Point de vigilance hérité de l'analyse concurrentielle : ne jamais coupler `st
 ### Élément signature
 Le suivi de progression (saison/épisode) n'est **jamais** une checkbox générique. C'est un **compteur mécanique façon bande VHS** : chiffres en Plex Mono dans un module à fond sombre (`--bg-surface-raised`), avec une légère animation d'incrément/défilement quand on marque un épisode vu. C'est le seul risque esthétique assumé du design — tout le reste reste sobre et discipliné autour de cet élément. Ne pas ajouter d'autres effets décoratifs qui diluraient cette signature. Une barre de progression continue reste acceptable en complément du compteur (ex. page fiche série) tant qu'elle reste sobre (fine, sans dégradé) et n'y substitue pas les chiffres Plex Mono.
 
+**Exception assumée — chip compact de grille (bibliothèque)** : dans le compteur miniature de la grille bibliothèque (`VhsCounter variant="grid"`, onglet En cours), la ligne Plex Mono se limite à `S02·E06` (saison·épisode, sans la fraction vu/total, jugée trop chargée à cette taille) et la barre fine porte seule la proportion vue. C'est le seul contexte où la barre *remplace* la fraction chiffrée plutôt que de la compléter — un compromis délibéré, propre au micro-format de la vignette de grille, à ne pas généraliser aux autres surfaces (la fiche série garde la fraction chiffrée dominante).
+
 ### Layout
 - Accueil = hero "Ce soir" : prochain épisode à voir, présenté comme un talon de billet/étiquette de cassette, avec le compteur signature
 - Rail horizontal "Programme" sous le hero : calendrier des sorties à venir, façon grille TV
