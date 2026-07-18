@@ -42,15 +42,3 @@ export function ScreenHeader({
     </header>
   );
 }
-
-export function EmptyPanel({ label, stat, hint }: { label: string; stat: string; hint: string }) {
-  return (
-    <div className="mx-5 rounded-xl border border-border bg-card p-6">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs uppercase tracking-widest text-muted-foreground">{label}</span>
-        <span className="font-counter text-2xl text-foreground">{stat}</span>
-      </div>
-      <p className="mt-4 text-sm text-muted-foreground">{hint}</p>
-    </div>
-  );
-}
