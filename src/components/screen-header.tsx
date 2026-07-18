@@ -43,7 +43,18 @@ export function ScreenHeader({
   );
 }
 
-export function EmptyPanel({ label, stat, hint }: { label: string; stat: string; hint: string }) {
+export function EmptyPanel({
+  label,
+  stat,
+  hint,
+  action,
+}: {
+  label: string;
+  stat: string;
+  hint: string;
+  /** Optional call-to-action rendered under `hint` (e.g. library's "Exporter mes données" link on the empty Archive tab). Absent by default — every other empty state stays text-only. */
+  action?: ReactNode;
+}) {
   return (
     <div className="mx-5 rounded-xl border border-border bg-card p-6">
       <div className="flex items-baseline justify-between">
@@ -51,6 +62,7 @@ export function EmptyPanel({ label, stat, hint }: { label: string; stat: string;
         <span className="font-counter text-2xl text-foreground">{stat}</span>
       </div>
       <p className="mt-4 text-sm text-muted-foreground">{hint}</p>
+      {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }

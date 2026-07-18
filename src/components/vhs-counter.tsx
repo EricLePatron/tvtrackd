@@ -2,6 +2,8 @@ import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useRollingNumber } from "@/hooks/use-rolling-number";
 
+type GridTone = "amber" | "muted";
+
 type VhsCounterProps =
   | {
       /** Default — used on the show detail page. Line 1 = last episode of the season. */
@@ -13,16 +15,27 @@ type VhsCounterProps =
     }
   | {
       /**
-       * Compact grid chip (library "En cours" tab). Line 1 = NEXT unwatched
-       * episode, not the last one of the season — deliberately a different
-       * prop name (`nextEpisodeNumber`) so this semantic swap can't be missed
-       * by a future reader of this component.
+       * Compact grid chip (library "En cours" tab, "Actif"/"En pause"
+       * subgroups only — see library.tsx). Line 1 = season + NEXT unwatched
+       * episode ("S02·E06"), not the last one of the season — deliberately a
+       * different prop name (`nextEpisodeNumber`) so this semantic swap can't
+       * be missed by a future reader of this component. The library's
+       * caught-up ("à jour") chip is a distinct content shape (no episode
+       * number, just a season + "À jour" label) and is NOT rendered through
+       * this component — see `LibraryCard`'s local `CaughtUpChip`.
        */
       variant: "grid";
       seasonNumber: number;
       nextEpisodeNumber: number;
       watched: number;
       total: number;
+      /**
+       * "amber" (default) = active/en-cours card. "muted" = the library's
+       * "En pause" subgroup — same S·E content and bar, dimmed instead of
+       * highlighted, per the library's 3-tone design decision. Never
+       * "cyan" here: cyan is reserved for the separate "à jour" chip shape.
+       */
+      tone?: GridTone;
     };
 // NB: there used to be a third "hero" variant here (an enlarged pastille
 // meant for the Home "Ce soir" ticket). It was removed as dead code — the
@@ -44,20 +57,27 @@ export function VhsCounter(props: VhsCounterProps) {
 
   const pad = (n: number) => n.toString().padStart(2, "0");
 
-  // S/E line color — deliberately `text-primary` (amber) across both
-  // variants, never `text-cyan-accent`. Amber = action/CTA/"en cours" per
-  // the design system; cyan is reserved for "vu"/success. The S/E line
-  // always names the *next episode to watch*, not one already watched, so
-  // amber is the semantically correct choice here.
+  // S/E line color — `text-primary` (amber) for the "detail" variant and the
+  // grid's default/"amber" tone, never `text-cyan-accent`: amber =
+  // action/CTA/"en cours" per the design system, cyan is reserved for
+  // "vu"/success (and, in the grid, for the separate "à jour" chip shape —
+  // never rendered through this component, see `GridTone`'s doc comment).
+  // The S/E line always names the *next episode to watch*, not one already
+  // watched, so amber is the semantically correct default here.
   if (isGrid) {
+    const tone: GridTone = props.tone ?? "amber";
     const pct = total ? Math.min(100, (display / total) * 100) : 0;
+    const lineOneClass = tone === "muted" ? "text-muted-foreground" : "text-primary";
+    const barBaseClass = tone === "muted" ? "bg-muted-foreground/50" : "bg-primary";
     return (
       <div className="flex h-7 flex-col justify-center gap-1 rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-wide leading-none">
-        <span className="text-primary">E{pad(lineOneEpisode)}</span>
+        <span className={lineOneClass}>
+          S{pad(seasonNumber)}·E{pad(lineOneEpisode)}
+        </span>
         <div className="h-[2px] w-full overflow-hidden bg-muted-foreground/15">
           <div
             className={`h-full transition-[width,background-color] duration-200 ease-out motion-reduce:transition-none ${
-              bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
+              bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : barBaseClass
             }`}
             style={{ width: `${pct}%` }}
           />
