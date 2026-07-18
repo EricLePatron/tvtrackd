@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import type { ShowLite, ScheduleEpisode } from "@/lib/schedule";
+import { formatCountdownLabel } from "@/lib/schedule";
 
 /** Cas 1 — aucune série suivie : import / recherche. */
 export function NoShowsPanel() {
@@ -57,12 +58,18 @@ export function NothingNowCountdownTicket({
 }: {
   countdown: { show: ShowLite; episode: ScheduleEpisode; daysUntil: number };
 }) {
-  const dayLabel = countdown.daysUntil <= 1 ? "J-1" : `J-${countdown.daysUntil}`;
+  // Formulation alignée sur la fiche série (référence) via `formatCountdownLabel`
+  // — "aujourd'hui"/"demain"/"dans Nj" est déjà une phrase autonome, donc pas
+  // de "dans" en dur ici (sinon "Prochain épisode dans dans 3 j").
+  const dayLabel = formatCountdownLabel(countdown.daysUntil);
   return (
     <div className="mx-5">
       <div className="rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
-        <p className="font-counter text-[11px] uppercase tracking-widest text-primary">
-          Prochain épisode dans {dayLabel}
+        {/* Cyan, pas ambre — même sémantique que NextEpisodeCard sur la fiche
+            série (anticipation/info, pas une action) ; seul accent de
+            couleur de ce ticket, rien d'autre à basculer ici. */}
+        <p className="font-counter text-[11px] uppercase tracking-widest text-cyan-accent">
+          Prochain épisode {dayLabel}
         </p>
         <p className="mt-2 font-display text-lg text-foreground">{countdown.show.title}</p>
         <p className="mt-1 text-xs text-muted-foreground">

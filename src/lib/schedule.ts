@@ -488,6 +488,106 @@ export function nextCountdown(
   return { show: best.show, episode: best, daysUntil: daysBetween(today, best.air_date!) };
 }
 
+/**
+ * "aujourd'hui" / "demain" / "dans Nj" — vocabulaire de référence du
+ * countdown, extrait à l'identique de `NextEpisodeCard` (fiche série,
+ * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NothingNowCountdownTicket`,
+ * `empty-states.tsx`) et la fiche partagent la même formulation plutôt que
+ * deux implémentations qui redivergeraient silencieusement. Volontairement
+ * "j" abrégé, jamais "jours" — aligné caractère pour caractère sur la fiche.
+ * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : les deux appelants
+ * actuels le garantissent déjà — `nextCountdown` ci-dessus ne considère que
+ * des épisodes strictement futurs (`daysUntil` toujours >= 1 en pratique),
+ * et `NextEpisodeCard` clampe son propre calcul via `Math.max(0, ...)` avant
+ * d'appeler cette fonction.
+ */
+export function formatCountdownLabel(daysUntil: number): string {
+  if (daysUntil === 0) return "aujourd'hui";
+  if (daysUntil === 1) return "demain";
+  return `dans ${daysUntil} j`;
+}
+
+/**
+ * Raw scheduling inputs behind the Home screen's derived view (`HomeData`
+ * below) — everything `deriveHomeView` needs to re-run `buildReadyItems` /
+ * `selectHero` / `computeSeasonTally` from scratch. Kept alongside the
+ * already-derived fields (rather than discarded after the initial fetch) so
+ * `useMarkWatched`'s `onMutate` can recompute the Home view locally
+ * (optimistic "advance in place" / hero rotation) without duplicating any of
+ * that logic — see `deriveHomeView`.
+ */
+export type HomeRawInputs = {
+  episodes: ScheduleEpisode[];
+  showStatusByShowId: ReadonlyMap<number, ActiveStatus>;
+  lastWatchedAtByShowId: ReadonlyMap<number, string>;
+  watchedEpisodeIds: ReadonlySet<number>;
+  /**
+   * TMDb's official `episode_count` for the CURRENT hero's own (showId,
+   * seasonNumber) only — fed to `isSeasonTallyReliable`. `null` when unknown
+   * (not yet fetched, or the recomputed hero points at a different show/
+   * season than the one this count was fetched for — see `deriveHomeView`).
+   */
+  heroSeasonEpisodeCount: number | null;
+};
+
+/**
+ * Full Home screen query data (`["home-schedule", user.id]`). `raw` is an
+ * internal bag, never read directly by render code (`HomeContent`,
+ * `HeroTicket`, etc. only ever read the derived fields above it) — it exists
+ * solely to let `useMarkWatched` recompute this same shape optimistically.
+ */
+export type HomeData = {
+  today: string;
+  followedActiveCount: number;
+  hero: ReadyItem | null;
+  /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
+  heroProgress: { watched: number; total: number } | null;
+  reprendre: ReadyItem[];
+  nouveau: ReadyItem[];
+  readyCount: number;
+  dayGroups: DayGroup[];
+  upcomingCount: number;
+  countdown: ReturnType<typeof nextCountdown>;
+  raw: HomeRawInputs;
+};
+
+/**
+ * Derives the "À voir maintenant" part of `HomeData` (hero + heroProgress +
+ * reprendre + nouveau + readyCount) from `HomeRawInputs` — the exact same
+ * pipeline the Home screen's `queryFn` runs on initial load, factored out so
+ * `useMarkWatched`'s `onMutate` can re-run it locally against an optimistic
+ * `watchedEpisodeIds` (current watched set + the episode just tapped) instead
+ * of hand-rolling a shortcut that would risk diverging from `selectHero`'s
+ * actual rotation rules (freshness thresholds, en_cours > a_voir priority,
+ * last-resort fallback, etc.).
+ *
+ * Deliberately does NOT touch `dayGroups`/`upcomingCount`/`countdown`
+ * ("Programme à venir"): `groupUpcomingByDay` and `nextCountdown` only ever
+ * consider `air_date > today` and take no watched-set input at all, so
+ * marking a past/today episode watched cannot affect them — callers should
+ * carry those three fields over unchanged from the previous `HomeData`.
+ */
+export function deriveHomeView(
+  raw: HomeRawInputs,
+  today: string,
+): Pick<HomeData, "hero" | "heroProgress" | "reprendre" | "nouveau" | "readyCount"> {
+  const ready = buildReadyItems(raw.episodes, raw.watchedEpisodeIds, raw.showStatusByShowId, today);
+  const { hero, reprendre, nouveau } = selectHero(ready, today, raw.lastWatchedAtByShowId);
+
+  let heroProgress: { watched: number; total: number } | null = null;
+  if (hero) {
+    const tally = computeSeasonTally(
+      raw.episodes,
+      raw.watchedEpisodeIds,
+      hero.show.id,
+      hero.nextEpisode.season_number,
+    );
+    heroProgress = isSeasonTallyReliable(tally, raw.heroSeasonEpisodeCount) ? tally : null;
+  }
+
+  return { hero, heroProgress, reprendre, nouveau, readyCount: ready.length };
+}
+
 /** Dispatch logic for the 4 (+1 normal) home states. */
 export function resolveHomeState(input: {
   followedActiveCount: number;

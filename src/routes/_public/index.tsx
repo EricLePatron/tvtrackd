@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Download } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { useInViewOnce } from "@/hooks/use-in-view-once";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,17 +13,14 @@ import {
   addDaysToDateString,
   bucketUpcoming,
   buildLastWatchedAtByShow,
-  buildReadyItems,
-  computeSeasonTally,
   countUpcomingEntries,
+  deriveHomeView,
   groupUpcomingByDay,
-  isSeasonTallyReliable,
   nextCountdown,
   resolveHomeState,
-  selectHero,
   formatReadyLabel,
   type ActiveStatus,
-  type DayGroup,
+  type HomeData,
   type ReadyItem,
   type ScheduleEpisode,
 } from "@/lib/schedule";
@@ -66,20 +64,6 @@ function pad(n: number) {
 /** Rows shown before "Reprendre" collapses into a "Voir tout" link. */
 const REPRENDRE_VISIBLE_COUNT = 3;
 
-type HomeData = {
-  today: string;
-  followedActiveCount: number;
-  hero: ReadyItem | null;
-  /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
-  heroProgress: { watched: number; total: number } | null;
-  reprendre: ReadyItem[];
-  nouveau: ReadyItem[];
-  readyCount: number;
-  dayGroups: DayGroup[];
-  upcomingCount: number;
-  countdown: ReturnType<typeof nextCountdown>;
-};
-
 function HomeScreen() {
   const { user } = useAuth();
   // The anonymous demo hero already carries its own "Créer un compte" /
@@ -117,6 +101,13 @@ function HomeScreen() {
           dayGroups: [],
           upcomingCount: 0,
           countdown: null,
+          raw: {
+            episodes: [],
+            showStatusByShowId: new Map(),
+            lastWatchedAtByShowId: new Map(),
+            watchedEpisodeIds: new Set(),
+            heroSeasonEpisodeCount: null,
+          },
         };
       }
 
@@ -174,23 +165,30 @@ function HomeScreen() {
         ).map((r) => ({ show_id: r.episode.show_id, watched_at: r.watched_at })),
       );
 
-      const ready = buildReadyItems(episodes, watchedSet, showStatusByShowId, today);
       // `reprendreDormant` isn't consumed by the UI this lot — dormant shows
       // are only reachable through /library — but the split itself already
       // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
-      const { hero, reprendre, nouveau } = selectHero(ready, today, lastWatchedAtByShowId);
+      //
+      // First pass without the hero's official season episode count (not
+      // known yet — depends on which show wins hero, computed just below).
+      // `hero`/`reprendre`/`nouveau`/`readyCount` are already final at this
+      // point (none of them depend on `heroSeasonEpisodeCount`); only
+      // `heroProgress` is discarded and recomputed in the second pass below.
+      const rawWithoutHeroCount = {
+        episodes,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        watchedEpisodeIds: watchedSet,
+        heroSeasonEpisodeCount: null,
+      };
+      const { hero, reprendre, nouveau, readyCount } = deriveHomeView(rawWithoutHeroCount, today);
 
+      let heroSeasonEpisodeCount: number | null = null;
       let heroProgress: { watched: number; total: number } | null = null;
       if (hero) {
-        const tally = computeSeasonTally(
-          episodes,
-          watchedSet,
-          hero.show.id,
-          hero.nextEpisode.season_number,
-        );
         // One cheap single-row lookup (unique-indexed on show_id+season_number)
         // for the hero's own season only — never for every followed show —
-        // to know the season's OFFICIAL episode count and confirm `tally`
+        // to know the season's OFFICIAL episode count and confirm the tally
         // isn't undercounted by the 90-day future cap above. See
         // `isSeasonTallyReliable` for why an unreliable tally hides the
         // fraction/bar entirely rather than risking a falsely-~100% bar.
@@ -200,8 +198,14 @@ function HomeScreen() {
           .eq("show_id", hero.show.id)
           .eq("season_number", hero.nextEpisode.season_number)
           .maybeSingle();
-        heroProgress = isSeasonTallyReliable(tally, seasonRow?.episode_count) ? tally : null;
+        heroSeasonEpisodeCount = seasonRow?.episode_count ?? null;
+        heroProgress = deriveHomeView(
+          { ...rawWithoutHeroCount, heroSeasonEpisodeCount },
+          today,
+        ).heroProgress;
       }
+
+      const raw = { ...rawWithoutHeroCount, heroSeasonEpisodeCount };
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
@@ -214,10 +218,11 @@ function HomeScreen() {
         heroProgress,
         reprendre,
         nouveau,
-        readyCount: ready.length,
+        readyCount,
         dayGroups,
         upcomingCount,
         countdown,
+        raw,
       };
     },
   });
@@ -306,30 +311,49 @@ function AnonymousHome() {
         progress={{ watched: demoWatched, total: 8 }}
       />
 
-      <div className="mt-5 rounded-xl border border-border bg-card p-6 text-center">
-        <p className="text-sm text-muted-foreground">
-          Suivez vos séries épisode par épisode, sans jamais perdre votre historique.
+      {/* Carte "portabilité" — différenciateur n°1 (CLAUDE.md, jobs-to-be-done
+          #2 "mémoire durable") : reprend le vocabulaire "carte fine" déjà
+          validé sur la fiche série (ProgressCard/NextEpisodeCard), y compris
+          le pattern micro-ligne séparée par un filet. Statique, sans
+          useInViewOnce — la seule animation de cet écran reste le bump du
+          HeroTicket démo ci-dessus. */}
+      <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.018] p-[18px]">
+        <p className="font-counter text-[10px] uppercase tracking-[0.24em] text-primary">
+          Mémoire durable
         </p>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          Calendrier, statuts, rewatchs — tout au même endroit.
+        <h2 className="mt-2 font-display text-lg leading-snug text-foreground">
+          Votre historique vous suit, pour toujours.
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Export complet disponible à tout moment, dès votre première série ajoutée — jamais en
+          dernier recours.
         </p>
-        <div className="mt-5 flex flex-col gap-2">
-          <Link
-            to="/auth"
-            search={{ mode: "signup" }}
-            className="inline-flex h-12 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
-          >
-            Créer un compte
-          </Link>
-          <Link
-            to="/auth"
-            search={{ mode: "signin" }}
-            className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground"
-          >
-            J'ai déjà un compte
-          </Link>
+        <div className="mt-3.5 flex items-center gap-2 border-t border-white/[0.06] pt-3.5 text-xs text-muted-foreground">
+          <Download className="h-3.5 w-3.5 shrink-0 text-cyan-accent" aria-hidden="true" />
+          Exportez tout, quand vous voulez — format JSON.
         </div>
       </div>
+
+      <div className="mt-5 flex flex-col gap-2">
+        <Link
+          to="/auth"
+          search={{ mode: "signup" }}
+          className="inline-flex h-12 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground"
+        >
+          Créer un compte
+        </Link>
+        <Link
+          to="/auth"
+          search={{ mode: "signin" }}
+          className="inline-flex h-11 items-center justify-center rounded-md border border-border px-5 text-sm font-medium text-foreground"
+        >
+          J'ai déjà un compte
+        </Link>
+      </div>
+
+      <p className="mt-3 text-center text-[11px] text-muted-foreground">
+        Vous arrivez de TV Time ou Betaseries ? Votre import démarre juste après l'inscription.
+      </p>
     </div>
   );
 }
@@ -479,7 +503,19 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      <h2 className="font-display text-base text-foreground">Programme à venir</h2>
+      {/* Remonté au niveau de ses propres enfants (les <h3> "Demain"/"Cette
+          semaine"/"Plus tard" dans upcoming-section.tsx sont en
+          font-display text-sm text-foreground) : un h2 plus petit et muted
+          que ses h3 inversait la hiérarchie parent/enfant. Reste dans la
+          famille eyebrow mono (font-counter, uppercase, tracking-widest,
+          cf. "Reprendre"/"À commencer") — seuls la taille et la couleur
+          montent au niveau des enfants, pas la famille de police. Correctif
+          scopé à ce composant (Home uniquement) : `UpcomingBucketRails`
+          n'est aujourd'hui consommé que par cette page (pas encore par
+          /calendar), donc aucun impact sur cet écran. */}
+      <h2 className="font-counter text-sm uppercase tracking-widest text-foreground">
+        Programme à venir
+      </h2>
       <Link
         to="/calendar"
         className="font-counter text-[10px] uppercase tracking-widest text-primary"
@@ -535,6 +571,14 @@ function HeroTicket({
   const [display, setDisplay] = useState(progress?.watched ?? 0);
   const [bump, setBump] = useState(false);
   const prefersReducedMotion = useReducedMotion();
+  // Reveal d'entrée — UNIQUEMENT sur ce ticket (jamais par item de liste,
+  // cf. ReadyListItem/StartCard, non concernés). Même pattern que
+  // ProgressCard/NextEpisodeCard (fiche série) : `useInViewOnce` plutôt que
+  // les utilitaires `animate-in` de tw-animate-css, réservés aux primitives
+  // Radix ailleurs dans l'app. Se rejoue à chaque rotation du hero (remount
+  // via la clé composite posée par HomeContent), jamais lors d'une simple
+  // avance sur place (même clé = pas de remount = `inView` déjà `true`).
+  const { ref: revealRef, inView } = useInViewOnce<HTMLDivElement>();
   // Last {watched, total} pair this effect has seen — the backstop below
   // compares against this rather than the (possibly still-tweening)
   // `display` state, so the comparison is stable regardless of where a
@@ -575,10 +619,12 @@ function HeroTicket({
     }
 
     if (prefersReducedMotion) {
-      // No tween, no scale — jump straight to the new value. The cyan color
-      // cue (via `bump`, applied below without `scale-110`) is kept: a color
-      // swap isn't the kind of motion `prefers-reduced-motion` is meant to
-      // suppress.
+      // No tween, no scale — jump straight to the new value. `bump` is still
+      // set (harmless): since Lot 4, the render below already gates
+      // `scale-110` on `!prefersReducedMotion`, and the counter/bar are cyan
+      // in permanence regardless of `bump` — this branch no longer has any
+      // visible consequence when reduced motion is on, but is left as-is
+      // (not a logic change) rather than special-cased away.
       setDisplay(progress.watched);
       setBump(true);
       const timeoutId = setTimeout(() => setBump(false), 200);
@@ -645,42 +691,57 @@ function HeroTicket({
 
         <div className="mt-4 flex items-end justify-between gap-3">
           {/*
-            Sober mechanical counter: one uniform-size mono line (no boxed
-            pastille, no S-vs-E size mismatch), a discreet fraction on the
-            right (only when season-progress data is available), and a thin
-            2px amber bar underneath — never a bordered/backdrop-blur box.
+            Compteur signature élevé (Lot 4) — même grammaire que VhsCounter
+            (variante "detail", la référence situationnelle la plus proche :
+            une rangée horizontale compacte, pas la carte verticale dédiée de
+            ProgressCard) : le grand chiffre est cyan EN PERMANENCE (jamais
+            seulement pendant le bump), avec le même glow léger et continu.
+            Le S/E, avant inline avec la fraction, est relégué en label
+            secondaire AU-DESSUS, réutilisant la position de l'eyebrow déjà
+            présent plus haut sur ce même ticket — mais en `text-muted-foreground`,
+            PAS ambre : l'eyebrow du haut (badge/`formatReadyLabel`, "Ce
+            soir"/"En retard · Nj") et le S/E partagaient exactement la même
+            classe ambre, un effet "deux étiquettes qui se répètent" relevé
+            en revue design. Répartition finale à 3 tons sur ce ticket :
+            cyan = vu/progression (chiffre + barre), ambre = urgence
+            temporelle (eyebrow du haut, seul), muted = identifiant neutre
+            de l'épisode (S/E) — ça évite aussi le déséquilibre "tout cyan"
+            relevé par la même revue. Le bloc [grand chiffre + barre]
+            n'existe QUE si `progress` est fourni — jamais de placeholder
+            quand la fraction n'est pas fiable (rotation en vol, cf. Lot 1) :
+            le S/E seul, rendu inconditionnellement, porte alors toute
+            l'information plutôt que de laisser un chiffre inventé.
           */}
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between gap-3">
-              {/* Deliberately `text-foreground` (white), not `text-primary`
-                  (amber): unlike `VhsCounter`'s S/E line (always amber, see
-                  its own comment), the hero's S/E is the validated sober
-                  design — amber is reserved for the progress bar below, the
-                  S/E line itself stays neutral. Do not "fix" this to match
-                  VhsCounter's amber convention; it's an intentional,
-                  validated divergence for this specific ticket. */}
-              <span className="font-counter text-base uppercase tracking-widest text-foreground">
-                S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-              </span>
-              {progress && (
-                <span
-                  className={`font-counter text-xs uppercase tracking-widest transition-transform ${
-                    bump ? "text-cyan-accent" : "text-muted-foreground"
-                  } ${bump && !prefersReducedMotion ? "scale-110" : ""}`}
-                >
-                  {pad(display)} / {pad(progress.total)}
-                </span>
-              )}
-            </div>
+            <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+              S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
+            </p>
             {progress && (
-              <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
-                <div
-                  className={`h-full transition-[width,background-color] duration-300 ease-out ${
-                    bump ? "bg-cyan-accent shadow-[0_0_4px_var(--cyan-accent)]" : "bg-primary"
-                  }`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+              <>
+                <div className="mt-1 flex items-baseline gap-1 font-counter tabular-nums">
+                  <span
+                    className={`text-[28px] leading-none tracking-tight text-cyan-accent transition-transform motion-reduce:transition-none ${
+                      bump && !prefersReducedMotion ? "scale-110" : ""
+                    }`}
+                    style={{ textShadow: "0 0 14px rgba(77,217,196,0.35)" }}
+                  >
+                    {pad(display)}
+                  </span>
+                  <span className="text-lg leading-none text-muted-foreground">
+                    /{pad(progress.total)}
+                  </span>
+                </div>
+                {/* Barre 2px cyan en permanence (jamais ambre) — même
+                    quantité que le grand chiffre au-dessus, donc même
+                    langage de couleur ; le bump reste purement transitoire
+                    (scale sur le chiffre), plus de bascule de couleur ici. */}
+                <div className="mt-1.5 h-[2px] w-full overflow-hidden bg-muted-foreground/15">
+                  <div
+                    className="h-full bg-cyan-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </>
             )}
           </div>
           {interactive && (
@@ -702,11 +763,9 @@ function HeroTicket({
   const className =
     "relative block overflow-hidden rounded-2xl border border-border bg-card aspect-[16/10]";
 
-  if (!interactive) {
-    return <div className={className}>{body}</div>;
-  }
-
-  return (
+  const cardBody = !interactive ? (
+    <div className={className}>{body}</div>
+  ) : (
     <Link
       to="/show/$mediaType/$tmdbId"
       params={{
@@ -717,5 +776,19 @@ function HeroTicket({
     >
       {body}
     </Link>
+  );
+
+  // Reveal posé sur un `<div>` conteneur qui ENVELOPPE le Link/div plutôt
+  // que sur `Link` lui-même — évite de dépendre du transfert de `ref` de
+  // TanStack Router pour ce composant.
+  return (
+    <div
+      ref={revealRef}
+      className={`opacity-0 translate-y-3 transition-[opacity,transform] duration-500 ease-out motion-reduce:opacity-100 motion-reduce:translate-y-0 motion-reduce:transition-none ${
+        inView ? "opacity-100 translate-y-0" : ""
+      }`}
+    >
+      {cardBody}
+    </div>
   );
 }

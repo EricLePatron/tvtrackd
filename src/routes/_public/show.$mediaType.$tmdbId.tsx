@@ -21,6 +21,7 @@ import { useInViewOnce } from "@/hooks/use-in-view-once";
 import { useRollingNumber } from "@/hooks/use-rolling-number";
 import { followShow, unfollowShow } from "@/lib/follow-show";
 import { formatApproxHours } from "@/lib/watch-time";
+import { formatCountdownLabel } from "@/lib/schedule";
 import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
@@ -305,6 +306,18 @@ function ShowDetail() {
     }
   };
 
+  // Note (Lot 1 Home optimistic mark-watched) : `toggleWatched`/`toggleSeason`
+  // ci-dessous font un rollback par snapshot complet (`ctx.prev` capturé à
+  // l'onMutate) — ce schéma N'EST PAS concurrency-safe entre deux mutations
+  // qui se chevauchent (le rollback de la plus ancienne peut écraser
+  // l'optimisme d'une mutation plus récente encore en vol). C'est atténué ici
+  // par `lockedEpisodes` (verrou explicite empêchant deux mutations
+  // concurrentes sur le même épisode) mais reste un point faible générique
+  // face à des épisodes DIFFÉRENTS mutés coup sur coup. `useMarkWatched`
+  // (Home, `use-mark-watched.ts`) adopte volontairement un modèle plus
+  // robuste (base + ensemble d'ids "en vol", jamais un snapshot complet) —
+  // ne pas "réaligner" ce fichier dessus par réflexe, c'est un choix
+  // scope-limité au Lot 1 Home, pas un refactor de cette page.
   const toggleWatched = useMutation({
     mutationFn: async ({ episodeId, isWatched }: { episodeId: number; isWatched: boolean }) => {
       if (!user) throw new Error("no user");
@@ -1195,8 +1208,7 @@ function NextEpisodeCard({ episode }: { episode: EpisodeRow }) {
     0,
     Math.ceil((new Date(episode.air_date!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
   );
-  const countdownLabel =
-    daysUntil === 0 ? "aujourd'hui" : daysUntil === 1 ? "demain" : `dans ${daysUntil} j`;
+  const countdownLabel = formatCountdownLabel(daysUntil);
 
   return (
     <div
