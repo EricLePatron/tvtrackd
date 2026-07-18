@@ -591,6 +591,8 @@ function ShowDetail() {
         </div>
       )}
 
+      <StarRating showId={show.id} />
+
       <WhereToWatch showTitle={show.title} watchProviders={show.watch_providers} />
 
       {mediaType === "tv" && (
