@@ -21,13 +21,14 @@ import {
   splitEnCoursByFreshness,
   type ScheduleEpisode,
 } from "@/lib/schedule";
+import { compareLibraryRows } from "@/lib/library-sort";
 
 const STATUSES = [
   { key: "a_voir", label: "À voir" },
   { key: "en_cours", label: "En cours" },
   { key: "termine", label: "Terminé" },
   { key: "abandonne", label: "Abandonné" },
-  { key: "archive", label: "Archive" },
+  { key: "archive", label: "Archivé" },
 ] as const;
 
 type StatusKey = (typeof STATUSES)[number]["key"];
@@ -89,65 +90,6 @@ type Row = {
   } | null;
 };
 
-/**
- * Sort comparator for the library grid. `seriesRemainingByShowId` is only
- * ever populated for the "En cours" tab (the only tab that fetches the
- * per-episode progress data it's derived from, cf. `LibraryScreen`) — on
- * every other tab, "Progression" degrades to alphabetical rather than
- * triggering a second, more expensive query just to support one sort option
- * outside the tab it's primarily meant for.
- */
-function compareRows(
-  a: Row,
-  b: Row,
-  sortKey: SortKey,
-  ctx: {
-    lastWatchedAtByShowId: ReadonlyMap<number, string>;
-    seriesRemainingByShowId?: ReadonlyMap<number, number>;
-  },
-): number {
-  const showA = a.show!;
-  const showB = b.show!;
-
-  switch (sortKey) {
-    case "titre":
-      return showA.title.localeCompare(showB.title);
-
-    case "ajout":
-      // ISO timestamps sort correctly lexicographically — desc (most recently added first).
-      return b.created_at.localeCompare(a.created_at);
-
-    case "sortie": {
-      const da = showA.first_air_date;
-      const db = showB.first_air_date;
-      if (!da && !db) return showA.title.localeCompare(showB.title);
-      if (!da) return 1; // unknown release date sinks to the bottom
-      if (!db) return -1;
-      return db.localeCompare(da); // desc — most recently released first
-    }
-
-    case "progression": {
-      const ra = ctx.seriesRemainingByShowId?.get(showA.id);
-      const rb = ctx.seriesRemainingByShowId?.get(showB.id);
-      if (ra === undefined && rb === undefined) return showA.title.localeCompare(showB.title);
-      if (ra === undefined) return 1;
-      if (rb === undefined) return -1;
-      return ra - rb; // ascending — fewest episodes left first
-    }
-
-    case "activite":
-    default: {
-      const la = ctx.lastWatchedAtByShowId.get(showA.id);
-      const lb = ctx.lastWatchedAtByShowId.get(showB.id);
-      // Never watched — falls back to recently added, same tie-break as "ajout".
-      if (!la && !lb) return b.created_at.localeCompare(a.created_at);
-      if (!la) return 1;
-      if (!lb) return -1;
-      return new Date(lb).getTime() - new Date(la).getTime(); // desc — most recently watched first
-    }
-  }
-}
-
 function LibraryScreen() {
   const { user } = useAuth();
   const search = Route.useSearch();
@@ -206,7 +148,13 @@ function LibraryScreen() {
     counts[r.status] = (counts[r.status] ?? 0) + 1;
   });
 
-  const filtered = useMemo(() => rows.filter((r) => r.status === active && r.show), [rows, active]);
+  const filtered = useMemo(
+    () =>
+      rows.filter(
+        (r): r is Row & { show: NonNullable<Row["show"]> } => r.status === active && !!r.show,
+      ),
+    [rows, active],
+  );
 
   // Show ids of the CURRENT tab only — scopes both the recency query (below)
   // and, on "En cours", the progress query further down. Sorted for a stable
@@ -302,13 +250,28 @@ function LibraryScreen() {
   );
   const dormantShowIdSet = useMemo(() => new Set(dormantShowIds), [dormantShowIds]);
 
+  // "Progression" only means something on "En cours" (the only tab with the
+  // per-episode backlog data it sorts on). Rather than let the Select keep
+  // showing "Progression" while silently sorting alphabetically on other tabs,
+  // it's hidden there and the effective sort falls back to the default — the
+  // stored `sort` (and the URL) is preserved, so switching back to En cours
+  // restores it.
+  const progressionAvailable = active === "en_cours";
+  const effectiveSort: SortKey =
+    !progressionAvailable && sort === "progression" ? DEFAULT_SORT : sort;
+  const visibleSortOptions = useMemo(
+    () =>
+      progressionAvailable ? SORT_OPTIONS : SORT_OPTIONS.filter((o) => o.key !== "progression"),
+    [progressionAvailable],
+  );
+
   const sortedFiltered = useMemo(() => {
     const seriesRemainingByShowId =
       active === "en_cours" ? progressData?.seriesRemainingByShowId : undefined;
     return [...filtered].sort((a, b) =>
-      compareRows(a, b, sort, { lastWatchedAtByShowId, seriesRemainingByShowId }),
+      compareLibraryRows(a, b, effectiveSort, { lastWatchedAtByShowId, seriesRemainingByShowId }),
     );
-  }, [filtered, sort, lastWatchedAtByShowId, progressData, active]);
+  }, [filtered, effectiveSort, lastWatchedAtByShowId, progressData, active]);
 
   const enCoursActiveRows = useMemo(
     () =>
@@ -369,7 +332,10 @@ function LibraryScreen() {
                 key={s.key}
                 type="button"
                 onClick={() => handleTabChange(s.key)}
-                className="shrink-0"
+                // -my-2 py-2 : élargit la zone de clic (~44px de haut, cf. revue
+                // accessibilité) sans repousser la pastille visuelle ni gonfler
+                // la hauteur de la rangée.
+                className="shrink-0 -my-2 py-2"
               >
                 <StatusPill
                   label={s.label}
@@ -387,12 +353,12 @@ function LibraryScreen() {
           <span className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Trier
           </span>
-          <Select value={sort} onValueChange={(v) => handleSortChange(v as SortKey)}>
-            <SelectTrigger className="h-8 w-auto min-w-[160px] gap-1.5 rounded-md border-border bg-card px-2.5 text-[11px] text-foreground data-[state=open]:border-primary">
+          <Select value={effectiveSort} onValueChange={(v) => handleSortChange(v as SortKey)}>
+            <SelectTrigger className="h-9 w-auto min-w-[160px] gap-1.5 rounded-md border-border bg-card px-2.5 text-[11px] text-foreground data-[state=open]:border-primary">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
-              {SORT_OPTIONS.map((o) => (
+              {visibleSortOptions.map((o) => (
                 <SelectItem key={o.key} value={o.key} className="text-xs">
                   {o.label}
                 </SelectItem>
@@ -568,7 +534,7 @@ function CardChipView({ chip }: { chip: CardChip }) {
     const barClass = chip.tone === "muted" ? "bg-muted-foreground/50" : "bg-cyan-accent";
     return (
       <div className="flex h-7 flex-col justify-center gap-1 rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-wide leading-none">
-        <span className={toneClass}>S{pad(chip.seasonNumber)} · À jour</span>
+        <span className={toneClass}>S{pad(chip.seasonNumber)}·À jour</span>
         <div className="h-[2px] w-full overflow-hidden bg-muted-foreground/15">
           <div className={`h-full ${barClass}`} style={{ width: "100%" }} />
         </div>

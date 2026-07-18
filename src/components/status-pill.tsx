@@ -52,19 +52,16 @@ export function StatusPill({
   active?: boolean;
 }) {
   // A tab pill (identified by `count` being passed — `ProgressCard`'s
-  // read-only pill never is) needs a clear "selected" look on EVERY status,
-  // including the muted ones (À voir / Abandonné / Archive). Their tone tokens
-  // (`PILL_TONE_CLASSES.muted`) carry no background, so an active muted tab
-  // would otherwise read as *less* filled than its inactive `bg-card`
-  // siblings. Give active muted tabs the app's amber selection wash (dot stays
-  // its neutral tone); amber/cyan tabs already pop via their own tone. This
-  // branch is skipped entirely for `ProgressCard` (no `count`), leaving the
-  // show detail page's pill pixel-identical to before the extraction.
+  // read-only pill never is) uses ONE uniform "selected" look on every status:
+  // the app's amber selection wash, with the semantic dot (`PILL_DOT_CLASSES`)
+  // carrying the status color. This keeps selection learnable ("amber wash = I
+  // am here") instead of the wash changing color per tab (cyan on Terminé,
+  // amber on En cours…). `ProgressCard` (no `count`) is untouched: it still
+  // renders `PILL_TONE_CLASSES[tone]`, pixel-identical to before the extraction.
   const isTab = count !== undefined;
-  const activeClass =
-    isTab && tone === "muted"
-      ? "border-primary/40 bg-primary/10 text-foreground"
-      : PILL_TONE_CLASSES[tone];
+  const activeClass = isTab
+    ? "border-primary/40 bg-primary/10 text-foreground"
+    : PILL_TONE_CLASSES[tone];
 
   return (
     <span
