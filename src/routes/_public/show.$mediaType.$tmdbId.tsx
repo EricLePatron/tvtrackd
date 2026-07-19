@@ -847,7 +847,9 @@ function ShowDetail() {
             })}
           </Accordion>
         </div>
-      )}
+        );
+      })()}
+
 
       <div className="mx-5 pb-24">
         <SimilarRail tmdbId={tmdbId} mediaType={mediaType} />
