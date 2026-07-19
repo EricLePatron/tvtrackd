@@ -609,16 +609,73 @@ function ShowDetail() {
 
       <WhereToWatch showTitle={show.title} watchProviders={show.watch_providers} />
 
-      {mediaType === "tv" && (
+      {mediaType === "tv" && (() => {
+        const showEligible = episodes.filter((e) => !(e.air_date && e.air_date > today));
+        const showEligibleWatched = showEligible.filter(
+          (e) => (watched?.[e.id]?.count ?? 0) > 0,
+        ).length;
+        const showState: boolean | "indeterminate" =
+          showEligible.length === 0 || showEligibleWatched === 0
+            ? false
+            : showEligibleWatched === showEligible.length
+              ? true
+              : "indeterminate";
+        const showAnyLocked = episodes.some((e) => lockedEpisodes.has(e.id));
+        const showToggleDisabled =
+          showAnyLocked || (showEligible.length === 0 && totalWatchedEpisodes === 0);
+
+        const markShowWatched = () =>
+          requireAuth(
+            () => {
+              if (showAnyLocked) return;
+              const ids = showEligible
+                .filter((e) => (watched?.[e.id]?.count ?? 0) === 0)
+                .map((e) => e.id);
+              if (!ids.length) return;
+              setLockedEpisodes((prev) => {
+                const next = new Set(prev);
+                ids.forEach((id) => next.add(id));
+                return next;
+              });
+              toggleSeason.mutate({ action: "mark", episodeIds: ids });
+            },
+            { reason: "marquer cette série" },
+          );
+
+        const unmarkShowWatched = () =>
+          requireAuth(
+            () => {
+              if (showAnyLocked) return;
+              const ids = episodes
+                .filter((e) => (watched?.[e.id]?.count ?? 0) > 0)
+                .map((e) => e.id);
+              if (!ids.length) return;
+              setLockedEpisodes((prev) => {
+                const next = new Set(prev);
+                ids.forEach((id) => next.add(id));
+                return next;
+              });
+              toggleSeason.mutate({ action: "unmark", episodeIds: ids });
+            },
+            { reason: "démarquer cette série" },
+          );
+
+        return (
         <div className="mt-6 px-5 pb-24">
           <p className="font-counter text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
             Saisons
           </p>
+          <ShowToggle
+            state={showState}
+            disabled={showToggleDisabled}
+            onMark={markShowWatched}
+            onUnmark={unmarkShowWatched}
+          />
           <Accordion
             type="multiple"
             value={openSeasons}
             onValueChange={setOpenSeasons}
-            className="mt-1"
+            className="mt-3"
           >
             {seasons.map((s) => {
               const eps = episodes.filter((e) => e.season_number === s.season_number);
