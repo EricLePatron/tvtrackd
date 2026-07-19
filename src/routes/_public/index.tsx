@@ -53,7 +53,15 @@ export const Route = createFileRoute("/_public/")({
       },
       { property: "og:url", content: "https://tvtrackd.com/" },
     ],
-    links: [{ rel: "canonical", href: "https://tvtrackd.com/" }],
+    links: [
+      { rel: "canonical", href: "https://tvtrackd.com/" },
+      {
+        rel: "preload",
+        as: "image",
+        href: "https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
+        fetchpriority: "high",
+      },
+    ],
   }),
 });
 
@@ -668,7 +676,15 @@ function HeroTicket({
       {/* Full-bleed TMDb backdrop used as the card's atmosphere. */}
       {backdropUrl && (
         <div aria-hidden className="absolute inset-0">
-          <img src={backdropUrl} alt="" className="h-full w-full object-cover" />
+          <img
+            src={backdropUrl}
+            alt=""
+            width={1280}
+            height={720}
+            fetchPriority="high"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 to-transparent" />
         </div>
