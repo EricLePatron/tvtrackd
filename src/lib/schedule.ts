@@ -246,6 +246,26 @@ export function buildLibraryProgress(
    * to show, distinct from "no cached data at all").
    */
   progressByShowId: ReadonlyMap<number, LibraryProgressEntry>;
+  /**
+   * Season number of the most recently AIRED episode, one entry per known
+   * show — including shows that ARE caught up (no `progressByShowId` entry).
+   * Feeds the library grid's "à jour" chip (e.g. "S03 · À jour"), which
+   * still needs to name a season even though there's no *next* episode to
+   * point at. Absent for a show with zero aired episodes (defensive — not
+   * expected for an `en_cours` show, but left unset rather than guessed).
+   */
+  caughtUpSeasonByShowId: ReadonlyMap<number, number>;
+  /**
+   * Unwatched, already-aired episodes across the WHOLE show (all seasons) —
+   * one entry per known show, including caught-up ones (0). Powers the
+   * library's "Progression (bientôt fini d'abord)" sort, which needs a
+   * series-wide backlog size rather than `LibraryProgressEntry`'s
+   * current-season-only tally. Free to compute here: `episodes` already
+   * holds every season for shows in this scope (see the caller's "no time
+   * window" query, needed for `nextEpisode` resolution below), so this adds
+   * no extra fetch.
+   */
+  seriesRemainingByShowId: ReadonlyMap<number, number>;
 } {
   const groups = new Map<number, ScheduleEpisode[]>();
   for (const ep of episodes) {
@@ -256,9 +276,17 @@ export function buildLibraryProgress(
 
   const knownShowIds = new Set(groups.keys());
   const progressByShowId = new Map<number, LibraryProgressEntry>();
+  const caughtUpSeasonByShowId = new Map<number, number>();
+  const seriesRemainingByShowId = new Map<number, number>();
 
   for (const [showId, eps] of groups) {
     const sorted = [...eps].sort(byEpisodeOrder);
+    const aired = sorted.filter((e) => !!e.air_date && e.air_date <= today);
+    if (aired.length) {
+      caughtUpSeasonByShowId.set(showId, aired[aired.length - 1].season_number);
+    }
+    seriesRemainingByShowId.set(showId, aired.filter((e) => !watchedEpisodeIds.has(e.id)).length);
+
     const nextEpisode = sorted.find(
       (e) => !!e.air_date && e.air_date <= today && !watchedEpisodeIds.has(e.id),
     );
@@ -275,7 +303,7 @@ export function buildLibraryProgress(
     });
   }
 
-  return { knownShowIds, progressByShowId };
+  return { knownShowIds, progressByShowId, caughtUpSeasonByShowId, seriesRemainingByShowId };
 }
 
 function byEarliestAirDate(a: ReadyItem, b: ReadyItem) {
@@ -314,7 +342,7 @@ export function buildLastWatchedAtByShow(
 }
 
 /** A show with no `watch_status` row at all reads as "not stale" (no negative signal), never as "60j+/30j+ dormant". */
-function daysSinceLastWatch(
+export function daysSinceLastWatch(
   showId: number,
   today: string,
   lastWatchedAtByShowId: ReadonlyMap<number, string>,
@@ -329,6 +357,29 @@ export const HERO_STALE_DAYS = 60;
 
 /** An `en_cours` show untouched for this many days drops out of the visible "Reprendre" rows into `reprendreDormant` (see `selectHero`). */
 export const LIST_STALE_DAYS = 30;
+
+/**
+ * Library "En cours" tab split (Actif / En pause) — same freshness rule and
+ * threshold (`LIST_STALE_DAYS`) as `selectHero`'s `reprendre`/`reprendreDormant`
+ * split, exposed standalone here because the library needs it for EVERY
+ * `en_cours` show (hero included), not just the non-hero ones Home renders.
+ * A show with no watch history at all is never dormant (same reasoning as
+ * `daysSinceLastWatch` and `selectHero`).
+ */
+export function splitEnCoursByFreshness(
+  showIds: readonly number[],
+  today: string,
+  lastWatchedAtByShowId: ReadonlyMap<number, string>,
+): { active: number[]; dormant: number[] } {
+  const active: number[] = [];
+  const dormant: number[] = [];
+  for (const showId of showIds) {
+    const days = daysSinceLastWatch(showId, today, lastWatchedAtByShowId);
+    if (days !== null && days >= LIST_STALE_DAYS) dormant.push(showId);
+    else active.push(showId);
+  }
+  return { active, dormant };
+}
 
 /**
  * Hero selection rule: among `en_cours` shows not stale for the hero slot

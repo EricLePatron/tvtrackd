@@ -11,6 +11,7 @@ import {
   HERO_STALE_DAYS,
   isSeasonTallyReliable,
   selectHero,
+  splitEnCoursByFreshness,
   type ActiveStatus,
   type HomeRawInputs,
   type ScheduleEpisode,
@@ -198,6 +199,51 @@ describe("buildLibraryProgress", () => {
 
     expect(progressByShowId.get(1)?.nextEpisode.id).toBe(102);
     expect(progressByShowId.get(1)?.seasonTotal).toBe(3);
+  });
+
+  it("caughtUpSeasonByShowId names the season of the most recently aired episode, even when caught up", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 101, 1, 1, "2026-01-01"),
+      ep(s, 102, 1, 2, "2026-01-08"),
+      ep(s, 201, 2, 1, "2026-07-01"), // aired, watched — still the "current" season
+      ep(s, 202, 2, 2, "2026-08-01"), // not yet aired
+    ];
+    const watched = new Set([101, 102, 201]);
+
+    const { progressByShowId, caughtUpSeasonByShowId } = buildLibraryProgress(
+      episodes,
+      watched,
+      TODAY,
+    );
+
+    expect(progressByShowId.has(1)).toBe(false); // caught up on everything aired
+    expect(caughtUpSeasonByShowId.get(1)).toBe(2);
+  });
+
+  it("seriesRemainingByShowId counts unwatched AIRED episodes across every season, not just the current one", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 101, 1, 1, "2026-01-01"), // watched
+      ep(s, 102, 1, 2, "2026-01-08"), // unwatched, aired
+      ep(s, 201, 2, 1, "2026-07-01"), // unwatched, aired
+      ep(s, 202, 2, 2, "2026-08-01"), // not yet aired — excluded
+    ];
+    const watched = new Set([101]);
+
+    const { seriesRemainingByShowId } = buildLibraryProgress(episodes, watched, TODAY);
+
+    expect(seriesRemainingByShowId.get(1)).toBe(2);
+  });
+
+  it("seriesRemainingByShowId is 0 for a show fully caught up on aired episodes", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-01-01")];
+    const watched = new Set([101]);
+
+    const { seriesRemainingByShowId } = buildLibraryProgress(episodes, watched, TODAY);
+
+    expect(seriesRemainingByShowId.get(1)).toBe(0);
   });
 });
 
@@ -551,6 +597,32 @@ describe("selectHero", () => {
 
     expect(reprendre.map((i) => i.show.id)).toEqual([2]);
     expect(reprendreDormant).toEqual([]);
+  });
+});
+
+describe("splitEnCoursByFreshness", () => {
+  it("mirrors selectHero's active/dormant split (<30j active, >=30j dormant), including the hero's own show id", () => {
+    // Unlike selectHero's reprendre/reprendreDormant (which excludes the
+    // hero), the library's "En cours" tab needs every en_cours show split,
+    // hero included — this is the one behavioral difference from
+    // selectHero's split, exercised here.
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // 1j — active
+      [2, "2026-06-08T00:00:00.000Z"], // exactly 30j — dormant (boundary)
+      [3, "2026-05-01T00:00:00.000Z"], // ~68j — dormant
+    ]);
+
+    const { active, dormant } = splitEnCoursByFreshness([1, 2, 3], TODAY, lastWatchedAtByShowId);
+
+    expect(active).toEqual([1]);
+    expect(dormant).toEqual([2, 3]);
+  });
+
+  it("never counts a show with no watch history at all as dormant", () => {
+    const { active, dormant } = splitEnCoursByFreshness([1], TODAY, new Map());
+
+    expect(active).toEqual([1]);
+    expect(dormant).toEqual([]);
   });
 });
 

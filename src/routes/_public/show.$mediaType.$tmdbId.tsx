@@ -25,6 +25,7 @@ import { formatCountdownLabel } from "@/lib/schedule";
 import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
+import { StatusPill, type PillTone } from "@/components/status-pill";
 import {
   NetworkLine,
   WhereToWatch,
@@ -975,20 +976,11 @@ function Hero({
 // ---------------------------------------------------------------------------
 // Pastille de statut (calculée, lecture seule)
 // ---------------------------------------------------------------------------
-
-type PillTone = "amber" | "cyan" | "muted";
-
-const PILL_TONE_CLASSES: Record<PillTone, string> = {
-  amber: "border-primary/40 bg-primary/10 text-primary",
-  cyan: "border-cyan-accent/40 bg-cyan-accent/10 text-cyan-accent",
-  muted: "border-border text-muted-foreground",
-};
-
-const PILL_DOT_CLASSES: Record<PillTone, string> = {
-  amber: "bg-primary",
-  cyan: "bg-cyan-accent",
-  muted: "bg-muted-foreground",
-};
+// `PillTone`/`StatusPill` (composant + tokens de couleur) vivent désormais
+// dans src/components/status-pill.tsx — partagés avec les onglets de statut
+// de la bibliothèque (library.tsx). `tvPillState` ci-dessous reste local :
+// c'est de la logique métier propre à cette page (manual_override,
+// hasAiredEpisodes...), pas un token de présentation réutilisable.
 
 // Calcule le libellé/ton de la pastille "Votre progression". Ajoute un état
 // "À jour" purement présentational, absent de `user_shows.status` (qui ne
@@ -1016,23 +1008,6 @@ function tvPillState({
   if (hasAiredEpisodes && !firstUnwatchedExists) return { label: "À jour", tone: "cyan" };
   if (status === "en_cours") return { label: "En cours", tone: "amber" };
   return { label: STATUS_LABELS[status] ?? status, tone: "muted" };
-}
-
-function StatusPill({ label, tone }: { label: string; tone: PillTone }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 font-counter text-[10px] uppercase tracking-widest",
-        PILL_TONE_CLASSES[tone],
-      )}
-    >
-      <span
-        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", PILL_DOT_CLASSES[tone])}
-        aria-hidden="true"
-      />
-      {label}
-    </span>
-  );
 }
 
 // ---------------------------------------------------------------------------
