@@ -100,6 +100,20 @@ export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
           href: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
         },
       ],
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": params.mediaType === "movie" ? "Movie" : "TVSeries",
+            url: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
+            name: `${kind} sur ${APP_NAME}`,
+            description: `Fiche ${kind.toLowerCase()} sur ${APP_NAME} : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
+            inLanguage: "fr-FR",
+            sameAs: `https://www.themoviedb.org/${params.mediaType}/${params.tmdbId}`,
+          }),
+        },
+      ],
     };
   },
   errorComponent: ({ error }) => (
