@@ -668,7 +668,15 @@ function HeroTicket({
       {/* Full-bleed TMDb backdrop used as the card's atmosphere. */}
       {backdropUrl && (
         <div aria-hidden className="absolute inset-0">
-          <img src={backdropUrl} alt="" className="h-full w-full object-cover" />
+          <img
+            src={backdropUrl}
+            alt=""
+            width={1280}
+            height={720}
+            fetchPriority="high"
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 to-transparent" />
         </div>
