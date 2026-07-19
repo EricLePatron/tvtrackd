@@ -53,7 +53,15 @@ export const Route = createFileRoute("/_public/")({
       },
       { property: "og:url", content: "https://tvtrackd.com/" },
     ],
-    links: [{ rel: "canonical", href: "https://tvtrackd.com/" }],
+    links: [
+      { rel: "canonical", href: "https://tvtrackd.com/" },
+      {
+        rel: "preload",
+        as: "image",
+        href: "https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
+        fetchpriority: "high",
+      },
+    ],
   }),
 });
 
