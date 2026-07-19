@@ -25,6 +25,7 @@ import { formatCountdownLabel } from "@/lib/schedule";
 import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
+import { ShowToggle } from "@/components/show-toggle";
 import { StatusPill, type PillTone } from "@/components/status-pill";
 import {
   NetworkLine,
