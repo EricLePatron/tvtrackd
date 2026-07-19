@@ -90,6 +90,40 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "WebSite",
+              "@id": "https://tvtrackd.com/#website",
+              url: "https://tvtrackd.com",
+              name: "tvtrackd",
+              description:
+                "tvtrackd : suivez vos séries et films, épisode par épisode. Pensé pour le visionnage nocturne.",
+              inLanguage: "fr-FR",
+              publisher: { "@id": "https://tvtrackd.com/#organization" },
+              potentialAction: {
+                "@type": "SearchAction",
+                target: {
+                  "@type": "EntryPoint",
+                  urlTemplate: "https://tvtrackd.com/search?q={search_term_string}",
+                },
+                "query-input": "required name=search_term_string",
+              },
+            },
+            {
+              "@type": "Organization",
+              "@id": "https://tvtrackd.com/#organization",
+              name: "tvtrackd",
+              url: "https://tvtrackd.com",
+            },
+          ],
+        }),
+      },
+    ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
