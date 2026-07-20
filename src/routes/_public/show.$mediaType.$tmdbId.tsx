@@ -1257,7 +1257,7 @@ function ProgressCard({
 // dates en français, avec un fold "Voir tout" au-delà de 5 items.
 // ---------------------------------------------------------------------------
 
-const INITIAL_UPCOMING_SHOWN = 5;
+const INITIAL_UPCOMING_SHOWN = 3;
 
 function formatCountdown(daysUntil: number): string {
   if (daysUntil <= 0) return "Aujourd'hui";
