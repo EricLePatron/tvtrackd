@@ -516,12 +516,13 @@ function ShowDetail() {
   const isLiveStatus = !!show.status && LIVE_TMDB_STATUSES.has(show.status);
 
   const today = new Date().toISOString().slice(0, 10);
-  const nextUpcomingEpisode =
+  const upcomingEpisodes =
     mediaType === "tv"
       ? episodes
           .filter((e) => e.air_date && e.air_date >= today)
-          .sort((a, b) => (a.air_date! < b.air_date! ? -1 : 1))[0]
-      : undefined;
+          .sort((a, b) => (a.air_date! < b.air_date! ? -1 : 1))
+      : [];
+
 
   const firstUnwatched =
     mediaType === "tv"
@@ -575,11 +576,12 @@ function ShowDetail() {
         </div>
       )}
 
-      {mediaType === "tv" && nextUpcomingEpisode && (
+      {mediaType === "tv" && upcomingEpisodes.length > 0 && (
         <div className="mx-5 mt-3">
-          <NextEpisodeCard episode={nextUpcomingEpisode} />
+          <UpcomingSchedule episodes={upcomingEpisodes} />
         </div>
       )}
+
 
       {mediaType !== "tv" && userShow && (
         <div className="mx-5 mt-4">
@@ -1248,16 +1250,40 @@ function ProgressCard({
 }
 
 // ---------------------------------------------------------------------------
-// Carte "Prochain épisode" (à venir, distinct de "À voir maintenant")
+// Calendrier des prochains épisodes (tous les épisodes à venir, pas seulement
+// le suivant). C'est un argument produit majeur : les gens cherchent "quand
+// sort le prochain épisode de …", et ils veulent voir toute la programmation
+// à venir, pas juste le prochain. Rendu sobre, chiffres en font-counter,
+// dates en français, avec un fold "Voir tout" au-delà de 5 items.
 // ---------------------------------------------------------------------------
 
-function NextEpisodeCard({ episode }: { episode: EpisodeRow }) {
+const INITIAL_UPCOMING_SHOWN = 5;
+
+function formatCountdown(daysUntil: number): string {
+  if (daysUntil <= 0) return "Aujourd'hui";
+  if (daysUntil === 1) return "Demain";
+  if (daysUntil < 7) return `Dans ${daysUntil}j`;
+  const weeks = Math.round(daysUntil / 7);
+  if (weeks < 5) return `Dans ${weeks} sem.`;
+  const months = Math.round(daysUntil / 30);
+  return `Dans ${months} mois`;
+}
+
+function formatEpisodeDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function UpcomingSchedule({ episodes }: { episodes: EpisodeRow[] }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
-  const daysUntil = Math.max(
-    0,
-    Math.ceil((new Date(episode.air_date!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
-  );
-  const countdownLabel = formatCountdownLabel(daysUntil);
+  const [expanded, setExpanded] = useState(false);
+
+  const visible = expanded ? episodes : episodes.slice(0, INITIAL_UPCOMING_SHOWN);
+  const hiddenCount = episodes.length - visible.length;
 
   return (
     <div
@@ -1271,28 +1297,72 @@ function NextEpisodeCard({ episode }: { episode: EpisodeRow }) {
     >
       <div className="flex items-center justify-between gap-3">
         <p className="font-counter text-[9.5px] uppercase tracking-[0.24em] text-cyan-accent">
-          Prochain épisode
+          {episodes.length === 1 ? "Prochain épisode" : `Prochains épisodes · ${episodes.length}`}
         </p>
-        <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1.5 font-counter text-[11px] text-cyan-accent">
-          {countdownLabel}
-        </span>
       </div>
-      <p className="mt-3 text-sm leading-snug text-foreground">
-        <span className="mr-1.5 font-counter text-[12.5px] font-semibold text-cyan-accent">
-          S{pad(episode.season_number)}E{pad(episode.episode_number)}
-        </span>
-        {episode.title ?? "—"}
-      </p>
-      <p className="mt-1.5 font-counter text-[11.5px] uppercase tracking-wide text-muted-foreground">
-        {new Date(episode.air_date!).toLocaleDateString("fr-FR", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
+
+      <ul className="mt-3 flex flex-col divide-y divide-white/[0.05]">
+        {visible.map((episode, idx) => {
+          const daysUntil = Math.max(
+            0,
+            Math.ceil(
+              (new Date(episode.air_date!).getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+            ),
+          );
+          const countdown = formatCountdown(daysUntil);
+          const isFirst = idx === 0;
+          return (
+            <li key={episode.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+              <span className="w-14 shrink-0 font-counter text-[12px] font-semibold tabular-nums text-cyan-accent">
+                S{pad(episode.season_number)}E{pad(episode.episode_number)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] leading-snug text-foreground">
+                  {episode.title ?? "—"}
+                </p>
+                <p className="mt-0.5 font-counter text-[10.5px] uppercase tracking-wide text-muted-foreground">
+                  {formatEpisodeDate(episode.air_date!)}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-1 font-counter text-[10.5px] tabular-nums",
+                  isFirst
+                    ? "border border-cyan-accent/30 bg-cyan-accent/10 text-cyan-accent"
+                    : "border border-white/[0.08] bg-transparent text-muted-foreground",
+                )}
+              >
+                {countdown}
+              </span>
+            </li>
+          );
         })}
-      </p>
+      </ul>
+
+      {hiddenCount > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.02] py-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+        >
+          Voir les {hiddenCount} suivants
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {expanded && episodes.length > INITIAL_UPCOMING_SHOWN && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.02] py-2 font-counter text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+        >
+          Réduire
+          <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+        </button>
+      )}
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Épisodes : lignes dépliables (résumé), coche séparée (stopPropagation)
