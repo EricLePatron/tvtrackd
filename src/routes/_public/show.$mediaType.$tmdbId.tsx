@@ -21,7 +21,7 @@ import { useInViewOnce } from "@/hooks/use-in-view-once";
 import { useRollingNumber } from "@/hooks/use-rolling-number";
 import { followShow, unfollowShow } from "@/lib/follow-show";
 import { formatApproxHours } from "@/lib/watch-time";
-import { formatCountdownLabel } from "@/lib/schedule";
+
 import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
