@@ -67,6 +67,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { SimilarRail } from "@/components/show/similar-rail";
+import { CastRail } from "@/components/show/cast-rail";
 import { StarRating } from "@/components/show/star-rating";
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
