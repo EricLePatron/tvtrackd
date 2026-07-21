@@ -121,7 +121,14 @@ function SearchScreen() {
                     </div>
                   )}
                 </div>
-                <p className="mt-1.5 line-clamp-2 text-xs text-foreground">{r.title}</p>
+                {/* Titre tronqué sur une seule ligne (même pattern que la grille
+                    bibliothèque) : hauteur constante d'une carte à l'autre, donc
+                    la ligne meta en dessous s'aligne à l'identique sur toute la
+                    grille. L'affiche identifie déjà la série ; `title` restitue
+                    le nom complet au survol / appui long. */}
+                <p className="mt-1.5 truncate text-xs text-foreground" title={r.title}>
+                  {r.title}
+                </p>
                 <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
                   {r.media_type === "tv" ? "Série" : "Film"} · {r.year ?? "—"}
                 </p>
