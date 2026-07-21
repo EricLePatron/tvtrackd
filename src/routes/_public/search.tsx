@@ -138,7 +138,15 @@ function SearchScreen() {
         ) : loading && debounced.length >= 2 ? (
           <div className="mt-5 grid grid-cols-3 gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="aspect-[2/3] animate-pulse rounded-md bg-surface-elevated" />
+              // Réserve le poster ET les deux lignes de texte (titre + meta) du
+              // résultat réel : sans ça la carte « sautait » en hauteur quand les
+              // résultats remplaçaient les skeletons. Aligné sur le SkeletonGrid
+              // de la bibliothèque.
+              <div key={i}>
+                <div className="aspect-[2/3] animate-pulse rounded-md bg-surface-elevated" />
+                <div className="mt-1.5 h-4 w-4/5 animate-pulse rounded bg-surface-elevated" />
+                <div className="mt-1 h-3 w-1/2 animate-pulse rounded bg-surface-elevated" />
+              </div>
             ))}
           </div>
         ) : (

@@ -121,7 +121,20 @@ export function DiscoveryGrid({
                     {followed ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="mt-1.5 line-clamp-1 text-sm text-foreground">{item.title}</p>
+                {/* Même pattern de troncature que les grilles bibliothèque et
+                    recherche : `truncate` sur une ligne + `title` pour le nom
+                    complet au survol. En variante grille, `text-xs` s'aligne sur
+                    la grille de résultats de recherche juste au-dessus ; le rail
+                    Home (variante compact) garde `text-sm`, adapté à ses
+                    vignettes plus larges. */}
+                <p
+                  className={`mt-1.5 truncate text-foreground ${
+                    variant === "grid" ? "text-xs" : "text-sm"
+                  }`}
+                  title={item.title}
+                >
+                  {item.title}
+                </p>
               </div>
             );
           })}
