@@ -870,6 +870,7 @@ function ShowDetail() {
 
 
       <div className="mx-5 pb-24">
+        <CastRail tmdbId={tmdbId} mediaType={mediaType} />
         <SimilarRail tmdbId={tmdbId} mediaType={mediaType} />
       </div>
     </>
