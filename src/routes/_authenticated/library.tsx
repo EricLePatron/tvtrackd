@@ -526,7 +526,13 @@ function LibraryCard({
           />
         )}
       </div>
-      <p className="mt-1.5 line-clamp-2 h-8 text-xs text-foreground">{show.title}</p>
+      {/* Titre volontairement tronqué sur UNE seule ligne : la vignette porte
+          déjà l'affiche, le nom complet n'est pas nécessaire ici et une hauteur
+          fixe (1 ligne pour tous) garantit que le statut en dessous s'aligne à
+          l'identique d'une carte à l'autre dans la grille. */}
+      <p className="mt-1.5 truncate text-xs text-foreground" title={show.title}>
+        {show.title}
+      </p>
 
       {chip && (
         // Fixed min-height shared by every chip shape (skeleton / progress /
