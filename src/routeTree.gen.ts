@@ -25,6 +25,7 @@ import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
 import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as PublicPersonPersonIdRouteImport } from './routes/_public/person.$personId'
 import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/show.$mediaType.$tmdbId'
 
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -105,6 +106,11 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const PublicPersonPersonIdRoute = PublicPersonPersonIdRouteImport.update({
+  id: '/person/$personId',
+  path: '/person/$personId',
+  getParentRoute: () => PublicRoute,
+} as any)
 const PublicShowMediaTypeTmdbIdRoute =
   PublicShowMediaTypeTmdbIdRouteImport.update({
     id: '/show/$mediaType/$tmdbId',
@@ -127,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/legal/confidentialite': typeof LegalConfidentialiteRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
+  '/person/$personId': typeof PublicPersonPersonIdRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
 export interface FileRoutesByTo {
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/legal/confidentialite': typeof LegalConfidentialiteRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
+  '/person/$personId': typeof PublicPersonPersonIdRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
 export interface FileRoutesById {
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/_public/': typeof PublicIndexRoute
+  '/_public/person/$personId': typeof PublicPersonPersonIdRoute
   '/_public/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
 export interface FileRouteTypes {
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/legal/confidentialite'
     | '/legal/cookies'
     | '/legal/mentions-legales'
+    | '/person/$personId'
     | '/show/$mediaType/$tmdbId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -200,6 +210,7 @@ export interface FileRouteTypes {
     | '/legal/confidentialite'
     | '/legal/cookies'
     | '/legal/mentions-legales'
+    | '/person/$personId'
     | '/show/$mediaType/$tmdbId'
   id:
     | '__root__'
@@ -219,6 +230,7 @@ export interface FileRouteTypes {
     | '/legal/cookies'
     | '/legal/mentions-legales'
     | '/_public/'
+    | '/_public/person/$personId'
     | '/_public/show/$mediaType/$tmdbId'
   fileRoutesById: FileRoutesById
 }
@@ -344,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_public/person/$personId': {
+      id: '/_public/person/$personId'
+      path: '/person/$personId'
+      fullPath: '/person/$personId'
+      preLoaderRoute: typeof PublicPersonPersonIdRouteImport
+      parentRoute: typeof PublicRoute
+    }
     '/_public/show/$mediaType/$tmdbId': {
       id: '/_public/show/$mediaType/$tmdbId'
       path: '/show/$mediaType/$tmdbId'
@@ -393,6 +412,7 @@ interface PublicRouteChildren {
   PublicCalendarRoute: typeof PublicCalendarRoute
   PublicSearchRoute: typeof PublicSearchRoute
   PublicIndexRoute: typeof PublicIndexRoute
+  PublicPersonPersonIdRoute: typeof PublicPersonPersonIdRoute
   PublicShowMediaTypeTmdbIdRoute: typeof PublicShowMediaTypeTmdbIdRoute
 }
 
@@ -400,6 +420,7 @@ const PublicRouteChildren: PublicRouteChildren = {
   PublicCalendarRoute: PublicCalendarRoute,
   PublicSearchRoute: PublicSearchRoute,
   PublicIndexRoute: PublicIndexRoute,
+  PublicPersonPersonIdRoute: PublicPersonPersonIdRoute,
   PublicShowMediaTypeTmdbIdRoute: PublicShowMediaTypeTmdbIdRoute,
 }
 
