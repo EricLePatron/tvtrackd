@@ -23,45 +23,42 @@ export function CastRail({
         Casting
       </h3>
       {isLoading ? (
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="w-[92px] shrink-0 space-y-2"
-            >
-              <div className="aspect-[2/3] w-full animate-pulse rounded-md bg-surface-elevated" />
-              <div className="h-2.5 w-full animate-pulse rounded bg-surface-elevated" />
+        <div className="flex gap-4 overflow-x-auto pb-1">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="w-[68px] shrink-0 space-y-2">
+              <div className="h-[68px] w-[68px] animate-pulse rounded-full bg-surface-elevated" />
+              <div className="mx-auto h-2 w-3/4 animate-pulse rounded bg-surface-elevated" />
             </div>
           ))}
         </div>
       ) : (
-        <ul className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
+        <ul className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-1">
           {cast.map((c) => (
-            <li key={c.person_id} className="w-[92px] shrink-0 snap-start">
+            <li key={c.person_id} className="w-[68px] shrink-0 snap-start">
               <Link
                 to="/person/$personId"
                 params={{ personId: String(c.person_id) }}
-                className="group block"
+                className="group block text-center"
               >
-                <div className="relative aspect-[2/3] overflow-hidden rounded-md bg-surface-elevated">
+                <div className="relative h-[68px] w-[68px] overflow-hidden rounded-full bg-surface-elevated ring-1 ring-white/5 transition-transform duration-300 group-hover:scale-105 group-hover:ring-white/10">
                   {c.profile_url ? (
                     <img
                       src={c.profile_url}
                       alt={c.name}
                       loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                      className="h-full w-full object-cover"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                      <User className="h-7 w-7" aria-hidden="true" />
+                      <User className="h-6 w-6" aria-hidden="true" />
                     </div>
                   )}
                 </div>
-                <p className="mt-2 line-clamp-2 text-[12px] leading-tight text-foreground">
+                <p className="mt-2 line-clamp-2 text-[11px] leading-tight text-foreground">
                   {c.name}
                 </p>
                 {c.character && (
-                  <p className="mt-0.5 line-clamp-1 font-counter text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <p className="mt-0.5 line-clamp-1 text-[10px] leading-tight text-muted-foreground">
                     {c.character}
                   </p>
                 )}
