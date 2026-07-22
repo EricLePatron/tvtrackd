@@ -383,10 +383,11 @@ function HomeContent({ data }: { data: HomeData }) {
 
   const buckets = bucketUpcoming(data.dayGroups, data.today);
 
-  if (state === "upcoming_only" && data.countdown) {
+  if (state === "upcoming_only") {
+    const awaited = nextUpcomingPerShow(data.raw.episodes, data.today);
     return (
       <>
-        <NothingNowCountdownTicket countdown={data.countdown} />
+        <NothingNowCountdownTicket awaited={awaited} />
         <div className="mt-8 space-y-6 px-5">
           <UpcomingSectionHeader />
           <UpcomingRails buckets={buckets} today={data.today} />
