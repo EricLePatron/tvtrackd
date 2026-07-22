@@ -540,6 +540,38 @@ export function nextCountdown(
 }
 
 /**
+ * One entry per followed show that has at least one strictly-future episode,
+ * pointing at that show's *soonest* upcoming episode, sorted by proximity.
+ * Used by the Home "en attente" state to feature the closest show as a
+ * graphic hero AND list the other awaited shows below it — a single-show
+ * countdown wasn't enough when several shows are waiting at once.
+ */
+export type UpcomingShowNext = {
+  show: ShowLite;
+  episode: ScheduleEpisode;
+  daysUntil: number;
+};
+
+export function nextUpcomingPerShow(
+  episodes: ScheduleEpisode[],
+  today: string,
+): UpcomingShowNext[] {
+  const byShow = new Map<number, ScheduleEpisode>();
+  for (const ep of episodes) {
+    if (!ep.air_date || ep.air_date <= today) continue;
+    const prev = byShow.get(ep.show.id);
+    if (!prev || ep.air_date < prev.air_date!) byShow.set(ep.show.id, ep);
+  }
+  return Array.from(byShow.values())
+    .map((ep) => ({ show: ep.show, episode: ep, daysUntil: daysBetween(today, ep.air_date!) }))
+    .sort((a, b) =>
+      a.daysUntil !== b.daysUntil
+        ? a.daysUntil - b.daysUntil
+        : a.show.title.localeCompare(b.show.title, "fr"),
+    );
+}
+
+/**
  * "aujourd'hui" / "demain" / "dans Nj" — vocabulaire de référence du
  * countdown, extrait à l'identique de `NextEpisodeCard` (fiche série,
  * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NothingNowCountdownTicket`,
