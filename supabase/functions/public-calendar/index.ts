@@ -55,8 +55,48 @@ type CalendarPayload = { airingToday: CalendarItem[]; onTheAir: CalendarItem[] }
 // pour des visiteurs déjà connectés, qui préchargent ce contenu public sans
 // jamais l'afficher (la route ne peut pas connaître l'état d'auth côté
 // serveur, cf. `_public/calendar.tsx`).
-let cache: { data: CalendarPayload; expiresAt: number } | null = null;
+//
+// On mémorise la PROMESSE en vol (pas seulement la valeur résolue) : sinon
+// plusieurs requêtes concurrentes arrivant juste après expiration du TTL
+// déclenchent chacune leur propre paire d'appels TMDb avant que la première
+// n'ait eu le temps d'écrire le cache (QA P0-4, mineur). En cas d'échec, le
+// cache est immédiatement invalidé pour ne pas resservir la même erreur en
+// boucle pendant tout le TTL restant.
+let cachedPromise: Promise<CalendarPayload> | null = null;
+let cacheExpiresAt = 0;
 const CACHE_TTL_MS = 30 * 60 * 1000;
+
+async function loadCalendarPayload(): Promise<CalendarPayload> {
+  const [airingTodayData, onTheAirData] = await Promise.all([
+    tmdb("/tv/airing_today"),
+    tmdb("/tv/on_the_air"),
+  ]);
+
+  const airingToday: CalendarItem[] = (airingTodayData.results ?? [])
+    .filter((r: TmdbTvResult) => r.poster_path)
+    .slice(0, 20)
+    .map(mapResult);
+
+  const airingTodayIds = new Set(airingToday.map((r) => r.tmdb_id));
+  const onTheAir: CalendarItem[] = (onTheAirData.results ?? [])
+    .filter((r: TmdbTvResult) => r.poster_path && !airingTodayIds.has(r.id))
+    .slice(0, 20)
+    .map(mapResult);
+
+  return { airingToday, onTheAir };
+}
+
+function getCalendarPayload(): Promise<CalendarPayload> {
+  if (!cachedPromise || Date.now() >= cacheExpiresAt) {
+    cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+    cachedPromise = loadCalendarPayload().catch((err) => {
+      cachedPromise = null;
+      cacheExpiresAt = 0;
+      throw err;
+    });
+  }
+  return cachedPromise;
+}
 
 /**
  * Calendrier public généraliste ("Programme de la semaine") pour un visiteur
@@ -73,27 +113,8 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    if (!cache || Date.now() >= cache.expiresAt) {
-      const [airingTodayData, onTheAirData] = await Promise.all([
-        tmdb("/tv/airing_today"),
-        tmdb("/tv/on_the_air"),
-      ]);
-
-      const airingToday: CalendarItem[] = (airingTodayData.results ?? [])
-        .filter((r: TmdbTvResult) => r.poster_path)
-        .slice(0, 20)
-        .map(mapResult);
-
-      const airingTodayIds = new Set(airingToday.map((r) => r.tmdb_id));
-      const onTheAir: CalendarItem[] = (onTheAirData.results ?? [])
-        .filter((r: TmdbTvResult) => r.poster_path && !airingTodayIds.has(r.id))
-        .slice(0, 20)
-        .map(mapResult);
-
-      cache = { data: { airingToday, onTheAir }, expiresAt: Date.now() + CACHE_TTL_MS };
-    }
-
-    return Response.json(cache.data, {
+    const data = await getCalendarPayload();
+    return Response.json(data, {
       headers: { ...corsHeaders, "Cache-Control": "public, max-age=3600" },
     });
   } catch (err) {
