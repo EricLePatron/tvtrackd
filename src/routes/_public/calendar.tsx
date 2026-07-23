@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useCalendarTimeline } from "@/hooks/use-calendar-timeline";
 import { CalendarTimelineList } from "@/components/home/calendar-timeline";
 import { NoShowsPanel } from "@/components/home/empty-states";
+import { SITE_URL } from "@/lib/app-config";
 
 export const Route = createFileRoute("/_public/calendar")({
   component: CalendarScreen,
@@ -21,9 +22,9 @@ export const Route = createFileRoute("/_public/calendar")({
         content:
           "Le calendrier des prochains épisodes de vos séries et des sorties films à venir, jour par jour.",
       },
-      { property: "og:url", content: "https://tvtrackd.com/calendar" },
+      { property: "og:url", content: `${SITE_URL}/calendar` },
     ],
-    links: [{ rel: "canonical", href: "https://tvtrackd.com/calendar" }],
+    links: [{ rel: "canonical", href: `${SITE_URL}/calendar` }],
   }),
 });
 

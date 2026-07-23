@@ -25,6 +25,7 @@ import {
   type ReadyItem,
   type ScheduleEpisode,
 } from "@/lib/schedule";
+import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
@@ -52,10 +53,10 @@ export const Route = createFileRoute("/_public/")({
         content:
           "Suivez vos séries et films épisode par épisode. Calendrier, import TV Time, bibliothèque. Gratuit.",
       },
-      { property: "og:url", content: "https://tvtrackd.com/" },
+      { property: "og:url", content: `${SITE_URL}/` },
     ],
     links: [
-      { rel: "canonical", href: "https://tvtrackd.com/" },
+      { rel: "canonical", href: `${SITE_URL}/` },
       {
         rel: "preload",
         as: "image",

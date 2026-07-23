@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { SITE_URL } from "@/lib/app-config";
 
 function NotFoundComponent() {
   return (
@@ -98,27 +99,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "@graph": [
             {
               "@type": "WebSite",
-              "@id": "https://tvtrackd.com/#website",
-              url: "https://tvtrackd.com",
+              "@id": `${SITE_URL}/#website`,
+              url: SITE_URL,
               name: "tvtrackd",
               description:
                 "tvtrackd : suivez vos séries et films, épisode par épisode. Pensé pour le visionnage nocturne.",
               inLanguage: "fr-FR",
-              publisher: { "@id": "https://tvtrackd.com/#organization" },
+              publisher: { "@id": `${SITE_URL}/#organization` },
               potentialAction: {
                 "@type": "SearchAction",
                 target: {
                   "@type": "EntryPoint",
-                  urlTemplate: "https://tvtrackd.com/search?q={search_term_string}",
+                  urlTemplate: `${SITE_URL}/search?q={search_term_string}`,
                 },
                 "query-input": "required name=search_term_string",
               },
             },
             {
               "@type": "Organization",
-              "@id": "https://tvtrackd.com/#organization",
+              "@id": `${SITE_URL}/#organization`,
               name: "tvtrackd",
-              url: "https://tvtrackd.com",
+              url: SITE_URL,
             },
           ],
         }),
