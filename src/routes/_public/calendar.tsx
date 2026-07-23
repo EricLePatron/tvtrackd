@@ -16,7 +16,24 @@ export const Route = createFileRoute("/_public/calendar")({
   // cette raison) — un visiteur connecté paie donc un préchargement inutilisé
   // (silencieusement ignoré au rendu), acceptable : appel léger, mis en cache
   // côté edge function (`Cache-Control`) et react-query (`staleTime`).
-  loader: async () => fetchPublicCalendar(),
+  //
+  // Best-effort strict (QA bloquant #1) : ce calendrier public généraliste
+  // ne doit JAMAIS pouvoir faire planter la route — en particulier pour un
+  // utilisateur CONNECTÉ dont le calendrier personnalisé (`useCalendarTimeline`,
+  // totalement indépendant de cet appel) n'a rien à voir avec ce fetch. Un
+  // throw ici remonterait à l'errorComponent du root faute d'errorComponent
+  // local, remplaçant tout l'app shell (bottom nav comprise) par un écran
+  // d'erreur générique — inacceptable pour une feature annexe. `null` en cas
+  // d'échec ; `PublicCalendarPanel`/`usePublicCalendar` gèrent déjà
+  // `isLoading`/`isError` côté client (refetch normal, pas de blocage).
+  loader: async () => {
+    try {
+      return await fetchPublicCalendar();
+    } catch (err) {
+      console.error("[calendar loader] fetchPublicCalendar failed (best-effort, ignored)", err);
+      return null;
+    }
+  },
   head: () => ({
     meta: [
       {
@@ -61,7 +78,7 @@ function CalendarScreen() {
       <div className="mt-6 pb-10">
         {!user ? (
           <>
-            <PublicCalendarPanel initialData={loaderData} />
+            <PublicCalendarPanel initialData={loaderData ?? undefined} />
             <div className="mx-5 mt-8 rounded-xl border border-dashed border-border bg-transparent p-6 text-center">
               <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
                 Connexion requise
