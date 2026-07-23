@@ -8,9 +8,11 @@ import {
   formatCountdownLabel,
   formatReadyLabel,
   getDayLabelParts,
+  groupUpcomingByDay,
   HERO_STALE_DAYS,
   isSeasonTallyReliable,
   selectHero,
+  selectNextReleases,
   splitEnCoursByFreshness,
   type ActiveStatus,
   type HomeRawInputs,
@@ -897,5 +899,111 @@ describe("deriveHomeView", () => {
     expect(Object.keys(result).sort()).toEqual(
       ["hero", "heroProgress", "nouveau", "readyCount", "reprendre"].sort(),
     );
+  });
+});
+
+describe("selectNextReleases", () => {
+  it("dedupes by show — a series with several future episodes contributes only its single soonest one", () => {
+    const s = show(1, "Recurring Show");
+    const episodes = [
+      ep(s, 201, 1, 1, "2026-07-10"),
+      ep(s, 202, 1, 2, "2026-07-17"), // later — must not appear
+    ];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].episode.id).toBe(201);
+  });
+
+  it("respects `limit`, taking the N soonest DISTINCT shows across days", () => {
+    const s1 = show(1, "Show 1");
+    const s2 = show(2, "Show 2");
+    const s3 = show(3, "Show 3");
+    const episodes = [
+      ep(s1, 101, 1, 1, "2026-07-10"),
+      ep(s2, 201, 1, 1, "2026-07-11"),
+      ep(s3, 301, 1, 1, "2026-07-12"),
+    ];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY, { limit: 2 });
+
+    expect(result.map((r) => r.show.id)).toEqual([1, 2]);
+  });
+
+  it("defaults to a limit of 2 when none is passed", () => {
+    const s1 = show(1, "Show 1");
+    const s2 = show(2, "Show 2");
+    const s3 = show(3, "Show 3");
+    const episodes = [
+      ep(s1, 101, 1, 1, "2026-07-10"),
+      ep(s2, 201, 1, 1, "2026-07-11"),
+      ep(s3, 301, 1, 1, "2026-07-12"),
+    ];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("returns results in strict chronological order, earliest day first", () => {
+    const later = show(1, "Later Show");
+    const sooner = show(2, "Sooner Show");
+    // Inserted out of chronological order on purpose — the function must
+    // sort by date, not by input/show-id order.
+    const episodes = [ep(later, 101, 1, 1, "2026-08-01"), ep(sooner, 201, 1, 1, "2026-07-10")];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY, { limit: 2 });
+
+    expect(result.map((r) => r.show.id)).toEqual([2, 1]);
+  });
+
+  it("excludes show ids passed via `excludeShowIds` — e.g. the Home hero's own show", () => {
+    const heroShow = show(1, "Hero Show");
+    const otherShow = show(2, "Other Show");
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2026-07-10"),
+      ep(otherShow, 201, 1, 1, "2026-07-11"),
+    ];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY, { excludeShowIds: new Set([1]) });
+
+    expect(result.map((r) => r.show.id)).toEqual([2]);
+  });
+
+  it("returns an empty array when dayGroups is empty (ready_only state — nothing to show)", () => {
+    const result = selectNextReleases([], TODAY);
+
+    expect(result).toEqual([]);
+  });
+
+  it("computes daysUntil relative to `today`, matching formatCountdownLabel's expectations", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-07-12")]; // TODAY + 4 days
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY);
+
+    expect(result[0].daysUntil).toBe(4);
+    expect(result[0].date).toBe("2026-07-12");
+  });
+
+  it("for a same-day 'drop' entry (2+ episodes of the same show/season), picks the earliest episode in season/episode order", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 202, 1, 2, "2026-07-10"),
+      ep(s, 201, 1, 1, "2026-07-10"), // same day, earlier episode number — must win
+    ];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].episode.id).toBe(201);
   });
 });

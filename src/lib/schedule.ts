@@ -539,6 +539,66 @@ export function nextCountdown(
   return { show: best.show, episode: best, daysUntil: daysBetween(today, best.air_date!) };
 }
 
+export type NextReleaseItem = {
+  show: ShowLite;
+  episode: ScheduleEpisode;
+  /** Raw YYYY-MM-DD air_date of `episode` — feeds `formatUpcomingDayLabel` for the card's secondary line. */
+  date: string;
+  daysUntil: number;
+};
+
+/**
+ * Up to `limit` distinct-by-show upcoming releases (soonest first) — feeds
+ * the "prochaine sortie" card(s) rendered directly under the Home hero in the
+ * `normal` state (backlog AND a scheduled future episode both present — see
+ * `resolveHomeState`/`HomeContent` in index.tsx). Deliberately derived from
+ * `dayGroups` (already computed for Zone B/"Programme à venir", itself
+ * already future-only and date-sorted via `groupUpcomingByDay`) rather than
+ * `episodes` directly — no extra pass over the raw episode list, and no risk
+ * of drifting from the exact ordering `bucketUpcoming`/the calendar rails
+ * use.
+ *
+ * A show contributes at most ONE entry — its single soonest upcoming episode
+ * — even if it has several future releases scheduled; a "drop" entry (a
+ * batch of 2+ episodes of the same show/season landing the same day, see
+ * `groupUpcomingByDay`) contributes its first episode in season/episode
+ * order (`episodes[0]`, already the earliest of that batch).
+ *
+ * `excludeShowIds` lets the caller omit the Home hero's own show (see
+ * index.tsx's queryFn) — the hero already dominates that show's slot as
+ * "à voir maintenant"; repeating it here as "dans Nj" would read as
+ * redundant/confusing rather than as a genuinely different upcoming release.
+ */
+export function selectNextReleases(
+  dayGroups: DayGroup[],
+  today: string,
+  options: { limit?: number; excludeShowIds?: ReadonlySet<number> } = {},
+): NextReleaseItem[] {
+  const { limit = 2, excludeShowIds } = options;
+  const seenShowIds = new Set<number>();
+  const result: NextReleaseItem[] = [];
+
+  for (const group of dayGroups) {
+    if (result.length >= limit) break;
+    for (const entry of group.entries) {
+      if (result.length >= limit) break;
+      const showId = entry.show.id;
+      if (excludeShowIds?.has(showId)) continue;
+      if (seenShowIds.has(showId)) continue;
+      seenShowIds.add(showId);
+      const episode = entry.type === "drop" ? entry.episodes[0] : entry.episode;
+      result.push({
+        show: entry.show,
+        episode,
+        date: group.date,
+        daysUntil: daysBetween(today, group.date),
+      });
+    }
+  }
+
+  return result;
+}
+
 /**
  * One entry per followed show that has at least one strictly-future episode,
  * pointing at that show's *soonest* upcoming episode, sorted by proximity.
@@ -631,6 +691,8 @@ export type HomeData = {
   dayGroups: DayGroup[];
   upcomingCount: number;
   countdown: ReturnType<typeof nextCountdown>;
+  /** Up to 2 distinct-by-show upcoming releases (hero's own show excluded) — see `selectNextReleases`. Rendered only in the `normal` state, directly under the hero. */
+  nextReleases: NextReleaseItem[];
   raw: HomeRawInputs;
 };
 

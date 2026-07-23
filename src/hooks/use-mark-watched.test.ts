@@ -44,11 +44,22 @@ const homeKey = ["home-schedule", USER_ID] as const;
 
 // Sentinel Zone B values — distinct object identities so a passthrough vs. a
 // (buggy) recompute-from-scratch can be told apart via `toBe` (identity), not
-// just `toEqual` (deep value).
+// just `toEqual` (deep value). `nextReleases` (the "prochaine sortie" encart
+// data) is derived from `dayGroups` exactly like `upcomingCount`/`countdown`
+// — never from the watched set — so it must survive a mark-watched mutation
+// unchanged too, same as the rest of Zone B.
 const ZONE_B = {
   dayGroups: [{ date: "2099-01-01", entries: [] }],
   upcomingCount: 42,
   countdown: null,
+  nextReleases: [
+    {
+      show: show(999, "Sentinel Next Release"),
+      episode: ep(show(999), 9001, 1, 1, "2099-01-01"),
+      date: "2099-01-01",
+      daysUntil: 1000,
+    },
+  ],
 };
 
 function seedHomeData(qc: QueryClient, userId: string, data: HomeData) {
@@ -122,6 +133,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.reprendre).toEqual([]);
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups); // Zone B untouched (identity)
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
+    expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
 
     // --- Tap B (episode 201) while A is still in flight ---
     const patchedB = markWatchedOnMutate(qc, USER_ID, { episodeId: 201, showId: 2 });
@@ -141,6 +153,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.reprendre[0]?.nextEpisode.id).toBe(202);
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
+    expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
 
     // --- A's mutation fails (network error) — settled via markWatchedOnSettled(..., "error") ---
     markWatchedOnSettled(qc, USER_ID, 101, "error");
@@ -157,6 +170,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.reprendre[0]?.nextEpisode.id).toBe(202);
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
+    expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
 
     // --- B's mutation eventually succeeds — settled via markWatchedOnSettled(..., "success") ---
     markWatchedOnSettled(qc, USER_ID, 201, "success");
