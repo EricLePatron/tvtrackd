@@ -46,9 +46,9 @@ export function NextReleaseCard({ item }: { item: NextReleaseItem; today: string
     <Link
       to="/show/$mediaType/$tmdbId"
       params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-      className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 transition-colors hover:bg-primary/15"
+      className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 transition-colors hover:bg-primary/15"
     >
-      <p className="shrink-0 font-counter text-sm uppercase tracking-wide text-primary">
+      <p className="shrink-0 font-counter text-sm uppercase tracking-widest text-primary">
         {formatCountdownLabel(daysUntil)}
       </p>
       <div className="min-w-0 flex-1">
