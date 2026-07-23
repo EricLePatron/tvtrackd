@@ -27,12 +27,7 @@ import { VhsCounter } from "@/components/vhs-counter";
 import { SeasonToggle } from "@/components/season-toggle";
 import { ShowToggle } from "@/components/show-toggle";
 import { StatusPill, type PillTone } from "@/components/status-pill";
-import {
-  NetworkLine,
-  WhereToWatch,
-  type NetworkRef,
-  type WatchProviders,
-} from "@/components/where-to-watch";
+import { NetworkLine, WhereToWatch } from "@/components/where-to-watch";
 import {
   Accordion,
   AccordionContent,
@@ -69,47 +64,116 @@ import { toast } from "sonner";
 import { SimilarRail } from "@/components/show/similar-rail";
 import { CastRail } from "@/components/show/cast-rail";
 import { StarRating } from "@/components/show/star-rating";
+import { SITE_URL } from "@/lib/app-config";
+import {
+  fetchShowDetails,
+  showDetailsQueryKey,
+  type EpisodeRow,
+  type ShowDetails,
+  type ShowRow,
+} from "@/lib/show-details";
+import { fetchShowCredits, type CastMember } from "@/hooks/use-show-credits";
+import { fetchSimilarMedia } from "@/hooks/use-similar-media";
+import type { TrendingItem } from "@/components/home/discovery-grid";
+
+type ShowRouteLoaderData = ShowDetails & {
+  /** Best-effort (Promise.allSettled) — [] si l'appel échoue, jamais bloquant. */
+  cast: CastMember[];
+  similar: TrendingItem[];
+};
+
+// Coupe proprement une description TMDb à une longueur raisonnable pour une
+// meta description, sur une frontière de mot (pas de troncature en plein mot).
+function truncateForMeta(text: string, max = 155): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${cut.slice(0, lastSpace > 0 ? lastSpace : max)}…`;
+}
+
+function settledOrEmpty<T>(result: PromiseSettledResult<T[]>, label: string): T[] {
+  if (result.status === "fulfilled") return result.value;
+  // Best-effort : casting/similaires ne doivent jamais faire échouer le SSR
+  // de toute la fiche — un log suffit, le client réessaiera via useQuery.
+  console.error(`[show loader] ${label} failed (best-effort, ignored)`, result.reason);
+  return [];
+}
 
 export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   component: ShowDetail,
-  head: ({ params }) => {
+  loader: async ({ params }): Promise<ShowRouteLoaderData> => {
+    const tmdbId = Number(params.tmdbId);
+    const mediaType = params.mediaType;
+    const [detailsResult, castResult, similarResult] = await Promise.allSettled([
+      fetchShowDetails(tmdbId, mediaType),
+      fetchShowCredits(tmdbId, mediaType),
+      fetchSimilarMedia(tmdbId, mediaType),
+    ]);
+    // `get-show-details` est la seule requête critique : titre/synopsis/
+    // saisons/épisodes alimentent à la fois `head()` et le corps de la page.
+    // Un échec ici doit remonter à `errorComponent`/`notFoundComponent`, pas
+    // être avalé silencieusement.
+    if (detailsResult.status === "rejected") throw detailsResult.reason;
+    return {
+      ...detailsResult.value,
+      cast: settledOrEmpty(castResult, "show-credits"),
+      similar: settledOrEmpty(similarResult, "similar-media"),
+    };
+  },
+  head: ({ params, loaderData }) => {
     const kind = params.mediaType === "movie" ? "Film" : "Série";
+    const show = loaderData?.show;
+    const canonicalUrl = `${SITE_URL}/show/${params.mediaType}/${params.tmdbId}`;
+
+    // Filet de sécurité : si le loader n'a exceptionnellement pas encore de
+    // données (ne devrait pas arriver, le loader ci-dessus fait échouer la
+    // route sinon), on retombe sur le comportement générique précédent
+    // plutôt que de planter `head()`.
+    if (!show) {
+      return {
+        meta: [
+          { title: `${kind} sur ${APP_NAME} — fiche détaillée` },
+          {
+            name: "description",
+            content: `Fiche ${kind.toLowerCase()} sur ${APP_NAME} : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
+          },
+        ],
+        links: [{ rel: "canonical", href: canonicalUrl }],
+      };
+    }
+
+    const year = show.first_air_date ? show.first_air_date.slice(0, 4) : null;
+    const titleSuffix = year ? ` (${year})` : "";
+    const title = `${show.title}${titleSuffix} — ${kind.toLowerCase()} : épisodes, casting et où regarder — ${APP_NAME}`;
+    const baseDescription = show.overview
+      ? truncateForMeta(show.overview)
+      : `Suivi épisode par épisode de ${show.title} sur ${APP_NAME} : saisons, casting et plateformes de diffusion.`;
+
     return {
       meta: [
-        { title: `${kind} sur ${APP_NAME} — fiche détaillée` },
-        {
-          name: "description",
-          content: `Fiche ${kind.toLowerCase()} sur ${APP_NAME} : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
-        },
-        { property: "og:title", content: `${kind} sur ${APP_NAME}` },
-        {
-          property: "og:description",
-          content: `Fiche ${kind.toLowerCase()} : synopsis, saisons, épisodes et plateformes de diffusion.`,
-        },
+        { title },
+        { name: "description", content: baseDescription },
+        { property: "og:title", content: title },
+        { property: "og:description", content: baseDescription },
         {
           property: "og:type",
           content: params.mediaType === "movie" ? "video.movie" : "video.tv_show",
         },
-        {
-          property: "og:url",
-          content: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
-        },
+        { property: "og:url", content: canonicalUrl },
+        ...(show.poster_path ? [{ property: "og:image", content: show.poster_path }] : []),
       ],
-      links: [
-        {
-          rel: "canonical",
-          href: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
-        },
-      ],
+      links: [{ rel: "canonical", href: canonicalUrl }],
       scripts: [
         {
           type: "application/ld+json",
           children: JSON.stringify({
             "@context": "https://schema.org",
             "@type": params.mediaType === "movie" ? "Movie" : "TVSeries",
-            url: `https://tvtrackd.com/show/${params.mediaType}/${params.tmdbId}`,
-            name: `${kind} sur ${APP_NAME}`,
-            description: `Fiche ${kind.toLowerCase()} sur ${APP_NAME} : synopsis, saisons, épisodes, plateformes de diffusion et suivi personnel de votre visionnage.`,
+            url: canonicalUrl,
+            name: show.title,
+            description: baseDescription,
+            ...(show.poster_path ? { image: show.poster_path } : {}),
+            ...(show.first_air_date ? { datePublished: show.first_air_date } : {}),
             inLanguage: "fr-FR",
             sameAs: `https://www.themoviedb.org/${params.mediaType}/${params.tmdbId}`,
           }),
@@ -122,38 +186,6 @@ export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
   ),
   notFoundComponent: () => <div className="p-6 text-sm text-muted-foreground">Introuvable.</div>,
 });
-
-type ShowRow = {
-  id: number;
-  tmdb_id: number;
-  media_type: string;
-  title: string;
-  overview: string | null;
-  poster_path: string | null;
-  backdrop_path: string | null;
-  first_air_date: string | null;
-  status: string | null;
-  genres: string[] | null;
-  vote_average: number | null;
-  tagline: string | null;
-  watch_providers: WatchProviders | null;
-  networks: NetworkRef[] | null;
-};
-type SeasonRow = {
-  id: number;
-  show_id: number;
-  season_number: number;
-  episode_count: number | null;
-};
-type EpisodeRow = {
-  id: number;
-  show_id: number;
-  season_number: number;
-  episode_number: number;
-  title: string | null;
-  air_date: string | null;
-  overview: string | null;
-};
 
 const STATUS_LABELS: Record<string, string> = {
   a_voir: "À voir",
@@ -224,16 +256,29 @@ function ShowDetail() {
   // saison depuis "À voir maintenant" / "Revoir depuis le début".
   const [openSeasons, setOpenSeasons] = useState<string[]>([]);
 
-  const detailsKey = ["show-details", mediaType, tmdbId];
+  // Préchargé côté serveur par le `loader` de la route (cf. P0-1 SEO) : même
+  // clé de query, même fetch (`fetchShowDetails`) que ce que faisait cet
+  // écran en pur CSR auparavant — seul le "quand" change (avant l'hydratation
+  // plutôt qu'après). `staleTime` évite un refetch client immédiat alors que
+  // la donnée vient tout juste d'être chargée côté serveur, sans empêcher les
+  // navigations SPA ultérieures (cache TMDb côté edge function reste la seule
+  // source de vérité sur la fraîcheur réelle).
+  const loaderData = Route.useLoaderData();
+  const detailsKey = showDetailsQueryKey(mediaType, tmdbId);
+  // Objet dédié (pas `loaderData` tel quel, qui porte aussi `cast`/`similar`)
+  // pour que `initialData` corresponde exactement au type `ShowDetails`
+  // renvoyé par `queryFn` — sinon l'inférence de `TData` de `useQuery` se
+  // dégrade et fait perdre le typage de `data` plus bas dans ce composant.
+  const detailsInitialData: ShowDetails = {
+    show: loaderData.show,
+    seasons: loaderData.seasons,
+    episodes: loaderData.episodes,
+  };
   const { data, isLoading, error } = useQuery({
     queryKey: detailsKey,
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("get-show-details", {
-        body: { tmdb_id: Number(tmdbId), media_type: mediaType },
-      });
-      if (error) throw error;
-      return data as { show: ShowRow; seasons: SeasonRow[]; episodes: EpisodeRow[] };
-    },
+    queryFn: () => fetchShowDetails(Number(tmdbId), mediaType),
+    initialData: detailsInitialData,
+    staleTime: 60 * 1000,
   });
 
   const show = data?.show;
@@ -870,8 +915,21 @@ function ShowDetail() {
 
 
       <div className="mx-5 pb-24">
-        <CastRail tmdbId={tmdbId} mediaType={mediaType} />
-        <SimilarRail tmdbId={tmdbId} mediaType={mediaType} />
+        {/* `initialData` seulement si le loader a effectivement trouvé quelque
+            chose : un tableau vide peut aussi bien signifier "aucun casting
+            connu" que "l'appel best-effort a échoué côté serveur" — dans le
+            doute, on laisse le hook client retenter plutôt que de figer un
+            résultat vide pendant tout le staleTime (1h). */}
+        <CastRail
+          tmdbId={tmdbId}
+          mediaType={mediaType}
+          initialData={loaderData.cast.length ? loaderData.cast : undefined}
+        />
+        <SimilarRail
+          tmdbId={tmdbId}
+          mediaType={mediaType}
+          initialData={loaderData.similar.length ? loaderData.similar : undefined}
+        />
       </div>
     </>
   );

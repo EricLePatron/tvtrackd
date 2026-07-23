@@ -2,32 +2,81 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { User } from "lucide-react";
 import { BackButton } from "@/components/back-button";
-import { APP_NAME } from "@/lib/app-config";
+import { APP_NAME, SITE_URL } from "@/lib/app-config";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthGate } from "@/hooks/use-auth-gate";
 import { useFollowedKeys } from "@/hooks/use-followed-keys";
 import { useQuickFollow } from "@/hooks/use-quick-follow";
-import { usePersonCredits } from "@/hooks/use-person-credits";
+import { usePersonCredits, fetchPersonCredits } from "@/hooks/use-person-credits";
 import { DiscoveryGrid, trendingKey, type TrendingItem } from "@/components/home/discovery-grid";
 
 export const Route = createFileRoute("/_public/person/$personId")({
   component: PersonScreen,
-  head: () => ({
-    meta: [
-      { title: `Filmographie — ${APP_NAME}` },
-      {
-        name: "description",
-        content:
-          "Découvrez toutes les séries et films dans lesquels un acteur ou une actrice a joué.",
-      },
-    ],
-  }),
+  loader: async ({ params }) => fetchPersonCredits(params.personId),
+  head: ({ params, loaderData }) => {
+    const canonicalUrl = `${SITE_URL}/person/${params.personId}`;
+    const person = loaderData?.person;
+
+    // Filet de sécurité (même logique que la fiche série/film) : le loader
+    // fait normalement échouer la route avant `head()` en cas d'erreur, mais
+    // on reste défensif plutôt que de planter le rendu du <head>.
+    if (!person) {
+      return {
+        meta: [
+          { title: `Filmographie — ${APP_NAME}` },
+          {
+            name: "description",
+            content:
+              "Découvrez toutes les séries et films dans lesquels un acteur ou une actrice a joué.",
+          },
+        ],
+        links: [{ rel: "canonical", href: canonicalUrl }],
+      };
+    }
+
+    const title = `${person.name} — filmographie, séries et films — ${APP_NAME}`;
+    const description = person.biography
+      ? person.biography.slice(0, 155).trim() + (person.biography.length > 155 ? "…" : "")
+      : `Toutes les séries et films dans lesquels ${person.name} a joué, avec disponibilité de suivi sur ${APP_NAME}.`;
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:url", content: canonicalUrl },
+        ...(person.profile_url ? [{ property: "og:image", content: person.profile_url }] : []),
+      ],
+      links: [{ rel: "canonical", href: canonicalUrl }],
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Person",
+            url: canonicalUrl,
+            name: person.name,
+            ...(person.profile_url ? { image: person.profile_url } : {}),
+            ...(person.birthday ? { birthDate: person.birthday } : {}),
+            ...(person.place_of_birth ? { birthPlace: person.place_of_birth } : {}),
+            ...(person.biography ? { description: person.biography } : {}),
+          }),
+        },
+      ],
+    };
+  },
+  errorComponent: ({ error }) => (
+    <div className="p-6 text-sm text-destructive">Erreur : {error.message}</div>
+  ),
+  notFoundComponent: () => <div className="p-6 text-sm text-muted-foreground">Introuvable.</div>,
 });
 
 function PersonScreen() {
   const { personId } = Route.useParams();
   const { user } = useAuth();
-  const { data, isLoading, isError } = usePersonCredits(personId);
+  const loaderData = Route.useLoaderData();
+  const { data, isLoading, isError } = usePersonCredits(personId, loaderData);
   const { data: alreadyFollowedKeys = new Set<string>() } = useFollowedKeys(user?.id);
   const [optimisticKeys, setOptimisticKeys] = useState<Set<string>>(new Set());
   const followMutation = useQuickFollow(user?.id);

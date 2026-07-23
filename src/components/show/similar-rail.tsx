@@ -15,12 +15,15 @@ import { DiscoveryGrid, trendingKey, type TrendingItem } from "@/components/home
 export function SimilarRail({
   tmdbId,
   mediaType,
+  initialData,
 }: {
   tmdbId: number | string;
   mediaType: "tv" | "movie" | string;
+  /** Titres similaires déjà préchargés par le `loader` SSR de la route (best-effort). */
+  initialData?: TrendingItem[];
 }) {
   const { user } = useAuth();
-  const { data: items = [], isLoading, isError } = useSimilarMedia(tmdbId, mediaType);
+  const { data: items = [], isLoading, isError } = useSimilarMedia(tmdbId, mediaType, initialData);
   const { data: alreadyFollowedKeys = new Set<string>() } = useFollowedKeys(user?.id);
   const [optimisticKeys, setOptimisticKeys] = useState<Set<string>>(new Set());
   const followMutation = useQuickFollow(user?.id);
