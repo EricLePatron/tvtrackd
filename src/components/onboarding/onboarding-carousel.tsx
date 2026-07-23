@@ -80,6 +80,16 @@ export function OnboardingCarousel() {
     navigate({ to: "/auth", search: { redirect: pathname } });
   }
 
+  // Lien discret carte 3 vers la landing publique "alternative à TV Time"
+  // (cf. P0-3 SEO) — même mécanique que `goToAuth` : l'overlay doit être
+  // masqué avant de naviguer, sinon il reste affiché par-dessus la nouvelle
+  // route (`fixed inset-0 z-50`, cf. commentaire de `dismiss` ci-dessus).
+  function goToTvTimeLanding() {
+    markOnboardingSeen();
+    setVisible(false);
+    navigate({ to: "/alternative-tv-time", hash: "exporter-vos-donnees" });
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="grid grid-cols-3 items-center px-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
@@ -115,7 +125,11 @@ export function OnboardingCarousel() {
             <CardTwo />
           </CarouselItem>
           <CarouselItem className="basis-[84vw] pl-4">
-            <CardThree onCreateAccount={goToAuth} onExplore={dismiss} />
+            <CardThree
+              onCreateAccount={goToAuth}
+              onExplore={dismiss}
+              onLearnMore={goToTvTimeLanding}
+            />
           </CarouselItem>
         </CarouselContent>
         <CarouselPrevious className="left-4 hidden opacity-0 transition-opacity md:flex group-hover:opacity-100" />
@@ -175,9 +189,11 @@ function CardTwo() {
 function CardThree({
   onCreateAccount,
   onExplore,
+  onLearnMore,
 }: {
   onCreateAccount: () => void;
   onExplore: () => void;
+  onLearnMore: () => void;
 }) {
   // Unlike CardOne/CardTwo, this card ends in the two exit-path buttons —
   // they must never scroll out of view, so only the icon/text block above
@@ -225,6 +241,13 @@ function CardThree({
             Importez votre historique TV Time ou Betaseries (CSV/JSON) dès l'inscription. Exportez
             vos données quand vous le voulez.
           </p>
+          <button
+            type="button"
+            onClick={onLearnMore}
+            className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Voir comment ça marche
+          </button>
         </div>
         {showMoreHint ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />

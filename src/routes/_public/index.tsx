@@ -364,6 +364,13 @@ function AnonymousHome() {
       <p className="mt-3 text-center text-[11px] text-muted-foreground">
         Vous arrivez de TV Time ou Betaseries ? Votre import démarre juste après l'inscription.
       </p>
+      <Link
+        to="/alternative-tv-time"
+        hash="exporter-vos-donnees"
+        className="mt-1 block text-center text-[11px] font-medium text-primary hover:underline"
+      >
+        → Comment récupérer vos données TV Time
+      </Link>
     </div>
   );
 }
