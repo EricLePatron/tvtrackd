@@ -9,10 +9,14 @@ import { useFollowedKeys } from "@/hooks/use-followed-keys";
 import { useQuickFollow } from "@/hooks/use-quick-follow";
 import { usePersonCredits, fetchPersonCredits } from "@/hooks/use-person-credits";
 import { DiscoveryGrid, trendingKey, type TrendingItem } from "@/components/home/discovery-grid";
+import { retry } from "@/lib/retry";
 
 export const Route = createFileRoute("/_public/person/$personId")({
   component: PersonScreen,
-  loader: async ({ params }) => fetchPersonCredits(params.personId),
+  // `retry` restaure le filet perdu par le passage en `loader` (react-query
+  // retentait automatiquement 3 fois un `useQuery` en échec, un `loader` ne
+  // le fait pas nativement) — cf. QA P0-1, majeur #3.
+  loader: async ({ params }) => retry(() => fetchPersonCredits(params.personId)),
   head: ({ params, loaderData }) => {
     const canonicalUrl = `${SITE_URL}/person/${params.personId}`;
     const person = loaderData?.person;
@@ -66,10 +70,21 @@ export const Route = createFileRoute("/_public/person/$personId")({
       ],
     };
   },
+  // `<BackButton />` dans les deux fallbacks (QA P0-1, majeur #3) : sans ça,
+  // un utilisateur qui atterrit ici (loader en échec même après retry, ou
+  // personId inconnu) est bloqué sur un écran sans issue de navigation.
   errorComponent: ({ error }) => (
-    <div className="p-6 text-sm text-destructive">Erreur : {error.message}</div>
+    <div className="p-6">
+      <BackButton />
+      <p className="mt-4 text-sm text-destructive">Erreur : {error.message}</p>
+    </div>
   ),
-  notFoundComponent: () => <div className="p-6 text-sm text-muted-foreground">Introuvable.</div>,
+  notFoundComponent: () => (
+    <div className="p-6">
+      <BackButton />
+      <p className="mt-4 text-sm text-muted-foreground">Introuvable.</p>
+    </div>
+  ),
 });
 
 function PersonScreen() {

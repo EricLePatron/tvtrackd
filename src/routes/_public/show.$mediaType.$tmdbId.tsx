@@ -75,6 +75,7 @@ import {
 import { fetchShowCredits, type CastMember } from "@/hooks/use-show-credits";
 import { fetchSimilarMedia } from "@/hooks/use-similar-media";
 import type { TrendingItem } from "@/components/home/discovery-grid";
+import { retry } from "@/lib/retry";
 
 type ShowRouteLoaderData = ShowDetails & {
   /** Best-effort (Promise.allSettled) — [] si l'appel échoue, jamais bloquant. */
@@ -105,14 +106,20 @@ export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
     const tmdbId = Number(params.tmdbId);
     const mediaType = params.mediaType;
     const [detailsResult, castResult, similarResult] = await Promise.allSettled([
-      fetchShowDetails(tmdbId, mediaType),
+      // `get-show-details` est la seule requête critique (titre/synopsis/
+      // saisons/épisodes alimentent `head()` et le corps de la page) — un
+      // `loader` ne bénéficiant pas du retry par défaut de react-query
+      // (contrairement au `useQuery` équivalent avant le passage en SSR),
+      // `retry` restaure ce filet pour une erreur TMDb transitoire (QA P0-1,
+      // majeur #3). Casting/similaires restent sans retry : best-effort pur,
+      // un échec (transitoire ou non) doit juste rendre un tableau vide, pas
+      // consommer du temps supplémentaire à bloquer le SSR.
+      retry(() => fetchShowDetails(tmdbId, mediaType)),
       fetchShowCredits(tmdbId, mediaType),
       fetchSimilarMedia(tmdbId, mediaType),
     ]);
-    // `get-show-details` est la seule requête critique : titre/synopsis/
-    // saisons/épisodes alimentent à la fois `head()` et le corps de la page.
-    // Un échec ici doit remonter à `errorComponent`/`notFoundComponent`, pas
-    // être avalé silencieusement.
+    // Un échec ici (même après retry) doit remonter à
+    // `errorComponent`/`notFoundComponent`, pas être avalé silencieusement.
     if (detailsResult.status === "rejected") throw detailsResult.reason;
     return {
       ...detailsResult.value,
@@ -181,10 +188,22 @@ export const Route = createFileRoute("/_public/show/$mediaType/$tmdbId")({
       ],
     };
   },
+  // `<BackButton />` dans les deux fallbacks (QA P0-1, majeur #3) : cette
+  // route devient atteignable en erreur plus souvent qu'avant (fetch critique
+  // dans un `loader`, cf. `retry` ci-dessus) — sans bouton retour, un
+  // utilisateur qui atterrit ici est bloqué sur un écran sans issue.
   errorComponent: ({ error }) => (
-    <div className="p-6 text-sm text-destructive">Erreur : {error.message}</div>
+    <div className="p-6">
+      <BackButton fallbackTo="/search" />
+      <p className="mt-4 text-sm text-destructive">Erreur : {error.message}</p>
+    </div>
   ),
-  notFoundComponent: () => <div className="p-6 text-sm text-muted-foreground">Introuvable.</div>,
+  notFoundComponent: () => (
+    <div className="p-6">
+      <BackButton fallbackTo="/search" />
+      <p className="mt-4 text-sm text-muted-foreground">Introuvable.</p>
+    </div>
+  ),
 });
 
 const STATUS_LABELS: Record<string, string> = {
