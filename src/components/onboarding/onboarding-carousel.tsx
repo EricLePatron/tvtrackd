@@ -105,16 +105,16 @@ export function OnboardingCarousel() {
       <Carousel
         setApi={setApi}
         opts={{ align: "start", loop: false }}
-        className="group relative mt-2"
+        className="group relative mt-2 w-full md:mx-auto md:mt-6 md:max-w-2xl"
       >
         <CarouselContent className="ml-4">
-          <CarouselItem className="basis-[84vw] pl-4">
+          <CarouselItem className="basis-[84vw] pl-4 md:basis-full">
             <CardOne />
           </CarouselItem>
-          <CarouselItem className="basis-[84vw] pl-4">
+          <CarouselItem className="basis-[84vw] pl-4 md:basis-full">
             <CardTwo />
           </CarouselItem>
-          <CarouselItem className="basis-[84vw] pl-4">
+          <CarouselItem className="basis-[84vw] pl-4 md:basis-full">
             <CardThree onCreateAccount={goToAuth} onExplore={dismiss} />
           </CarouselItem>
         </CarouselContent>
