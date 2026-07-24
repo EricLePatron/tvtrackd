@@ -44,14 +44,16 @@ const homeKey = ["home-schedule", USER_ID] as const;
 
 // Sentinel Zone B values — distinct object identities so a passthrough vs. a
 // (buggy) recompute-from-scratch can be told apart via `toBe` (identity), not
-// just `toEqual` (deep value). `nextReleases` (the "prochaine sortie" encart
-// data) is derived from `dayGroups` exactly like `upcomingCount`/`countdown`
-// — never from the watched set — so it must survive a mark-watched mutation
-// unchanged too, same as the rest of Zone B.
+// just `toEqual` (deep value). `nextReleases` (the "Bientôt" block data) is
+// derived from `dayGroups` exactly like `upcomingCount` — never from the
+// watched set — so it must survive a mark-watched mutation unchanged too,
+// same as the rest of Zone B. (`countdown` was retired from `HomeData`
+// entirely — the old `nextCountdown`/`NothingNowCountdownTicket` pair has
+// been replaced by `selectNextReleases`/`nextReleases`, the same data this
+// sentinel already covers.)
 const ZONE_B = {
   dayGroups: [{ date: "2099-01-01", entries: [] }],
   upcomingCount: 42,
-  countdown: null,
   nextReleases: [
     {
       show: show(999, "Sentinel Next Release"),

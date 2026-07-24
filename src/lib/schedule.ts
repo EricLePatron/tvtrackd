@@ -525,20 +525,6 @@ export function countUpcomingEntries(dayGroups: DayGroup[]): number {
   return dayGroups.reduce((sum, g) => sum + g.entries.length, 0);
 }
 
-/** For the "quelque chose arrive" empty ticket: the single closest future episode. */
-export function nextCountdown(
-  episodes: ScheduleEpisode[],
-  today: string,
-): { show: ShowLite; episode: ScheduleEpisode; daysUntil: number } | null {
-  let best: ScheduleEpisode | null = null;
-  for (const ep of episodes) {
-    if (!ep.air_date || ep.air_date <= today) continue;
-    if (!best || ep.air_date < best.air_date!) best = ep;
-  }
-  if (!best) return null;
-  return { show: best.show, episode: best, daysUntil: daysBetween(today, best.air_date!) };
-}
-
 export type NextReleaseItem = {
   show: ShowLite;
   episode: ScheduleEpisode;
@@ -568,6 +554,21 @@ export type NextReleaseItem = {
  * index.tsx's queryFn) — the hero already dominates that show's slot as
  * "à voir maintenant"; repeating it here as "dans Nj" would read as
  * redundant/confusing rather than as a genuinely different upcoming release.
+ * `hero` is always `null` in the `upcoming_only` state (no ready backlog at
+ * all), so callers passing `hero ? new Set([hero.show.id]) : undefined`
+ * naturally end up with no exclusion there — no special-casing needed.
+ *
+ * Also the SOLE selection function behind the Home's "Bientôt" teaser in
+ * BOTH the `normal` state (capped at 2: 1 big + 1 compact card, alongside
+ * the hero/backlog) and the `upcoming_only` state (capped higher, ~5: this
+ * IS the primary content of the screen there) — the caller picks `limit`
+ * per state (see `HomeScreen`'s queryFn). Deliberately NOT two separate
+ * selection functions for what is conceptually the same "what's coming up
+ * for each show" concept — an earlier revision had a second, parallel
+ * function (`nextUpcomingPerShow`/`UpcomingShowNext`) for the `upcoming_only`
+ * empty state; it has been retired in favor of this single function to
+ * avoid two selection algorithms (and two rendering templates) for the same
+ * idea drifting apart silently.
  */
 export function selectNextReleases(
   dayGroups: DayGroup[],
@@ -600,52 +601,21 @@ export function selectNextReleases(
 }
 
 /**
- * One entry per followed show that has at least one strictly-future episode,
- * pointing at that show's *soonest* upcoming episode, sorted by proximity.
- * Used by the Home "en attente" state to feature the closest show as a
- * graphic hero AND list the other awaited shows below it — a single-show
- * countdown wasn't enough when several shows are waiting at once.
- */
-export type UpcomingShowNext = {
-  show: ShowLite;
-  episode: ScheduleEpisode;
-  daysUntil: number;
-};
-
-export function nextUpcomingPerShow(
-  episodes: ScheduleEpisode[],
-  today: string,
-): UpcomingShowNext[] {
-  const byShow = new Map<number, ScheduleEpisode>();
-  for (const ep of episodes) {
-    if (!ep.air_date || ep.air_date <= today) continue;
-    const prev = byShow.get(ep.show.id);
-    if (!prev || ep.air_date < prev.air_date!) byShow.set(ep.show.id, ep);
-  }
-  return Array.from(byShow.values())
-    .map((ep) => ({ show: ep.show, episode: ep, daysUntil: daysBetween(today, ep.air_date!) }))
-    .sort((a, b) =>
-      a.daysUntil !== b.daysUntil
-        ? a.daysUntil - b.daysUntil
-        : a.show.title.localeCompare(b.show.title, "fr"),
-    );
-}
-
-/**
  * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown,
  * extrait à l'identique de `NextEpisodeCard` (fiche série,
- * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NothingNowCountdownTicket`,
- * `NextReleaseCard`) et la fiche partagent la même formulation plutôt que
- * deux implémentations qui redivergeraient silencieusement. Volontairement
+ * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NextReleaseCard`,
+ * `NextReleaseHeroCard`) et la fiche partagent la même formulation plutôt
+ * que deux implémentations qui redivergeraient silencieusement. Volontairement
  * "j" abrégé, jamais "jours". Sans le mot "dans" (retiré — wording chip
  * validé en revue design, pensé pour un pill compact plutôt qu'une phrase :
  * "2 j" / "demain" / "aujourd'hui") : les appelants qui ont besoin d'une
  * phrase complète (ex. un futur "Prochain épisode {label}") doivent
  * composer le mot eux-mêmes plutôt que de le tenir pour acquis ici.
- * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : les deux appelants
- * actuels le garantissent déjà — `nextCountdown` ci-dessus ne considère que
- * des épisodes strictement futurs (`daysUntil` toujours >= 1 en pratique),
- * et `NextEpisodeCard` clampe son propre calcul via `Math.max(0, ...)` avant
+ * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : `NextReleaseItem`s
+ * (via `selectNextReleases`, dérivée de `groupUpcomingByDay` — strictement
+ * futur par construction, `air_date <= today` exclu) ont même `daysUntil`
+ * toujours >= 1 en pratique (le cas 0 ne s'y produit jamais), et
+ * `NextEpisodeCard` clampe son propre calcul via `Math.max(0, ...)` avant
  * d'appeler cette fonction.
  */
 export function formatCountdownLabel(daysUntil: number): string {
@@ -694,8 +664,14 @@ export type HomeData = {
   readyCount: number;
   dayGroups: DayGroup[];
   upcomingCount: number;
-  countdown: ReturnType<typeof nextCountdown>;
-  /** Up to 2 distinct-by-show upcoming releases (hero's own show excluded) — see `selectNextReleases`. Rendered only in the `normal` state, directly under the hero. */
+  /**
+   * Up to `limit` distinct-by-show upcoming releases (hero's own show
+   * excluded when there is one) — see `selectNextReleases`. Rendered under a
+   * shared "Bientôt" section in BOTH the `normal` state (capped at 2,
+   * alongside the hero/backlog) and the `upcoming_only` state (capped
+   * higher, ~5 — the primary content of the screen there). The caller
+   * (`HomeScreen`'s queryFn) picks `limit` per state.
+   */
   nextReleases: NextReleaseItem[];
   raw: HomeRawInputs;
 };
@@ -710,11 +686,12 @@ export type HomeData = {
  * actual rotation rules (freshness thresholds, en_cours > a_voir priority,
  * last-resort fallback, etc.).
  *
- * Deliberately does NOT touch `dayGroups`/`upcomingCount`/`countdown`
- * ("Programme à venir"): `groupUpcomingByDay` and `nextCountdown` only ever
- * consider `air_date > today` and take no watched-set input at all, so
- * marking a past/today episode watched cannot affect them — callers should
- * carry those three fields over unchanged from the previous `HomeData`.
+ * Deliberately does NOT touch `dayGroups`/`upcomingCount`/`nextReleases`
+ * ("Programme à venir" / "Bientôt"): `groupUpcomingByDay` and
+ * `selectNextReleases` only ever consider `air_date > today` and take no
+ * watched-set input at all, so marking a past/today episode watched cannot
+ * affect them — callers should carry those fields over unchanged from the
+ * previous `HomeData`.
  */
 export function deriveHomeView(
   raw: HomeRawInputs,

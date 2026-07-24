@@ -949,6 +949,17 @@ describe("selectNextReleases", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("supports a higher `limit` — e.g. the `upcoming_only` Home state's cap of ~5 for its 'Bientôt' block (no hero/backlog to share the screen with)", () => {
+    const shows = Array.from({ length: 6 }, (_, i) => show(i + 1, `Show ${i + 1}`));
+    const episodes = shows.map((s, i) => ep(s, 100 * (i + 1), 1, 1, `2026-07-${10 + i}`));
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY, { limit: 5 });
+
+    expect(result).toHaveLength(5);
+    expect(result.map((r) => r.show.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it("returns results in strict chronological order, earliest day first", () => {
     const later = show(1, "Later Show");
     const sooner = show(2, "Sooner Show");

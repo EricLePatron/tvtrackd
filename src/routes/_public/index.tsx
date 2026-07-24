@@ -16,14 +16,13 @@ import {
   countUpcomingEntries,
   deriveHomeView,
   groupUpcomingByDay,
-  nextCountdown,
-  nextUpcomingPerShow,
   resolveHomeState,
   formatReadyLabel,
   selectNextReleases,
   type ActiveStatus,
   type HomeData,
   type HomeState,
+  type NextReleaseItem,
   type ReadyItem,
   type ScheduleEpisode,
 } from "@/lib/schedule";
@@ -31,12 +30,12 @@ import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
 import { NextReleaseCard } from "@/components/home/next-release-card";
+import { NextReleaseHeroCard } from "@/components/home/next-release-hero-card";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
 import {
   NoShowsPanel,
   AllCaughtUpBanner,
-  NothingNowCountdownTicket,
   NothingScheduledNotice,
 } from "@/components/home/empty-states";
 
@@ -130,7 +129,6 @@ function HomeScreen() {
           readyCount: 0,
           dayGroups: [],
           upcomingCount: 0,
-          countdown: null,
           nextReleases: [],
           raw: {
             episodes: [],
@@ -240,12 +238,26 @@ function HomeScreen() {
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
-      const countdown = nextCountdown(episodes, today);
+      // `limit` varies by state: `normal` caps the "Bientôt" teaser at 2 (1
+      // big + 1 compact) alongside the hero/backlog, while `upcoming_only`
+      // (no ready backlog at all — see `resolveHomeState`) makes this block
+      // the PRIMARY content of the screen, so it gets a higher cap (~5: 1
+      // big + up to 4 compact). Overflow beyond either cap stays covered by
+      // the "Programme à venir" rail below, unaffected by this cap.
+      const homeState = resolveHomeState({
+        followedActiveCount: showIds.length,
+        readyCount,
+        upcomingCount,
+      });
+      const nextReleasesLimit = homeState === "upcoming_only" ? 5 : 2;
       // Excludes the hero's own show — it already dominates that show's
-      // slot as "à voir maintenant"; repeating it here as "dans Nj" would
-      // read as redundant rather than as a genuinely different upcoming
-      // release. See `selectNextReleases`'s doc comment.
+      // slot as "à voir maintenant"; repeating it here as "Nj" would read as
+      // redundant rather than as a genuinely different upcoming release.
+      // `hero` is always null in `upcoming_only` (readyCount 0), so this
+      // naturally becomes `undefined` there — no special-casing needed. See
+      // `selectNextReleases`'s doc comment.
       const nextReleases = selectNextReleases(dayGroups, today, {
+        limit: nextReleasesLimit,
         excludeShowIds: hero ? new Set([hero.show.id]) : undefined,
       });
 
@@ -259,7 +271,6 @@ function HomeScreen() {
         readyCount,
         dayGroups,
         upcomingCount,
-        countdown,
         nextReleases,
         raw,
       };
@@ -451,10 +462,16 @@ function HomeContent({ data }: { data: HomeData }) {
   const buckets = bucketUpcoming(data.dayGroups, data.today);
 
   if (state === "upcoming_only") {
-    const awaited = nextUpcomingPerShow(data.raw.episodes, data.today);
+    // No hero/backlog at all in this state — the "Bientôt" block (same
+    // shared gabarit as in `normal`, just a higher `limit` set server-side
+    // in the queryFn) IS the primary content at the top of the screen, so
+    // its header is always shown (never gated on `length >= 2` the way
+    // `normal`'s is — see `NextReleasesBlock`).
     return (
       <>
-        <NothingNowCountdownTicket awaited={awaited} />
+        <div className="mx-5">
+          <NextReleasesBlock items={data.nextReleases} today={data.today} alwaysShowHeader />
+        </div>
         <div className="mt-8 space-y-6 px-5">
           <UpcomingSectionHeader />
           <UpcomingRails buckets={buckets} today={data.today} />
@@ -529,30 +546,18 @@ function HomeContent({ data }: { data: HomeData }) {
           </div>
         )}
 
-        {/* Encart(s) "prochaine sortie" — UNIQUEMENT en état `normal` (backlog
-            ET sortie future connues, cf. resolveHomeState) : `upcoming_only`
-            garde sa propre carte dédiée (NothingNowCountdownTicket, plus
-            haut dans ce fichier) et `ready_only` n'a par construction aucune
-            entrée à afficher ici (upcomingCount === 0 => dayGroups vide =>
-            nextReleases vide). Placé APRÈS "Reprendre"/"À commencer", juste
-            avant la Zone B (décision produit révisée — remplace le
-            placement précédent "juste sous le hero, avant Reprendre") :
-            l'ordre validé en état `normal` est désormais Hero → Reprendre →
-            Bientôt → Programme à venir. */}
+        {/* Bloc "Bientôt" — UNIQUEMENT en état `normal` (backlog ET sortie
+            future connues, cf. resolveHomeState) : `upcoming_only` rend son
+            propre bloc "Bientôt" plus haut dans ce fichier (même gabarit
+            partagé, `limit` plus élevé) et `ready_only` n'a par construction
+            aucune entrée à afficher ici (upcomingCount === 0 => dayGroups
+            vide => nextReleases vide). Placé APRÈS "Reprendre"/"À
+            commencer", juste avant la Zone B : l'ordre validé en état
+            `normal` est Hero → Reprendre → À commencer → Bientôt →
+            Programme à venir. */}
         {state === "normal" && data.nextReleases.length > 0 && (
           <div className="mt-5">
-            {/* Eyebrow "Bientôt" seulement à partir de 2 encarts — avec un
-                seul, la carte se suffit à elle-même (fidèle à la maquette
-                validée), un eyebrow solitaire au-dessus d'un item unique
-                serait un bruit visuel superflu. */}
-            {data.nextReleases.length >= 2 && (
-              <p className="mb-2 font-display text-sm text-foreground">Bientôt</p>
-            )}
-            <div className="space-y-2">
-              {data.nextReleases.map((item) => (
-                <NextReleaseCard key={item.show.id} item={item} today={data.today} />
-              ))}
-            </div>
+            <NextReleasesBlock items={data.nextReleases} today={data.today} />
           </div>
         )}
       </div>
@@ -567,6 +572,47 @@ function HomeContent({ data }: { data: HomeData }) {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Shared "Bientôt" block — rang #1 en grand format (`NextReleaseHeroCard`),
+ * rangs #2+ en format compact (`NextReleaseCard`), sous un en-tête de
+ * section "Bientôt" (Archivo). Seule différence entre ses deux call sites
+ * (`HomeContent`'s `normal` et `upcoming_only` branches) : `alwaysShowHeader`
+ * — `normal` garde la règle "eyebrow seulement à partir de 2 items" (un item
+ * seul se suffit à lui-même, à côté du hero/backlog déjà présents),
+ * `upcoming_only` affiche toujours l'en-tête puisque ce bloc est alors le
+ * seul contenu en tête d'écran (pas de hero pour l'accompagner). `limit` (le
+ * nombre d'`items` reçus) est décidé en amont, dans le queryFn de
+ * `HomeScreen` — ce composant se contente d'afficher ce qu'on lui donne.
+ */
+function NextReleasesBlock({
+  items,
+  today,
+  alwaysShowHeader = false,
+}: {
+  items: NextReleaseItem[];
+  today: string;
+  alwaysShowHeader?: boolean;
+}) {
+  if (!items.length) return null;
+
+  return (
+    <div>
+      {(alwaysShowHeader || items.length >= 2) && (
+        <p className="mb-2 font-display text-sm text-foreground">Bientôt</p>
+      )}
+      <div className="space-y-2">
+        {items.map((item, index) =>
+          index === 0 ? (
+            <NextReleaseHeroCard key={item.show.id} item={item} />
+          ) : (
+            <NextReleaseCard key={item.show.id} item={item} today={today} />
+          ),
+        )}
+      </div>
+    </div>
   );
 }
 
