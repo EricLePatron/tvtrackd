@@ -106,6 +106,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null, // irrelevant here — components only ever read from the cache after these calls
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -115,6 +116,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId,
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 2, // A's season 1 total (101 + 102)
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, initial);
@@ -203,6 +205,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null,
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -212,6 +215,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map(),
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 1, // fetched for heroShow's season 1
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, initial);
@@ -252,6 +256,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null,
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -261,6 +266,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map(),
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 2,
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, v1);
@@ -293,6 +299,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map([[1, "2026-07-08T00:00:00.000Z"]]),
         watchedEpisodeIds: new Set([101]),
         heroSeasonEpisodeCount: 3, // official count grew server-side
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, v2);
@@ -322,6 +329,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null,
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -331,6 +339,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map(),
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 1,
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     });
 

@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import type { ReadyItem } from "@/lib/schedule";
 import { formatReadyLabel } from "@/lib/schedule";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
+import { VhsCounter } from "@/components/vhs-counter";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -13,8 +14,24 @@ function pad(n: number) {
  * "list item per episode" — one row per followed show. ("À commencer" no
  * longer uses this row — it renders as a horizontal poster rail instead, see
  * `start-rail.tsx`.)
+ *
+ * `progress` (Étage 2.2 — progression saison en cours sur "Reprendre") is
+ * the show's OWN current-season watched/total tally, computed by
+ * `computeReprendreProgress` (schedule.ts) and passed down by `HomeContent`
+ * (index.tsx) — `undefined` when not (yet) reliable (see
+ * `isSeasonTallyReliable`), in which case this row falls back to the plain
+ * `SxxExx` text label it always showed before this lot, exactly like the
+ * hero ticket falls back to its bare S/E label when `heroProgress` is
+ * `null`. Reuses `VhsCounter`'s "grid" variant (previously library.tsx
+ * only) rather than a new component — same compact `S02·E06` + bar chip.
  */
-export function ReadyListItem({ item }: { item: ReadyItem }) {
+export function ReadyListItem({
+  item,
+  progress,
+}: {
+  item: ReadyItem;
+  progress?: { watched: number; total: number };
+}) {
   const { show, nextEpisode, extraCount } = item;
   const markWatched = useMarkWatched();
   const label = formatReadyLabel(item);
@@ -49,10 +66,27 @@ export function ReadyListItem({ item }: { item: ReadyItem }) {
           <p className="font-counter text-[10px] uppercase tracking-widest text-primary">{label}</p>
         )}
         <h4 className="mt-0.5 truncate text-sm text-foreground">{show.title}</h4>
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-          {extraCount > 0 && <span className="ml-2 text-primary">+{extraCount}</span>}
-        </p>
+        {progress ? (
+          <div className="mt-1 flex items-center gap-2">
+            <VhsCounter
+              variant="grid"
+              seasonNumber={nextEpisode.season_number}
+              nextEpisodeNumber={nextEpisode.episode_number}
+              watched={progress.watched}
+              total={progress.total}
+            />
+            {extraCount > 0 && (
+              <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
+                +{extraCount}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
+            {extraCount > 0 && <span className="ml-2 text-primary">+{extraCount}</span>}
+          </p>
+        )}
       </div>
       {/* 44px tap target (WCAG 2.5.5) — the visible icon stays small (~16px),
           only the hitbox grows, matching the hero ticket's own check button. */}

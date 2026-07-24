@@ -15,9 +15,11 @@ type VhsCounterProps =
     }
   | {
       /**
-       * Compact grid chip (library "En cours" tab, "Actif"/"En pause"
-       * subgroups only — see library.tsx). Line 1 = season + NEXT unwatched
-       * episode ("S02·E06"), not the last one of the season — deliberately a
+       * Compact grid chip — library "En cours" tab ("Actif"/"En pause"
+       * subgroups, see library.tsx) AND, since Étage 2.2 of the Home
+       * refonte, the Home's "Reprendre" rows (`ReadyListItem`, progression
+       * saison en cours). Line 1 = season + NEXT unwatched episode
+       * ("S02·E06"), not the last one of the season — deliberately a
        * different prop name (`nextEpisodeNumber`) so this semantic swap can't
        * be missed by a future reader of this component. The library's
        * caught-up ("à jour") chip is a distinct content shape (no episode

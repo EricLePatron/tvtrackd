@@ -185,20 +185,21 @@ export function computeSeasonTally(
 
 /**
  * Whether a `computeSeasonTally` result can be trusted as a *complete*
- * season total — guards against the hero ticket's progress bar looking
- * falsely close to 100% for a long-hiatus season. The Home screen's
- * `episodes` fetch caps the future at J+90 (see index.tsx), so a season
- * still airing with episodes announced further out than that would have its
- * `total` silently undercounted by `computeSeasonTally` (which only ever
- * sees what got fetched). `officialEpisodeCount` is TMDb's own per-season
- * count (the `seasons.episode_count` cache column, fetched separately —
- * see index.tsx — only for the hero's own season, a single cheap row
- * lookup): the tally is only reliable once it has caught up to that
- * official count. `null`/`undefined` (not yet known, or the season row
- * isn't cached) is treated as unreliable — fail safe, never fail loud.
- * `0` is treated the same way: a season legitimately has at least one
- * episode by the time a hero ticket can point at it, so `episode_count = 0`
- * only ever means "not populated yet" in the `seasons` cache, never a real
+ * season total — guards against a progress bar/chip looking falsely close
+ * to 100% for a long-hiatus season. The Home screen's `episodes` fetch caps
+ * the future at J+90 (see index.tsx), so a season still airing with
+ * episodes announced further out than that would have its `total` silently
+ * undercounted by `computeSeasonTally` (which only ever sees what got
+ * fetched). `officialEpisodeCount` is TMDb's own per-season count (the
+ * `seasons.episode_count` cache column, fetched separately — see
+ * index.tsx — for the hero's own season AND, since Étage 2.2, for each
+ * visible "Reprendre" row's own season too, see `seasonCountKey`): the
+ * tally is only reliable once it has caught up to that official count.
+ * `null`/`undefined` (not yet known, or the season row isn't cached) is
+ * treated as unreliable — fail safe, never fail loud. `0` is treated the
+ * same way: a season legitimately has at least one episode by the time a
+ * hero/Reprendre row can point at it, so `episode_count = 0` only ever
+ * means "not populated yet" in the `seasons` cache, never a real
  * zero-episode season — trusting it would have let a tally of `{ total: 0 }`
  * through as "reliable" by pure coincidence (`0 >= 0`).
  */
@@ -209,6 +210,63 @@ export function isSeasonTallyReliable(
   return (
     officialEpisodeCount != null && officialEpisodeCount > 0 && tally.total >= officialEpisodeCount
   );
+}
+
+/**
+ * Composite key for the `seasons.episode_count` cache used to reliability-
+ * check a season tally OUTSIDE the hero (which uses a single scalar,
+ * `heroSeasonEpisodeCount` — it only ever needs one season at a time). A
+ * plain string (not a nested Map) so it can flow through `HomeRawInputs` as
+ * a simple `ReadonlyMap<string, number>`, cheaply serializable/comparable,
+ * and trivial to carry unchanged through `useMarkWatched`'s optimistic
+ * recompute (see `recomputeFromBatch`).
+ */
+export function seasonCountKey(showId: number, seasonNumber: number): string {
+  return `${showId}:${seasonNumber}`;
+}
+
+/**
+ * Season watched/total tally for each visible "Reprendre" row (its OWN
+ * current season, i.e. `item.nextEpisode.season_number` — mirrors the
+ * hero's own season-scoped progress, `heroProgress`) — feeds the
+ * `VhsCounter` "grid" chip on `ReadyListItem` (Étage 2.2 of the Home
+ * refonte: progression saison en cours, pas le total série).
+ *
+ * A show is present in the returned map ONLY when its tally is reliable
+ * (`isSeasonTallyReliable`) — same fail-safe behavior as the hero's
+ * `heroProgress` (`null` when unreliable): the caller must treat a missing
+ * entry as "no fraction to show yet" rather than rendering a falsely-low
+ * tally. This also means a show whose `nextEpisode` just rolled over to a
+ * NEW season (e.g. right after marking its previous season finale watched)
+ * naturally has no entry until the next server refetch populates
+ * `seasonEpisodeCounts` for that new `(showId, seasonNumber)` pair — no
+ * explicit "reset on rotation" needed here, unlike the hero's own
+ * `heroSeasonEpisodeCount`/`heroKeyOf` bookkeeping in `use-mark-watched.ts`:
+ * looking up a key that was never fetched is already indistinguishable from
+ * "not yet known" by construction.
+ */
+export function computeReprendreProgress(
+  reprendreItems: readonly ReadyItem[],
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  seasonEpisodeCounts: ReadonlyMap<string, number>,
+): ReadonlyMap<number, { watched: number; total: number }> {
+  const result = new Map<number, { watched: number; total: number }>();
+  for (const item of reprendreItems) {
+    const tally = computeSeasonTally(
+      episodes,
+      watchedEpisodeIds,
+      item.show.id,
+      item.nextEpisode.season_number,
+    );
+    const officialCount = seasonEpisodeCounts.get(
+      seasonCountKey(item.show.id, item.nextEpisode.season_number),
+    );
+    if (isSeasonTallyReliable(tally, officialCount)) {
+      result.set(item.show.id, tally);
+    }
+  }
+  return result;
 }
 
 /**
@@ -645,6 +703,18 @@ export type HomeRawInputs = {
    * season than the one this count was fetched for — see `deriveHomeView`).
    */
   heroSeasonEpisodeCount: number | null;
+  /**
+   * TMDb's official `episode_count` (same `seasons` cache column as
+   * `heroSeasonEpisodeCount`, see `seasonCountKey`) for every visible
+   * "Reprendre" row's OWN current season — Étage 2.2 (progression saison en
+   * cours sur "Reprendre", `computeReprendreProgress`). A missing key means
+   * "not yet fetched for this (show, season) pair" — the affected row simply
+   * shows no fraction until the next server refetch, no explicit reset
+   * needed (see `computeReprendreProgress`'s doc comment). Only ever
+   * populated for the rows actually rendered (`REPRENDRE_VISIBLE_COUNT`,
+   * index.tsx) — never for the full, unsliced `reprendre` list.
+   */
+  reprendreSeasonEpisodeCounts: ReadonlyMap<string, number>;
 };
 
 /**
@@ -660,6 +730,8 @@ export type HomeData = {
   /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
   heroProgress: { watched: number; total: number } | null;
   reprendre: ReadyItem[];
+  /** Season watched/total tally per visible "Reprendre" row, when reliable — see `computeReprendreProgress`. Feeds `ReadyListItem`'s `VhsCounter` "grid" chip. */
+  reprendreProgressByShowId: ReadonlyMap<number, { watched: number; total: number }>;
   nouveau: ReadyItem[];
   readyCount: number;
   dayGroups: DayGroup[];
@@ -678,13 +750,13 @@ export type HomeData = {
 
 /**
  * Derives the "À voir maintenant" part of `HomeData` (hero + heroProgress +
- * reprendre + nouveau + readyCount) from `HomeRawInputs` — the exact same
- * pipeline the Home screen's `queryFn` runs on initial load, factored out so
- * `useMarkWatched`'s `onMutate` can re-run it locally against an optimistic
- * `watchedEpisodeIds` (current watched set + the episode just tapped) instead
- * of hand-rolling a shortcut that would risk diverging from `selectHero`'s
- * actual rotation rules (freshness thresholds, en_cours > a_voir priority,
- * last-resort fallback, etc.).
+ * reprendre + reprendreProgressByShowId + nouveau + readyCount) from
+ * `HomeRawInputs` — the exact same pipeline the Home screen's `queryFn` runs
+ * on initial load, factored out so `useMarkWatched`'s `onMutate` can re-run
+ * it locally against an optimistic `watchedEpisodeIds` (current watched set
+ * + the episode just tapped) instead of hand-rolling a shortcut that would
+ * risk diverging from `selectHero`'s actual rotation rules (freshness
+ * thresholds, en_cours > a_voir priority, last-resort fallback, etc.).
  *
  * Deliberately does NOT touch `dayGroups`/`upcomingCount`/`nextReleases`
  * ("Programme à venir" / "Bientôt"): `groupUpcomingByDay` and
@@ -696,7 +768,10 @@ export type HomeData = {
 export function deriveHomeView(
   raw: HomeRawInputs,
   today: string,
-): Pick<HomeData, "hero" | "heroProgress" | "reprendre" | "nouveau" | "readyCount"> {
+): Pick<
+  HomeData,
+  "hero" | "heroProgress" | "reprendre" | "reprendreProgressByShowId" | "nouveau" | "readyCount"
+> {
   const ready = buildReadyItems(raw.episodes, raw.watchedEpisodeIds, raw.showStatusByShowId, today);
   const { hero, reprendre, nouveau } = selectHero(ready, today, raw.lastWatchedAtByShowId);
 
@@ -711,7 +786,21 @@ export function deriveHomeView(
     heroProgress = isSeasonTallyReliable(tally, raw.heroSeasonEpisodeCount) ? tally : null;
   }
 
-  return { hero, heroProgress, reprendre, nouveau, readyCount: ready.length };
+  const reprendreProgressByShowId = computeReprendreProgress(
+    reprendre,
+    raw.episodes,
+    raw.watchedEpisodeIds,
+    raw.reprendreSeasonEpisodeCounts,
+  );
+
+  return {
+    hero,
+    heroProgress,
+    reprendre,
+    reprendreProgressByShowId,
+    nouveau,
+    readyCount: ready.length,
+  };
 }
 
 /** Dispatch logic for the 4 (+1 normal) home states. */

@@ -18,9 +18,11 @@ import {
   groupUpcomingByDay,
   resolveHomeState,
   formatReadyLabel,
+  seasonCountKey,
   selectNextReleases,
   type ActiveStatus,
   type HomeData,
+  type HomeRawInputs,
   type HomeState,
   type NextReleaseItem,
   type ReadyItem,
@@ -125,6 +127,7 @@ function HomeScreen() {
           hero: null,
           heroProgress: null,
           reprendre: [],
+          reprendreProgressByShowId: new Map(),
           nouveau: [],
           readyCount: 0,
           dayGroups: [],
@@ -136,6 +139,7 @@ function HomeScreen() {
             lastWatchedAtByShowId: new Map(),
             watchedEpisodeIds: new Set(),
             heroSeasonEpisodeCount: null,
+            reprendreSeasonEpisodeCounts: new Map(),
           },
         };
       }
@@ -198,43 +202,96 @@ function HomeScreen() {
       // are only reachable through /library — but the split itself already
       // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
       //
-      // First pass without the hero's official season episode count (not
-      // known yet — depends on which show wins hero, computed just below).
-      // `hero`/`reprendre`/`nouveau`/`readyCount` are already final at this
-      // point (none of them depend on `heroSeasonEpisodeCount`); only
-      // `heroProgress` is discarded and recomputed in the second pass below.
-      const rawWithoutHeroCount = {
+      // First pass without the hero's/Reprendre rows' official season
+      // episode counts (not known yet — depend on which show wins hero and
+      // which shows land in the visible "Reprendre" rows, both computed just
+      // below). `hero`/`reprendre`/`nouveau`/`readyCount` are already final
+      // at this point (none of them depend on the season-count maps); only
+      // `heroProgress`/`reprendreProgressByShowId` are discarded and
+      // recomputed in the second pass below.
+      const rawWithoutSeasonCounts = {
         episodes,
         showStatusByShowId,
         lastWatchedAtByShowId,
         watchedEpisodeIds: watchedSet,
         heroSeasonEpisodeCount: null,
+        reprendreSeasonEpisodeCounts: new Map<string, number>(),
       };
-      const { hero, reprendre, nouveau, readyCount } = deriveHomeView(rawWithoutHeroCount, today);
+      const { hero, reprendre, nouveau, readyCount } = deriveHomeView(
+        rawWithoutSeasonCounts,
+        today,
+      );
 
-      let heroSeasonEpisodeCount: number | null = null;
-      let heroProgress: { watched: number; total: number } | null = null;
-      if (hero) {
-        // One cheap single-row lookup (unique-indexed on show_id+season_number)
-        // for the hero's own season only — never for every followed show —
-        // to know the season's OFFICIAL episode count and confirm the tally
-        // isn't undercounted by the 90-day future cap above. See
-        // `isSeasonTallyReliable` for why an unreliable tally hides the
-        // fraction/bar entirely rather than risking a falsely-~100% bar.
-        const { data: seasonRow } = await supabase
-          .from("seasons")
-          .select("episode_count")
-          .eq("show_id", hero.show.id)
-          .eq("season_number", hero.nextEpisode.season_number)
-          .maybeSingle();
-        heroSeasonEpisodeCount = seasonRow?.episode_count ?? null;
-        heroProgress = deriveHomeView(
-          { ...rawWithoutHeroCount, heroSeasonEpisodeCount },
-          today,
-        ).heroProgress;
-      }
+      // Only the rows actually rendered under "Reprendre" (REPRENDRE_VISIBLE_COUNT,
+      // see HomeContent) need a season-count fetch — the rest of `reprendre`
+      // is only ever reached through /library, which computes its own
+      // progress independently (`buildLibraryProgress`, unbounded episodes
+      // fetch, no reliability guard needed there).
+      const reprendreVisible = reprendre.slice(0, REPRENDRE_VISIBLE_COUNT);
+      const reprendreShowIds = [...new Set(reprendreVisible.map((item) => item.show.id))];
 
-      const raw = { ...rawWithoutHeroCount, heroSeasonEpisodeCount };
+      // Both lookups are independent single-purpose reads of the `seasons`
+      // cache (hero's own season vs. each visible Reprendre row's own
+      // season) — run in parallel rather than as a waterfall, same reasoning
+      // as the `episodes`/`recencyRows` pair above. PostgREST has no
+      // composite-tuple `IN` filter, so the Reprendre lookup fetches every
+      // season row for the (small, <=3) set of show ids and filters to the
+      // exact (show, season) pairs needed client-side — cheap at this scale.
+      const [heroSeasonRes, reprendreSeasonsRes] = await Promise.all([
+        hero
+          ? supabase
+              .from("seasons")
+              .select("episode_count")
+              .eq("show_id", hero.show.id)
+              .eq("season_number", hero.nextEpisode.season_number)
+              .maybeSingle()
+          : Promise.resolve({ data: null as { episode_count: number | null } | null }),
+        reprendreShowIds.length
+          ? supabase
+              .from("seasons")
+              .select("show_id, season_number, episode_count")
+              .in("show_id", reprendreShowIds)
+          : Promise.resolve({
+              data: [] as {
+                show_id: number;
+                season_number: number;
+                episode_count: number | null;
+              }[],
+            }),
+      ]);
+
+      // One cheap single-row lookup (unique-indexed on show_id+season_number)
+      // for the hero's own season only — never for every followed show —
+      // to know the season's OFFICIAL episode count and confirm the tally
+      // isn't undercounted by the 90-day future cap above. See
+      // `isSeasonTallyReliable` for why an unreliable tally hides the
+      // fraction/bar entirely rather than risking a falsely-~100% bar.
+      const heroSeasonEpisodeCount = heroSeasonRes.data?.episode_count ?? null;
+
+      const neededReprendreKeys = new Set(
+        reprendreVisible.map((item) =>
+          seasonCountKey(item.show.id, item.nextEpisode.season_number),
+        ),
+      );
+      const reprendreSeasonEpisodeCounts = new Map<string, number>(
+        (reprendreSeasonsRes.data ?? [])
+          .filter(
+            (row): row is { show_id: number; season_number: number; episode_count: number } =>
+              row.episode_count != null &&
+              neededReprendreKeys.has(seasonCountKey(row.show_id, row.season_number)),
+          )
+          .map((row): [string, number] => [
+            seasonCountKey(row.show_id, row.season_number),
+            row.episode_count,
+          ]),
+      );
+
+      const raw: HomeRawInputs = {
+        ...rawWithoutSeasonCounts,
+        heroSeasonEpisodeCount,
+        reprendreSeasonEpisodeCounts,
+      };
+      const { heroProgress, reprendreProgressByShowId } = deriveHomeView(raw, today);
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
@@ -267,6 +324,7 @@ function HomeScreen() {
         hero,
         heroProgress,
         reprendre,
+        reprendreProgressByShowId,
         nouveau,
         readyCount,
         dayGroups,
@@ -533,7 +591,11 @@ function HomeContent({ data }: { data: HomeData }) {
             </div>
             <div className="space-y-2">
               {data.reprendre.slice(0, REPRENDRE_VISIBLE_COUNT).map((item) => (
-                <ReadyListItem key={item.show.id} item={item} />
+                <ReadyListItem
+                  key={item.show.id}
+                  item={item}
+                  progress={data.reprendreProgressByShowId.get(item.show.id)}
+                />
               ))}
             </div>
           </div>
