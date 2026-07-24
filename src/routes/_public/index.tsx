@@ -20,6 +20,7 @@ import {
   nextUpcomingPerShow,
   resolveHomeState,
   formatReadyLabel,
+  selectNextReleases,
   type ActiveStatus,
   type HomeData,
   type ReadyItem,
@@ -28,6 +29,7 @@ import {
 import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
+import { NextReleaseCard } from "@/components/home/next-release-card";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
 import {
@@ -111,6 +113,7 @@ function HomeScreen() {
           dayGroups: [],
           upcomingCount: 0,
           countdown: null,
+          nextReleases: [],
           raw: {
             episodes: [],
             showStatusByShowId: new Map(),
@@ -220,6 +223,13 @@ function HomeScreen() {
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
       const countdown = nextCountdown(episodes, today);
+      // Excludes the hero's own show — it already dominates that show's
+      // slot as "à voir maintenant"; repeating it here as "dans Nj" would
+      // read as redundant rather than as a genuinely different upcoming
+      // release. See `selectNextReleases`'s doc comment.
+      const nextReleases = selectNextReleases(dayGroups, today, {
+        excludeShowIds: hero ? new Set([hero.show.id]) : undefined,
+      });
 
       return {
         today,
@@ -232,6 +242,7 @@ function HomeScreen() {
         dayGroups,
         upcomingCount,
         countdown,
+        nextReleases,
         raw,
       };
     },
@@ -426,6 +437,34 @@ function HomeContent({ data }: { data: HomeData }) {
             item={data.hero}
             progress={data.heroProgress ?? undefined}
           />
+        )}
+
+        {/* Encart(s) "prochaine sortie" — UNIQUEMENT en état `normal` (backlog
+            ET sortie future connues, cf. resolveHomeState) : `upcoming_only`
+            garde sa propre carte dédiée (NothingNowCountdownTicket, plus
+            haut dans ce fichier) et `ready_only` n'a par construction aucune
+            entrée à afficher ici (upcomingCount === 0 => dayGroups vide =>
+            nextReleases vide). Placé volontairement JUSTE SOUS le hero,
+            AVANT "Reprendre"/"À commencer" (décision produit) — assume le
+            léger mélange à-voir / à-venir plutôt que de repousser l'encart
+            en bas de la Zone A. */}
+        {state === "normal" && data.nextReleases.length > 0 && (
+          <div className="mt-5">
+            {/* Eyebrow "Bientôt" seulement à partir de 2 encarts — avec un
+                seul, la carte se suffit à elle-même (fidèle à la maquette
+                validée), un eyebrow solitaire au-dessus d'un item unique
+                serait un bruit visuel superflu. */}
+            {data.nextReleases.length >= 2 && (
+              <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+                Bientôt
+              </p>
+            )}
+            <div className="space-y-2">
+              {data.nextReleases.map((item) => (
+                <NextReleaseCard key={item.show.id} item={item} today={data.today} />
+              ))}
+            </div>
+          </div>
         )}
 
         {data.reprendre.length > 0 && (

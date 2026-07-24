@@ -8,7 +8,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-lg pb-24">
+      <div className="mx-auto max-w-lg pb-24 md:max-w-3xl lg:max-w-5xl xl:max-w-6xl">
         {children}
         <LegalFooter />
       </div>
