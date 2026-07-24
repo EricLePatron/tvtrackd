@@ -23,6 +23,7 @@ import {
   selectNextReleases,
   type ActiveStatus,
   type HomeData,
+  type HomeState,
   type ReadyItem,
   type ScheduleEpisode,
 } from "@/lib/schedule";
@@ -75,6 +76,23 @@ function pad(n: number) {
 
 /** Rows shown before "Reprendre" collapses into a "Voir tout" link. */
 const REPRENDRE_VISIBLE_COUNT = 3;
+
+/**
+ * Per-state `ScreenHeader` subtitle (`children`) — the eyebrow ("Ce soir")
+ * and title ("Programme") stay constant across every state (design review:
+ * no "À venir"/"À jour" eyebrow variants), only this one line changes.
+ * Deliberately a plain local object rather than something exported from
+ * `schedule.ts` — this wording is still flagged as reversible by the design
+ * review, so reverting to the old single static subtitle should stay a
+ * one-file, one-block edit.
+ */
+const HOME_SUBTITLE_BY_STATE: Record<HomeState, string> = {
+  normal: "Ce qui est prêt, et ce qui arrive ensuite.",
+  upcoming_only: "Rien de prêt ce soir — voici ce qui arrive.",
+  ready_only: "Vos épisodes prêts à regarder.",
+  all_caught_up: "Vous êtes à jour — rien en attente.",
+  no_shows: "Ajoutez des séries pour voir votre programme.",
+};
 
 function HomeScreen() {
   const { user } = useAuth();
@@ -248,10 +266,29 @@ function HomeScreen() {
     },
   });
 
+  // Computed here (not lifted from `HomeContent`, which needs it too) so the
+  // subtitle and the "À découvrir" eyebrow below can react to the actual
+  // state without prop-drilling — `resolveHomeState` is pure and cheap, a
+  // second call is preferable to state lifting for a header-only concern.
+  // `null` while signed out or still loading — the anonymous screen has its
+  // own messaging (`AnonymousHome`) and a mid-fetch state has no resolved
+  // state yet, so both keep the previous static subtitle as a sensible
+  // default rather than guessing.
+  const state: HomeState | null = data
+    ? resolveHomeState({
+        followedActiveCount: data.followedActiveCount,
+        readyCount: data.readyCount,
+        upcomingCount: data.upcomingCount,
+      })
+    : null;
+  const subtitle = state
+    ? HOME_SUBTITLE_BY_STATE[state]
+    : "Vos prochaines diffusions, en un coup d'œil.";
+
   return (
     <>
       <ScreenHeader eyebrow="Ce soir" title="Programme" hideAuthPill={hideHeaderAuthPill}>
-        Vos prochaines diffusions, en un coup d'œil.
+        {subtitle}
       </ScreenHeader>
 
       {!user ? (
@@ -263,8 +300,18 @@ function HomeScreen() {
       )}
 
       {/* Découverte — un seul encart, à un emplacement fixe, quel que soit
-          l'état de la Home. */}
+          l'état de la Home. Eyebrow "À découvrir" ajouté UNIQUEMENT pour
+          no_shows/all_caught_up : dans ces deux états, ce rail EST le
+          contenu principal restant sur l'écran (Zone A/B est vide ou quasi),
+          il mérite un titre — dans tous les autres états, il reste un
+          post-scriptum sans en-tête, comme avant. Pas de "raison"
+          personnalisée : ce rail reste le contenu TMDb générique existant
+          (Tendances/Nouvelles sorties), seulement relabellisé honnêtement —
+          voir la note du plan sur l'absence de moteur de recommandation. */}
       <div className="mx-5 mt-8">
+        {(state === "no_shows" || state === "all_caught_up") && (
+          <p className="mb-3 font-display text-sm text-foreground">À découvrir</p>
+        )}
         <DiscoverySection variant="compact" />
       </div>
     </>
@@ -439,40 +486,10 @@ function HomeContent({ data }: { data: HomeData }) {
           />
         )}
 
-        {/* Encart(s) "prochaine sortie" — UNIQUEMENT en état `normal` (backlog
-            ET sortie future connues, cf. resolveHomeState) : `upcoming_only`
-            garde sa propre carte dédiée (NothingNowCountdownTicket, plus
-            haut dans ce fichier) et `ready_only` n'a par construction aucune
-            entrée à afficher ici (upcomingCount === 0 => dayGroups vide =>
-            nextReleases vide). Placé volontairement JUSTE SOUS le hero,
-            AVANT "Reprendre"/"À commencer" (décision produit) — assume le
-            léger mélange à-voir / à-venir plutôt que de repousser l'encart
-            en bas de la Zone A. */}
-        {state === "normal" && data.nextReleases.length > 0 && (
-          <div className="mt-5">
-            {/* Eyebrow "Bientôt" seulement à partir de 2 encarts — avec un
-                seul, la carte se suffit à elle-même (fidèle à la maquette
-                validée), un eyebrow solitaire au-dessus d'un item unique
-                serait un bruit visuel superflu. */}
-            {data.nextReleases.length >= 2 && (
-              <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-                Bientôt
-              </p>
-            )}
-            <div className="space-y-2">
-              {data.nextReleases.map((item) => (
-                <NextReleaseCard key={item.show.id} item={item} today={data.today} />
-              ))}
-            </div>
-          </div>
-        )}
-
         {data.reprendre.length > 0 && (
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-              <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-                Reprendre
-              </p>
+              <p className="font-display text-sm text-foreground">Reprendre</p>
               {/* "Reprendre" is capped to 3 visible rows — the rest is only
                   reachable through the library, filtered on the en_cours tab
                   via the shared status search-param (see library.tsx).
@@ -507,10 +524,35 @@ function HomeContent({ data }: { data: HomeData }) {
 
         {data.nouveau.length > 0 && (
           <div className="mt-5">
-            <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              À commencer
-            </p>
+            <p className="mb-2 font-display text-sm text-foreground">À commencer</p>
             <StartRail items={data.nouveau} />
+          </div>
+        )}
+
+        {/* Encart(s) "prochaine sortie" — UNIQUEMENT en état `normal` (backlog
+            ET sortie future connues, cf. resolveHomeState) : `upcoming_only`
+            garde sa propre carte dédiée (NothingNowCountdownTicket, plus
+            haut dans ce fichier) et `ready_only` n'a par construction aucune
+            entrée à afficher ici (upcomingCount === 0 => dayGroups vide =>
+            nextReleases vide). Placé APRÈS "Reprendre"/"À commencer", juste
+            avant la Zone B (décision produit révisée — remplace le
+            placement précédent "juste sous le hero, avant Reprendre") :
+            l'ordre validé en état `normal` est désormais Hero → Reprendre →
+            Bientôt → Programme à venir. */}
+        {state === "normal" && data.nextReleases.length > 0 && (
+          <div className="mt-5">
+            {/* Eyebrow "Bientôt" seulement à partir de 2 encarts — avec un
+                seul, la carte se suffit à elle-même (fidèle à la maquette
+                validée), un eyebrow solitaire au-dessus d'un item unique
+                serait un bruit visuel superflu. */}
+            {data.nextReleases.length >= 2 && (
+              <p className="mb-2 font-display text-sm text-foreground">Bientôt</p>
+            )}
+            <div className="space-y-2">
+              {data.nextReleases.map((item) => (
+                <NextReleaseCard key={item.show.id} item={item} today={data.today} />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -560,19 +602,17 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      {/* Remonté au niveau de ses propres enfants (les <h3> "Demain"/"Cette
-          semaine"/"Plus tard" dans upcoming-section.tsx sont en
-          font-display text-sm text-foreground) : un h2 plus petit et muted
-          que ses h3 inversait la hiérarchie parent/enfant. Reste dans la
-          famille eyebrow mono (font-counter, uppercase, tracking-widest,
-          cf. "Reprendre"/"À commencer") — seuls la taille et la couleur
-          montent au niveau des enfants, pas la famille de police. Correctif
-          scopé à ce composant (Home uniquement) : `UpcomingBucketRails`
-          n'est aujourd'hui consommé que par cette page (pas encore par
-          /calendar), donc aucun impact sur cet écran. */}
-      <h2 className="font-counter text-sm uppercase tracking-widest text-foreground">
-        Programme à venir
-      </h2>
+      {/* `font-display`, sans uppercase/tracking-widest — révision design
+          alignant les en-têtes de section ("Reprendre"/"Bientôt"/"À
+          commencer"/"Programme à venir") sur Archivo pleine opacité plutôt
+          que sur la famille eyebrow mono (font-counter), désormais réservée
+          aux libellés secondaires (badges, "Voir tout ›", compteurs). Taille
+          déjà `text-sm`/`text-foreground` avant ce lot — seule la famille de
+          police et le tracking changent ici. Les <h3> "Demain"/"Cette
+          semaine"/"Plus tard" (upcoming-section.tsx) restent inchangés
+          (hors périmètre de cette révision, qui liste explicitement les 5
+          en-têtes concernés). */}
+      <h2 className="font-display text-sm text-foreground">Programme à venir</h2>
       <Link
         to="/calendar"
         className="font-counter text-[10px] uppercase tracking-widest text-primary"
@@ -761,24 +801,28 @@ function HeroTicket({
             une rangée horizontale compacte, pas la carte verticale dédiée de
             ProgressCard) : le grand chiffre est cyan EN PERMANENCE (jamais
             seulement pendant le bump), avec le même glow léger et continu.
-            Le S/E, avant inline avec la fraction, est relégué en label
-            secondaire AU-DESSUS, réutilisant la position de l'eyebrow déjà
-            présent plus haut sur ce même ticket — mais en `text-muted-foreground`,
-            PAS ambre : l'eyebrow du haut (badge/`formatReadyLabel`, "Ce
-            soir"/"En retard · Nj") et le S/E partagaient exactement la même
-            classe ambre, un effet "deux étiquettes qui se répètent" relevé
-            en revue design. Répartition finale à 3 tons sur ce ticket :
-            cyan = vu/progression (chiffre + barre), ambre = urgence
-            temporelle (eyebrow du haut, seul), muted = identifiant neutre
-            de l'épisode (S/E) — ça évite aussi le déséquilibre "tout cyan"
-            relevé par la même revue. Le bloc [grand chiffre + barre]
-            n'existe QUE si `progress` est fourni — jamais de placeholder
-            quand la fraction n'est pas fiable (rotation en vol, cf. Lot 1) :
-            le S/E seul, rendu inconditionnellement, porte alors toute
-            l'information plutôt que de laisser un chiffre inventé.
+            Le S/E, inline avec la fraction, reste en label secondaire
+            AU-DESSUS, réutilisant la position de l'eyebrow déjà présent plus
+            haut sur ce même ticket.
+            Révision (mise en avant du n° d'épisode, design review) : le S/E
+            passe de `text-[10px] text-muted-foreground` à `text-lg
+            text-foreground` (phosphore, plus lisible) — MAIS reste hors de
+            la famille ambre (`text-primary`) pour ne PAS recréer le problème
+            identifié en Lot 4 : l'eyebrow du haut (badge/`formatReadyLabel`,
+            "Ce soir"/"Prêt · Nj") et le S/E partageaient alors exactement la
+            même classe ambre, un effet "deux étiquettes qui se répètent".
+            Répartition à 3 tons inchangée sur ce ticket : cyan = vu/
+            progression (chiffre + barre), ambre = urgence temporelle
+            (eyebrow du haut, seul), phosphore blanc = identifiant proéminent
+            de l'épisode (S/E, plus grand mais toujours neutre en couleur).
+            Le bloc [grand chiffre + barre] n'existe QUE si `progress` est
+            fourni — jamais de placeholder quand la fraction n'est pas
+            fiable (rotation en vol, cf. Lot 1) : le S/E seul, rendu
+            inconditionnellement, porte alors toute l'information plutôt que
+            de laisser un chiffre inventé.
           */}
           <div className="min-w-0 flex-1">
-            <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+            <p className="font-counter text-lg font-semibold tracking-wide text-foreground">
               S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
             </p>
             {progress && (

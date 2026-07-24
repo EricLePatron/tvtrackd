@@ -298,18 +298,18 @@ describe("formatReadyLabel", () => {
   });
 
   it("shows a day count for 1-6j late", () => {
-    expect(formatReadyLabel({ isLate: true, lateDays: 1 })).toBe("En retard · 1j");
-    expect(formatReadyLabel({ isLate: true, lateDays: 6 })).toBe("En retard · 6j");
+    expect(formatReadyLabel({ isLate: true, lateDays: 1 })).toBe("Prêt · 1j");
+    expect(formatReadyLabel({ isLate: true, lateDays: 6 })).toBe("Prêt · 6j");
   });
 
   it("switches to a week count at the 7j boundary", () => {
-    expect(formatReadyLabel({ isLate: true, lateDays: 7 })).toBe("En retard · 1 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 7 })).toBe("Prêt · 1 sem");
   });
 
   it("floors to whole weeks within the 7-29j range", () => {
-    expect(formatReadyLabel({ isLate: true, lateDays: 13 })).toBe("En retard · 1 sem");
-    expect(formatReadyLabel({ isLate: true, lateDays: 14 })).toBe("En retard · 2 sem");
-    expect(formatReadyLabel({ isLate: true, lateDays: 29 })).toBe("En retard · 4 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 13 })).toBe("Prêt · 1 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 14 })).toBe("Prêt · 2 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 29 })).toBe("Prêt · 4 sem");
   });
 
   it("returns null (no label at all) at the 30j boundary and beyond", () => {
@@ -330,9 +330,9 @@ describe("formatCountdownLabel", () => {
     expect(formatCountdownLabel(1)).toBe("demain");
   });
 
-  it('returns "dans Nj" (abbreviated "j", never "jours") for 2+ days', () => {
-    expect(formatCountdownLabel(2)).toBe("dans 2 j");
-    expect(formatCountdownLabel(10)).toBe("dans 10 j");
+  it('returns "Nj" (abbreviated "j", never "jours", no leading "dans") for 2+ days', () => {
+    expect(formatCountdownLabel(2)).toBe("2 j");
+    expect(formatCountdownLabel(10)).toBe("10 j");
   });
 });
 

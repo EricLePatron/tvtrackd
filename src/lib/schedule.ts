@@ -632,12 +632,16 @@ export function nextUpcomingPerShow(
 }
 
 /**
- * "aujourd'hui" / "demain" / "dans Nj" — vocabulaire de référence du
- * countdown, extrait à l'identique de `NextEpisodeCard` (fiche série,
+ * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown,
+ * extrait à l'identique de `NextEpisodeCard` (fiche série,
  * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NothingNowCountdownTicket`,
- * `empty-states.tsx`) et la fiche partagent la même formulation plutôt que
+ * `NextReleaseCard`) et la fiche partagent la même formulation plutôt que
  * deux implémentations qui redivergeraient silencieusement. Volontairement
- * "j" abrégé, jamais "jours" — aligné caractère pour caractère sur la fiche.
+ * "j" abrégé, jamais "jours". Sans le mot "dans" (retiré — wording chip
+ * validé en revue design, pensé pour un pill compact plutôt qu'une phrase :
+ * "2 j" / "demain" / "aujourd'hui") : les appelants qui ont besoin d'une
+ * phrase complète (ex. un futur "Prochain épisode {label}") doivent
+ * composer le mot eux-mêmes plutôt que de le tenir pour acquis ici.
  * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : les deux appelants
  * actuels le garantissent déjà — `nextCountdown` ci-dessus ne considère que
  * des épisodes strictement futurs (`daysUntil` toujours >= 1 en pratique),
@@ -647,7 +651,7 @@ export function nextUpcomingPerShow(
 export function formatCountdownLabel(daysUntil: number): string {
   if (daysUntil === 0) return "aujourd'hui";
   if (daysUntil === 1) return "demain";
-  return `dans ${daysUntil} j`;
+  return `${daysUntil} j`;
 }
 
 /**
@@ -748,20 +752,22 @@ export function resolveHomeState(input: {
 }
 
 /**
- * "En retard · Nj" / "Ce soir" — never the word "à voir" (reserved for the
- * library status). Degrades as the backlog ages rather than staying in days
- * forever: 1-6j shows the day count, 7-29j switches to a week count, and
- * 30j+ shows nothing at all (no "Prêt", no filler word — callers must treat
- * `null` as "omit this line entirely"). Whatever the bucket, the caller's
- * styling stays amber (`text-primary`), never red — this function only
- * decides the text, never a color.
+ * "Prêt · Nj" / "Ce soir" — never "à voir" (reserved for the library status)
+ * nor "en retard" (too anxiety-inducing for what's meant to be a positive
+ * "your next episode is ready" signal — wording change validated by the
+ * design/product review). Degrades as the backlog ages rather than staying
+ * in days forever: 1-6j shows the day count, 7-29j switches to a week count,
+ * and 30j+ shows nothing at all (callers must treat `null` as "omit this
+ * line entirely" rather than inventing a filler word). Whatever the bucket,
+ * the caller's styling stays amber (`text-primary`), never red — this
+ * function only decides the text, never a color.
  */
 export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): string | null {
   if (!item.isLate || item.lateDays === 0) return "Ce soir";
-  if (item.lateDays < 7) return `En retard · ${item.lateDays}j`;
+  if (item.lateDays < 7) return `Prêt · ${item.lateDays}j`;
   if (item.lateDays < 30) {
     const weeks = Math.max(1, Math.floor(item.lateDays / 7));
-    return `En retard · ${weeks} sem`;
+    return `Prêt · ${weeks} sem`;
   }
   return null;
 }
