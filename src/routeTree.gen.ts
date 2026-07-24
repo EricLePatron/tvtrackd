@@ -21,13 +21,13 @@ import { Route as LegalConfidentialiteRouteImport } from './routes/legal/confide
 import { Route as LegalCguRouteImport } from './routes/legal/cgu'
 import { Route as PublicSearchRouteImport } from './routes/_public/search'
 import { Route as PublicCalendarRouteImport } from './routes/_public/calendar'
+import { Route as PublicAlternativeTvTimeRouteImport } from './routes/_public/alternative-tv-time'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
 import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as PublicPersonPersonIdRouteImport } from './routes/_public/person.$personId'
 import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/show.$mediaType.$tmdbId'
-import { Route as PublicAlternativeTvTimeRouteImport } from './routes/_public/alternative-tv-time'
 
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
@@ -87,6 +87,11 @@ const PublicCalendarRoute = PublicCalendarRouteImport.update({
   path: '/calendar',
   getParentRoute: () => PublicRoute,
 } as any)
+const PublicAlternativeTvTimeRoute = PublicAlternativeTvTimeRouteImport.update({
+  id: '/alternative-tv-time',
+  path: '/alternative-tv-time',
+  getParentRoute: () => PublicRoute,
+} as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -118,11 +123,6 @@ const PublicShowMediaTypeTmdbIdRoute =
     path: '/show/$mediaType/$tmdbId',
     getParentRoute: () => PublicRoute,
   } as any)
-const PublicAlternativeTvTimeRoute = PublicAlternativeTvTimeRouteImport.update({
-  id: '/alternative-tv-time',
-  path: '/alternative-tv-time',
-  getParentRoute: () => PublicRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof PublicIndexRoute
@@ -133,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/import': typeof AuthenticatedImportRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/alternative-tv-time': typeof PublicAlternativeTvTimeRoute
   '/calendar': typeof PublicCalendarRoute
   '/search': typeof PublicSearchRoute
   '/legal/cgu': typeof LegalCguRoute
@@ -141,7 +142,6 @@ export interface FileRoutesByFullPath {
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/person/$personId': typeof PublicPersonPersonIdRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
-  '/alternative-tv-time': typeof PublicAlternativeTvTimeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof PublicIndexRoute
@@ -152,6 +152,7 @@ export interface FileRoutesByTo {
   '/import': typeof AuthenticatedImportRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/alternative-tv-time': typeof PublicAlternativeTvTimeRoute
   '/calendar': typeof PublicCalendarRoute
   '/search': typeof PublicSearchRoute
   '/legal/cgu': typeof LegalCguRoute
@@ -160,7 +161,6 @@ export interface FileRoutesByTo {
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/person/$personId': typeof PublicPersonPersonIdRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
-  '/alternative-tv-time': typeof PublicAlternativeTvTimeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -173,6 +173,7 @@ export interface FileRoutesById {
   '/_authenticated/import': typeof AuthenticatedImportRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_public/alternative-tv-time': typeof PublicAlternativeTvTimeRoute
   '/_public/calendar': typeof PublicCalendarRoute
   '/_public/search': typeof PublicSearchRoute
   '/legal/cgu': typeof LegalCguRoute
@@ -182,7 +183,6 @@ export interface FileRoutesById {
   '/_public/': typeof PublicIndexRoute
   '/_public/person/$personId': typeof PublicPersonPersonIdRoute
   '/_public/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
-  '/_public/alternative-tv-time': typeof PublicAlternativeTvTimeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -195,6 +195,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/library'
     | '/profile'
+    | '/alternative-tv-time'
     | '/calendar'
     | '/search'
     | '/legal/cgu'
@@ -203,7 +204,6 @@ export interface FileRouteTypes {
     | '/legal/mentions-legales'
     | '/person/$personId'
     | '/show/$mediaType/$tmdbId'
-    | '/alternative-tv-time'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -214,6 +214,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/library'
     | '/profile'
+    | '/alternative-tv-time'
     | '/calendar'
     | '/search'
     | '/legal/cgu'
@@ -222,7 +223,6 @@ export interface FileRouteTypes {
     | '/legal/mentions-legales'
     | '/person/$personId'
     | '/show/$mediaType/$tmdbId'
-    | '/alternative-tv-time'
   id:
     | '__root__'
     | '/_authenticated'
@@ -234,6 +234,7 @@ export interface FileRouteTypes {
     | '/_authenticated/import'
     | '/_authenticated/library'
     | '/_authenticated/profile'
+    | '/_public/alternative-tv-time'
     | '/_public/calendar'
     | '/_public/search'
     | '/legal/cgu'
@@ -243,7 +244,6 @@ export interface FileRouteTypes {
     | '/_public/'
     | '/_public/person/$personId'
     | '/_public/show/$mediaType/$tmdbId'
-    | '/_public/alternative-tv-time'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -340,6 +340,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicCalendarRouteImport
       parentRoute: typeof PublicRoute
     }
+    '/_public/alternative-tv-time': {
+      id: '/_public/alternative-tv-time'
+      path: '/alternative-tv-time'
+      fullPath: '/alternative-tv-time'
+      preLoaderRoute: typeof PublicAlternativeTvTimeRouteImport
+      parentRoute: typeof PublicRoute
+    }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
       path: '/profile'
@@ -382,13 +389,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicShowMediaTypeTmdbIdRouteImport
       parentRoute: typeof PublicRoute
     }
-    '/_public/alternative-tv-time': {
-      id: '/_public/alternative-tv-time'
-      path: '/alternative-tv-time'
-      fullPath: '/alternative-tv-time'
-      preLoaderRoute: typeof PublicAlternativeTvTimeRouteImport
-      parentRoute: typeof PublicRoute
-    }
   }
 }
 
@@ -428,21 +428,21 @@ const LegalRouteRouteWithChildren = LegalRouteRoute._addFileChildren(
 )
 
 interface PublicRouteChildren {
+  PublicAlternativeTvTimeRoute: typeof PublicAlternativeTvTimeRoute
   PublicCalendarRoute: typeof PublicCalendarRoute
   PublicSearchRoute: typeof PublicSearchRoute
   PublicIndexRoute: typeof PublicIndexRoute
   PublicPersonPersonIdRoute: typeof PublicPersonPersonIdRoute
   PublicShowMediaTypeTmdbIdRoute: typeof PublicShowMediaTypeTmdbIdRoute
-  PublicAlternativeTvTimeRoute: typeof PublicAlternativeTvTimeRoute
 }
 
 const PublicRouteChildren: PublicRouteChildren = {
+  PublicAlternativeTvTimeRoute: PublicAlternativeTvTimeRoute,
   PublicCalendarRoute: PublicCalendarRoute,
   PublicSearchRoute: PublicSearchRoute,
   PublicIndexRoute: PublicIndexRoute,
   PublicPersonPersonIdRoute: PublicPersonPersonIdRoute,
   PublicShowMediaTypeTmdbIdRoute: PublicShowMediaTypeTmdbIdRoute,
-  PublicAlternativeTvTimeRoute: PublicAlternativeTvTimeRoute,
 }
 
 const PublicRouteWithChildren =
