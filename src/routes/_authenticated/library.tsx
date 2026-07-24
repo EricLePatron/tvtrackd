@@ -410,7 +410,7 @@ function LibraryScreen() {
             )}
           </>
         ) : (
-          <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {sortedFiltered.map((r) => (
               <LibraryCard key={r.id} show={r.show!} chip={buildChip(r.show!.id)} />
             ))}
@@ -423,7 +423,7 @@ function LibraryScreen() {
 
 function SkeletonGrid() {
   return (
-    <div className="mt-5 grid grid-cols-3 gap-3" aria-hidden="true">
+    <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6" aria-hidden="true">
       {Array.from({ length: 9 }).map((_, i) => (
         <div key={i}>
           <div className="aspect-[2/3] animate-pulse rounded-lg bg-surface-elevated" />
@@ -440,7 +440,7 @@ function LibrarySection({ title, children }: { title: string; children: ReactNod
       <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
         {title}
       </p>
-      <div className="grid grid-cols-3 gap-3">{children}</div>
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">{children}</div>
     </div>
   );
 }

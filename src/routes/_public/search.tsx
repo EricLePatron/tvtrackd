@@ -99,7 +99,7 @@ function SearchScreen() {
         {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
         {results.length > 0 ? (
-          <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {results.map((r) => (
               <Link
                 key={`${r.media_type}-${r.tmdb_id}`}
@@ -136,7 +136,7 @@ function SearchScreen() {
             ))}
           </div>
         ) : loading && debounced.length >= 2 ? (
-          <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {Array.from({ length: 6 }).map((_, i) => (
               // Réserve le poster ET les deux lignes de texte (titre + meta) du
               // résultat réel : sans ça la carte « sautait » en hauteur quand les
