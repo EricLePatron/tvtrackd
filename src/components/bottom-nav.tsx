@@ -22,7 +22,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur-sm">
-      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:max-w-3xl lg:max-w-5xl xl:max-w-6xl">
         {items.map(({ to, label, Icon, exact }) => (
           <li key={to} className="flex-1">
             <Link

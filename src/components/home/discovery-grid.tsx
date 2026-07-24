@@ -57,7 +57,11 @@ export function DiscoveryGrid({
         </p>
       ) : isLoading ? (
         <div
-          className={variant === "grid" ? "grid grid-cols-3 gap-3" : "flex gap-3 overflow-x-auto"}
+          className={
+            variant === "grid"
+              ? "grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
+              : "flex gap-3 overflow-x-auto"
+          }
         >
           {Array.from({ length: variant === "grid" ? 6 : 4 }).map((_, i) => (
             <div
@@ -72,7 +76,7 @@ export function DiscoveryGrid({
         <div
           className={
             variant === "grid"
-              ? "grid grid-cols-3 gap-3"
+              ? "grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
               : "flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1"
           }
         >
