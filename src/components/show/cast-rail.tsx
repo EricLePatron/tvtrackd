@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { User } from "lucide-react";
-import { useShowCredits } from "@/hooks/use-show-credits";
+import { useShowCredits, type CastMember } from "@/hooks/use-show-credits";
 
 /**
  * Rail horizontal du casting principal, placé sur la fiche série/film. Chaque
@@ -9,11 +9,14 @@ import { useShowCredits } from "@/hooks/use-show-credits";
 export function CastRail({
   tmdbId,
   mediaType,
+  initialData,
 }: {
   tmdbId: number | string;
   mediaType: "tv" | "movie" | string;
+  /** Casting déjà préchargé par le `loader` SSR de la route (best-effort). */
+  initialData?: CastMember[];
 }) {
-  const { data: cast = [], isLoading, isError } = useShowCredits(tmdbId, mediaType);
+  const { data: cast = [], isLoading, isError } = useShowCredits(tmdbId, mediaType, initialData);
 
   if (!isLoading && (isError || cast.length === 0)) return null;
 

@@ -4,6 +4,7 @@ import { Search as SearchIcon, Loader2 } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { supabase } from "@/integrations/supabase/client";
 import { DiscoverySection } from "@/components/home/discovery-section";
+import { SITE_URL } from "@/lib/app-config";
 
 export const Route = createFileRoute("/_public/search")({
   component: SearchScreen,
@@ -21,9 +22,9 @@ export const Route = createFileRoute("/_public/search")({
         content:
           "Trouvez une série ou un film et ajoutez-le à votre bibliothèque tvtrackd en un clic.",
       },
-      { property: "og:url", content: "https://tvtrackd.com/search" },
+      { property: "og:url", content: `${SITE_URL}/search` },
     ],
-    links: [{ rel: "canonical", href: "https://tvtrackd.com/search" }],
+    links: [{ rel: "canonical", href: `${SITE_URL}/search` }],
   }),
 });
 

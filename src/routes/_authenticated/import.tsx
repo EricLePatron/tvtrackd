@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, FileArchive, CheckCircle2, Info, ArrowLeft } from "lucide-react";
+import { FileArchive, ArrowLeft } from "lucide-react";
 import { ScreenHeader } from "@/components/screen-header";
 import { ImportPanel } from "@/components/import/import-panel";
 import { APP_NAME } from "@/lib/app-config";
+import { Bullet, Faq, SourceBlock, StepCard } from "@/components/import/import-guide-content";
 
 export const Route = createFileRoute("/_authenticated/import")({
   component: ImportScreen,
@@ -130,86 +131,3 @@ function ImportScreen() {
   );
 }
 
-function StepCard({
-  number,
-  title,
-  children,
-}: {
-  number: number;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center gap-3">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/15 font-counter text-sm text-primary">
-          {String(number).padStart(2, "0")}
-        </div>
-        <h3 className="font-display text-base text-foreground">{title}</h3>
-      </div>
-      <div className="mt-4">{children}</div>
-    </div>
-  );
-}
-
-function SourceBlock({
-  name,
-  description,
-  cta,
-  href,
-  hint,
-}: {
-  name: string;
-  description: string;
-  cta: string;
-  href: string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-surface-elevated/40 p-4">
-      <p className="font-display text-sm text-foreground">{name}</p>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20"
-      >
-        {cta}
-        <ExternalLink className="h-3 w-3" />
-      </a>
-      {hint && (
-        <div className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-cyan-accent">
-          <Info className="mt-0.5 h-3 w-3 shrink-0" />
-          <span>{hint}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Bullet({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="flex items-start gap-2">
-      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-secondary" />
-      <span>{children}</span>
-    </li>
-  );
-}
-
-function Faq({ q, children }: { q: string; children: React.ReactNode }) {
-  return (
-    <details className="group rounded-md bg-surface-elevated/40 p-3">
-      <summary className="cursor-pointer list-none text-xs font-medium text-foreground marker:hidden">
-        {q}
-        <span className="float-right font-counter text-[10px] text-muted-foreground group-open:hidden">
-          +
-        </span>
-        <span className="float-right hidden font-counter text-[10px] text-muted-foreground group-open:inline">
-          −
-        </span>
-      </summary>
-      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{children}</p>
-    </details>
-  );
-}
