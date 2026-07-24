@@ -20,18 +20,23 @@ function pad(n: number) {
  *
  * Cyan, not amber (design review correction) — this card is pure
  * anticipation ("à venir"), not urgency: cyan is this app's "à venir /
- * info" color everywhere else it's used (`NextReleaseHeroCard`,
- * `NextEpisodeCard` on the fiche série), while amber is reserved for the
- * hero's own "à voir maintenant" urgency signal (`formatReadyLabel`'s
- * eyebrow) — this card must never be confused with that.
+ * info" color everywhere else it's used (`NextReleaseHeroCard`, the
+ * "prochains épisodes" pill in `UpcomingSchedule` on the fiche série), while
+ * amber is reserved for the hero's own "à voir maintenant" urgency signal
+ * (`formatReadyLabel`'s eyebrow) — this card must never be confused with
+ * that.
  *
- * Deliberately reuses `formatCountdownLabel` (the exact
- * "aujourd'hui"/"demain"/"Nj" wording already shared by the fiche série
- * and `NextReleaseHeroCard`) for the urgency label, rather than inventing a
- * second countdown vocabulary. Only ONE date vocabulary is shown on this
- * card by design (UX decision) — the secondary line stays a plain `SxxExx`
- * code, never a repeated calendar date (`formatUpcomingDayLabel`, used
- * elsewhere by `DayRail`'s day headers) alongside the countdown label.
+ * Deliberately reuses `formatCountdownLabel` (the same "aujourd'hui"/
+ * "demain"/"Nj" wording already used by `NextReleaseHeroCard`) for the
+ * urgency label, rather than inventing a second countdown vocabulary WITHIN
+ * the Home screen. NOT shared with the fiche série, though: `UpcomingSchedule`
+ * (`show.$mediaType.$tmdbId.tsx`) has its own independent local
+ * `formatCountdown`, which always shows "Dans 2j"/"Demain"/"Aujourd'hui" —
+ * deliberately fuller/capitalized phrasing for that card, vs. this compact
+ * pill's "2 j". Only ONE date vocabulary is shown on THIS card by design
+ * (UX decision) — the secondary line stays a plain `SxxExx` code, never a
+ * repeated calendar date (`formatUpcomingDayLabel`, used elsewhere by
+ * `DayRail`'s day headers) alongside the countdown label.
  *
  * S/E mis en avant (phosphore `text-foreground`, jamais ambre/muted) — même
  * traitement que le hero et `NextReleaseHeroCard`, à une échelle plus

@@ -74,6 +74,13 @@ export function ReadyListItem({
               nextEpisodeNumber={nextEpisode.episode_number}
               watched={progress.watched}
               total={progress.total}
+              // "muted", pas le "amber" par défaut : l'eyebrow formatReadyLabel
+              // juste au-dessus ("Prêt · Nj") est déjà ambre — deux étiquettes
+              // ambre consécutives recréerait exactement l'effet "deux
+              // labels qui se répètent" corrigé au Lot 4 sur le hero (voir
+              // HeroTicket, index.tsx). Le bump reste cyan quoi qu'il arrive
+              // (VhsCounter le gère indépendamment du tone).
+              tone="muted"
             />
             {extraCount > 0 && (
               <span className="font-counter text-[10px] uppercase tracking-widest text-primary">

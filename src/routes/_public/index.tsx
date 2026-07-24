@@ -564,7 +564,7 @@ function HomeContent({ data }: { data: HomeData }) {
         {data.reprendre.length > 0 && (
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-              <p className="font-display text-sm text-foreground">Reprendre</p>
+              <p className="font-display text-sm font-semibold text-foreground">Reprendre</p>
               {/* "Reprendre" is capped to 3 visible rows — the rest is only
                   reachable through the library, filtered on the en_cours tab
                   via the shared status search-param (see library.tsx).
@@ -603,7 +603,7 @@ function HomeContent({ data }: { data: HomeData }) {
 
         {data.nouveau.length > 0 && (
           <div className="mt-5">
-            <p className="mb-2 font-display text-sm text-foreground">À commencer</p>
+            <p className="mb-2 font-display text-sm font-semibold text-foreground">À commencer</p>
             <StartRail items={data.nouveau} />
           </div>
         )}
@@ -663,7 +663,7 @@ function NextReleasesBlock({
   return (
     <div>
       {(alwaysShowHeader || items.length >= 2) && (
-        <p className="mb-2 font-display text-sm text-foreground">Bientôt</p>
+        <p className="mb-2 font-display text-sm font-semibold text-foreground">Bientôt</p>
       )}
       <div className="space-y-2">
         {items.map((item, index) =>
@@ -710,17 +710,22 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      {/* `font-display`, sans uppercase/tracking-widest — révision design
-          alignant les en-têtes de section ("Reprendre"/"Bientôt"/"À
-          commencer"/"Programme à venir") sur Archivo pleine opacité plutôt
-          que sur la famille eyebrow mono (font-counter), désormais réservée
-          aux libellés secondaires (badges, "Voir tout ›", compteurs). Taille
-          déjà `text-sm`/`text-foreground` avant ce lot — seule la famille de
-          police et le tracking changent ici. Les <h3> "Demain"/"Cette
-          semaine"/"Plus tard" (upcoming-section.tsx) restent inchangés
-          (hors périmètre de cette révision, qui liste explicitement les 5
-          en-têtes concernés). */}
-      <h2 className="font-display text-sm text-foreground">Programme à venir</h2>
+      {/* `font-display font-semibold`, sans uppercase/tracking-widest —
+          révision design alignant les en-têtes de section ("Reprendre"/
+          "Bientôt"/"À commencer"/"Programme à venir") sur Archivo pleine
+          opacité plutôt que sur la famille eyebrow mono (font-counter),
+          désormais réservée aux libellés secondaires (badges, "Voir tout ›",
+          compteurs). `font-semibold` explicite (retour QA) : un `<p>` sans
+          poids explicite hérite du 400 (regular), contrairement à un `<h2>`
+          qui hérite du 700 par défaut — laisser l'inférence de balise
+          décider du poids aurait rendu "Reprendre"/"Bientôt"/"À commencer"
+          plus légers que "Programme à venir" alors que les 4 doivent former
+          un palier visuel homogène. Taille déjà `text-sm`/`text-foreground`
+          avant ce lot — seule la famille de police, le poids et le tracking
+          changent ici. Les <h3> "Demain"/"Cette semaine"/"Plus tard"
+          (upcoming-section.tsx) restent inchangés (hors périmètre de cette
+          révision, qui liste explicitement les 4 en-têtes concernés). */}
+      <h2 className="font-display text-sm font-semibold text-foreground">Programme à venir</h2>
       <Link
         to="/calendar"
         className="font-counter text-[10px] uppercase tracking-widest text-primary"

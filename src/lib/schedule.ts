@@ -659,22 +659,21 @@ export function selectNextReleases(
 }
 
 /**
- * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown,
- * extrait à l'identique de `NextEpisodeCard` (fiche série,
- * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NextReleaseCard`,
- * `NextReleaseHeroCard`) et la fiche partagent la même formulation plutôt
- * que deux implémentations qui redivergeraient silencieusement. Volontairement
- * "j" abrégé, jamais "jours". Sans le mot "dans" (retiré — wording chip
- * validé en revue design, pensé pour un pill compact plutôt qu'une phrase :
- * "2 j" / "demain" / "aujourd'hui") : les appelants qui ont besoin d'une
- * phrase complète (ex. un futur "Prochain épisode {label}") doivent
- * composer le mot eux-mêmes plutôt que de le tenir pour acquis ici.
- * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : `NextReleaseItem`s
- * (via `selectNextReleases`, dérivée de `groupUpcomingByDay` — strictement
- * futur par construction, `air_date <= today` exclu) ont même `daysUntil`
- * toujours >= 1 en pratique (le cas 0 ne s'y produit jamais), et
- * `NextEpisodeCard` clampe son propre calcul via `Math.max(0, ...)` avant
- * d'appeler cette fonction.
+ * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown
+ * partagé par les cartes "prochaine sortie" de la Home (`NextReleaseCard`,
+ * `NextReleaseHeroCard`), pensé pour un pill compact plutôt qu'une phrase :
+ * "2 j" / "demain" / "aujourd'hui", volontairement sans "dans" (retiré —
+ * wording validé en revue design) et avec "j" abrégé, jamais "jours".
+ *
+ * PAS partagé avec la fiche série : `UpcomingSchedule`
+ * (`show.$mediaType.$tmdbId.tsx`) a sa PROPRE fonction locale
+ * `formatCountdown`, indépendante de celle-ci, qui affiche toujours "Dans
+ * 2j"/"Demain"/"Aujourd'hui" (capitalisé, avec "dans") — un vocabulaire
+ * délibérément différent pour une carte plus phrasée que le pill compact de
+ * la Home. Les deux ont chacune leur propre garantie `daysUntil >= 0`
+ * (`selectNextReleases` ici, `Math.max(0, ...)` côté fiche) mais ne
+ * s'appellent jamais l'une l'autre — à ne pas présenter comme "extrait à
+ * l'identique" dans un futur commentaire, ce n'est pas le cas.
  */
 export function formatCountdownLabel(daysUntil: number): string {
   if (daysUntil === 0) return "aujourd'hui";
