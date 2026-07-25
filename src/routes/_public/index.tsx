@@ -379,7 +379,7 @@ function HomeScreen() {
           voir la note du plan sur l'absence de moteur de recommandation. */}
       <div className="mx-5 mt-8">
         {(state === "no_shows" || state === "all_caught_up") && (
-          <p className="mb-3 font-display text-sm text-foreground">À découvrir</p>
+          <p className="mb-3 font-display text-sm font-semibold text-foreground">À découvrir</p>
         )}
         <DiscoverySection variant="compact" />
       </div>
