@@ -49,15 +49,17 @@ function getBatchMap(qc: QueryClient): Map<string, MarkWatchedBatch> {
 /**
  * Re-derives `HomeData` from `batch.base` + every episode currently listed in
  * `batch.inFlight` — the entire "À voir maintenant" view (hero/heroProgress/
- * reprendre/nouveau/readyCount) is rebuilt from scratch every time, rather
- * than incrementally patched, so it's correct regardless of which specific
- * subset of `inFlight` is currently active (whether we just added one more
- * episode, or just removed one after a failure).
+ * reprendre/reprendreProgressByShowId/nouveau/readyCount) is rebuilt from
+ * scratch every time, rather than incrementally patched, so it's correct
+ * regardless of which specific subset of `inFlight` is currently active
+ * (whether we just added one more episode, or just removed one after a
+ * failure).
  *
- * Zone B ("Programme à venir" : `dayGroups`/`upcomingCount`/`countdown`)
+ * Zone B ("Programme à venir" : `dayGroups`/`upcomingCount`/`nextReleases`)
  * is always carried over unchanged from `prevHome` (via `...prevHome`) —
- * `groupUpcomingByDay`/`nextCountdown` take no watched-set input at all, so
- * marking a past/today episode watched cannot structurally affect them.
+ * `groupUpcomingByDay`/`selectNextReleases` take no watched-set input at
+ * all, so marking a past/today episode watched cannot structurally affect
+ * them.
  */
 function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeData {
   const { base } = batch;
@@ -93,6 +95,15 @@ function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeDa
     lastWatchedAtByShowId,
     watchedEpisodeIds,
     heroSeasonEpisodeCount: null,
+    // Carried over unchanged from `base` — like `episodes`, this map doesn't
+    // depend on watched status, only on (showId, seasonNumber) identity, so
+    // marking an episode watched can't invalidate an entry already in it. A
+    // "Reprendre" row that rotates into a NEW season it has no entry for
+    // simply shows no fraction until the next server refetch — same
+    // fail-safe behavior as `computeReprendreProgress` documents, no reset
+    // needed here (unlike `heroSeasonEpisodeCount` below, which DOES need
+    // one — see `heroKeyOf`).
+    reprendreSeasonEpisodeCounts: base.reprendreSeasonEpisodeCounts,
   };
   const view = deriveHomeView(rawWithoutHeroCount, prevHome.today);
 
@@ -130,6 +141,7 @@ function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeDa
     hero: finalView.hero,
     heroProgress: finalView.heroProgress,
     reprendre: finalView.reprendre,
+    reprendreProgressByShowId: finalView.reprendreProgressByShowId,
     nouveau: finalView.nouveau,
     readyCount: finalView.readyCount,
     raw: { ...rawWithoutHeroCount, heroSeasonEpisodeCount },

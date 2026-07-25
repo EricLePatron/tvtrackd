@@ -15,9 +15,11 @@ type VhsCounterProps =
     }
   | {
       /**
-       * Compact grid chip (library "En cours" tab, "Actif"/"En pause"
-       * subgroups only — see library.tsx). Line 1 = season + NEXT unwatched
-       * episode ("S02·E06"), not the last one of the season — deliberately a
+       * Compact grid chip — library "En cours" tab ("Actif"/"En pause"
+       * subgroups, see library.tsx) AND, since Étage 2.2 of the Home
+       * refonte, the Home's "Reprendre" rows (`ReadyListItem`, progression
+       * saison en cours). Line 1 = season + NEXT unwatched episode
+       * ("S02·E06"), not the last one of the season — deliberately a
        * different prop name (`nextEpisodeNumber`) so this semantic swap can't
        * be missed by a future reader of this component. The library's
        * caught-up ("à jour") chip is a distinct content shape (no episode
@@ -36,6 +38,23 @@ type VhsCounterProps =
        * "cyan" here: cyan is reserved for the separate "à jour" chip shape.
        */
       tone?: GridTone;
+      /**
+       * `false`/omitted (default) — the library grid tile's ORIGINAL shape:
+       * `S02·E06` only, no numeric fraction, the bar alone carries the
+       * proportion. This is a deliberate, CLAUDE.md-documented exception
+       * scoped to the grid vignette specifically ("le seul contexte où la
+       * barre remplace la fraction chiffrée... à ne pas généraliser aux
+       * autres surfaces") — `library.tsx` must NEVER pass `true` here.
+       *
+       * `true` — appends the numeric fraction after the S/E code
+       * ("S02·E06 · 6/13"), for surfaces OUTSIDE the grid vignette that
+       * still want this compact chip's overall footprint (muted, no glow,
+       * subordinate to a hero) but need the actual number, not just a bar —
+       * today, the Home's "Reprendre" rows (`ready-list-item.tsx`), where
+       * the validated product intent is showing the current season's
+       * numeric progress ("S06 · 6/13"), not just its proportion.
+       */
+      showFraction?: boolean;
     };
 // NB: there used to be a third "hero" variant here (an enlarged pastille
 // meant for the Home "Ce soir" ticket). It was removed as dead code — the
@@ -71,8 +90,15 @@ export function VhsCounter(props: VhsCounterProps) {
     const barBaseClass = tone === "muted" ? "bg-muted-foreground/50" : "bg-primary";
     return (
       <div className="flex h-7 flex-col justify-center gap-1 rounded-md bg-surface-elevated px-2 py-1.5 font-counter text-[10px] uppercase tracking-wide leading-none">
-        <span className={lineOneClass}>
+        <span className={cn(lineOneClass, "whitespace-nowrap")}>
           S{pad(seasonNumber)}·E{pad(lineOneEpisode)}
+          {/* Fraction chiffrée (non paddée, ex. "6/13") — uniquement quand
+              `showFraction` est explicitement demandé (jamais par défaut,
+              cf. exception CLAUDE.md sur la vignette de grille bibliothèque,
+              qui doit rester "S02·E06" seul). `display` (pas `watched` brut)
+              pour rester en phase avec l'animation de la barre juste
+              en-dessous, qui suit déjà `display`. */}
+          {props.showFraction && ` · ${display}/${total}`}
         </span>
         <div className="h-[2px] w-full overflow-hidden bg-muted-foreground/15">
           <div

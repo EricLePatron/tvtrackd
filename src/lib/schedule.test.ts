@@ -3,6 +3,7 @@ import {
   buildLastWatchedAtByShow,
   buildLibraryProgress,
   buildReadyItems,
+  computeReprendreProgress,
   computeSeasonTally,
   deriveHomeView,
   formatCountdownLabel,
@@ -11,11 +12,13 @@ import {
   groupUpcomingByDay,
   HERO_STALE_DAYS,
   isSeasonTallyReliable,
+  seasonCountKey,
   selectHero,
   selectNextReleases,
   splitEnCoursByFreshness,
   type ActiveStatus,
   type HomeRawInputs,
+  type ReadyItem,
   type ScheduleEpisode,
   type ShowLite,
 } from "./schedule";
@@ -298,18 +301,18 @@ describe("formatReadyLabel", () => {
   });
 
   it("shows a day count for 1-6j late", () => {
-    expect(formatReadyLabel({ isLate: true, lateDays: 1 })).toBe("En retard · 1j");
-    expect(formatReadyLabel({ isLate: true, lateDays: 6 })).toBe("En retard · 6j");
+    expect(formatReadyLabel({ isLate: true, lateDays: 1 })).toBe("Prêt · 1j");
+    expect(formatReadyLabel({ isLate: true, lateDays: 6 })).toBe("Prêt · 6j");
   });
 
   it("switches to a week count at the 7j boundary", () => {
-    expect(formatReadyLabel({ isLate: true, lateDays: 7 })).toBe("En retard · 1 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 7 })).toBe("Prêt · 1 sem");
   });
 
   it("floors to whole weeks within the 7-29j range", () => {
-    expect(formatReadyLabel({ isLate: true, lateDays: 13 })).toBe("En retard · 1 sem");
-    expect(formatReadyLabel({ isLate: true, lateDays: 14 })).toBe("En retard · 2 sem");
-    expect(formatReadyLabel({ isLate: true, lateDays: 29 })).toBe("En retard · 4 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 13 })).toBe("Prêt · 1 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 14 })).toBe("Prêt · 2 sem");
+    expect(formatReadyLabel({ isLate: true, lateDays: 29 })).toBe("Prêt · 4 sem");
   });
 
   it("returns null (no label at all) at the 30j boundary and beyond", () => {
@@ -319,9 +322,12 @@ describe("formatReadyLabel", () => {
 });
 
 describe("formatCountdownLabel", () => {
-  // Lot 2 (unification du vocabulaire countdown Home/fiche série) — extrait
-  // à l'identique du ternaire de `NextEpisodeCard` (show.$mediaType.$tmdbId.tsx),
-  // consommé aussi par `NothingNowCountdownTicket` (empty-states.tsx).
+  // Vocabulaire du pill compact "prochaine sortie" de la Home
+  // (`NextReleaseCard`/`NextReleaseHeroCard`) — PAS partagé avec la fiche
+  // série : `UpcomingSchedule` (show.$mediaType.$tmdbId.tsx) a sa propre
+  // fonction locale `formatCountdown`, indépendante, qui affiche toujours
+  // "Dans Nj"/"Demain"/"Aujourd'hui" (phrasing volontairement différent,
+  // plus complet, pour cette carte-là).
   it('returns "aujourd\'hui" for 0 days', () => {
     expect(formatCountdownLabel(0)).toBe("aujourd'hui");
   });
@@ -330,9 +336,9 @@ describe("formatCountdownLabel", () => {
     expect(formatCountdownLabel(1)).toBe("demain");
   });
 
-  it('returns "dans Nj" (abbreviated "j", never "jours") for 2+ days', () => {
-    expect(formatCountdownLabel(2)).toBe("dans 2 j");
-    expect(formatCountdownLabel(10)).toBe("dans 10 j");
+  it('returns "Nj" (abbreviated "j", never "jours", no leading "dans") for 2+ days', () => {
+    expect(formatCountdownLabel(2)).toBe("2 j");
+    expect(formatCountdownLabel(10)).toBe("10 j");
   });
 });
 
@@ -710,6 +716,7 @@ describe("deriveHomeView", () => {
       lastWatchedAtByShowId: new Map(),
       watchedEpisodeIds: new Set(),
       heroSeasonEpisodeCount: null,
+      reprendreSeasonEpisodeCounts: new Map(),
       ...over,
     };
   }
@@ -885,11 +892,11 @@ describe("deriveHomeView", () => {
     expect(second.hero?.nextEpisode.id).toBe(102);
   });
 
-  it("never returns Zone B fields ('Programme à venir') at all — structurally cannot touch dayGroups/upcomingCount/countdown", () => {
+  it("never returns Zone B fields ('Programme à venir'/'Bientôt') at all — structurally cannot touch dayGroups/upcomingCount/nextReleases", () => {
     // `deriveHomeView` doesn't even accept episodes/watched data scoped to
     // the future, nor does it return anything for that part of `HomeData` —
     // `useMarkWatched`'s onMutate spreads `{ ...prevHome, ...view }`, so
-    // `dayGroups`/`upcomingCount`/`countdown` are guaranteed to survive
+    // `dayGroups`/`upcomingCount`/`nextReleases` are guaranteed to survive
     // unchanged from the previous `HomeData` snapshot. This test pins the
     // exact key set `deriveHomeView` returns, so a future change can't
     // silently start returning (and therefore overwriting) those fields.
@@ -897,8 +904,107 @@ describe("deriveHomeView", () => {
     const result = deriveHomeView(raw({ episodes: [ep(s, 101, 1, 1, "2026-01-01")] }), TODAY);
 
     expect(Object.keys(result).sort()).toEqual(
-      ["hero", "heroProgress", "nouveau", "readyCount", "reprendre"].sort(),
+      [
+        "hero",
+        "heroProgress",
+        "nouveau",
+        "readyCount",
+        "reprendre",
+        "reprendreProgressByShowId",
+      ].sort(),
     );
+  });
+});
+
+describe("computeReprendreProgress", () => {
+  // Minimal, valid `ReadyItem` stub — `computeReprendreProgress` only ever
+  // reads `.show`/`.nextEpisode` off each item, but building through
+  // `buildReadyItems` for every case would drag in unrelated fields (status,
+  // lateness) irrelevant to these tests. The other `ReadyItem` fields are
+  // filled with inert defaults, never asserted on here.
+  function readyItem(s: ShowLite, nextEpisode: ScheduleEpisode): ReadyItem {
+    return {
+      show: s,
+      status: "en_cours",
+      episodes: [nextEpisode],
+      nextEpisode,
+      extraCount: 0,
+      earliestAirDate: nextEpisode.air_date ?? "2026-01-01",
+      isLate: false,
+      lateDays: 0,
+    };
+  }
+
+  it("includes a show's season tally only when the official episode count is known and reliable", () => {
+    const s1 = show(1, "Reliable Show");
+    const s2 = show(2, "Unknown Count Show");
+    const episodes = [
+      ep(s1, 101, 1, 1, "2026-01-01"),
+      ep(s1, 102, 1, 2, "2026-01-08"),
+      ep(s2, 201, 1, 1, "2026-01-01"),
+    ];
+    const watched = new Set([101]);
+    const reprendreItems = [
+      readyItem(s1, ep(s1, 102, 1, 2, "2026-01-08")),
+      readyItem(s2, ep(s2, 201, 1, 1, "2026-01-01")),
+    ];
+    const seasonEpisodeCounts = new Map([[seasonCountKey(1, 1), 2]]); // only show 1 known
+
+    const result = computeReprendreProgress(reprendreItems, episodes, watched, seasonEpisodeCounts);
+
+    expect(result.get(1)).toEqual({ watched: 1, total: 2 });
+    expect(result.has(2)).toBe(false); // show 2's count is unknown — no fraction, not a false one
+  });
+
+  it("scopes each show's tally to its OWN current season (nextEpisode.season_number), never the whole series", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 101, 1, 1, "2026-01-01"),
+      ep(s, 102, 1, 2, "2026-01-08"),
+      ep(s, 201, 2, 1, "2026-02-01"),
+      ep(s, 202, 2, 2, "2026-02-08"),
+    ];
+    const watched = new Set([101, 102, 201]); // season 1 fully watched, season 2 partial
+    const reprendreItems = [readyItem(s, ep(s, 202, 2, 2, "2026-02-08"))];
+    const seasonEpisodeCounts = new Map([[seasonCountKey(1, 2), 2]]);
+
+    const result = computeReprendreProgress(reprendreItems, episodes, watched, seasonEpisodeCounts);
+
+    expect(result.get(1)).toEqual({ watched: 1, total: 2 }); // season 2 only, not 3/4
+  });
+
+  it("returns an empty map when reprendreItems is empty", () => {
+    const result = computeReprendreProgress([], [], new Set(), new Map());
+
+    expect(result.size).toBe(0);
+  });
+
+  it("keeps shows independent — one show's tally never leaks into another's, even sharing a season number", () => {
+    const s1 = show(1);
+    const s2 = show(2);
+    const episodes = [ep(s1, 101, 1, 1, "2026-01-01"), ep(s2, 901, 1, 1, "2026-01-01")];
+    const watched = new Set([101]);
+    const reprendreItems = [
+      readyItem(s1, ep(s1, 101, 1, 1, "2026-01-01")),
+      readyItem(s2, ep(s2, 901, 1, 1, "2026-01-01")),
+    ];
+    const seasonEpisodeCounts = new Map([
+      [seasonCountKey(1, 1), 1],
+      [seasonCountKey(2, 1), 1],
+    ]);
+
+    const result = computeReprendreProgress(reprendreItems, episodes, watched, seasonEpisodeCounts);
+
+    expect(result.get(1)).toEqual({ watched: 1, total: 1 });
+    expect(result.get(2)).toEqual({ watched: 0, total: 1 });
+  });
+});
+
+describe("seasonCountKey", () => {
+  it("combines showId and seasonNumber into a stable, distinct string key", () => {
+    expect(seasonCountKey(1, 2)).toBe("1:2");
+    expect(seasonCountKey(1, 2)).not.toBe(seasonCountKey(2, 1)); // order matters, not just the pair of digits
+    expect(seasonCountKey(12, 1)).not.toBe(seasonCountKey(1, 21)); // no ambiguous concatenation
   });
 });
 
@@ -947,6 +1053,17 @@ describe("selectNextReleases", () => {
     const result = selectNextReleases(dayGroups, TODAY);
 
     expect(result).toHaveLength(2);
+  });
+
+  it("supports a higher `limit` — e.g. the `upcoming_only` Home state's cap of ~5 for its 'Bientôt' block (no hero/backlog to share the screen with)", () => {
+    const shows = Array.from({ length: 6 }, (_, i) => show(i + 1, `Show ${i + 1}`));
+    const episodes = shows.map((s, i) => ep(s, 100 * (i + 1), 1, 1, `2026-07-${10 + i}`));
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY, { limit: 5 });
+
+    expect(result).toHaveLength(5);
+    expect(result.map((r) => r.show.id)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("returns results in strict chronological order, earliest day first", () => {

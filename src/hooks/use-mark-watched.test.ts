@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { markWatchedOnMutate, markWatchedOnSettled } from "./use-mark-watched";
-import type { ActiveStatus, HomeData, ScheduleEpisode, ShowLite } from "@/lib/schedule";
+import {
+  seasonCountKey,
+  type ActiveStatus,
+  type HomeData,
+  type ScheduleEpisode,
+  type ShowLite,
+} from "@/lib/schedule";
 
 /**
  * Exercises `markWatchedOnMutate`/`markWatchedOnSettled` directly against a
@@ -44,14 +50,16 @@ const homeKey = ["home-schedule", USER_ID] as const;
 
 // Sentinel Zone B values — distinct object identities so a passthrough vs. a
 // (buggy) recompute-from-scratch can be told apart via `toBe` (identity), not
-// just `toEqual` (deep value). `nextReleases` (the "prochaine sortie" encart
-// data) is derived from `dayGroups` exactly like `upcomingCount`/`countdown`
-// — never from the watched set — so it must survive a mark-watched mutation
-// unchanged too, same as the rest of Zone B.
+// just `toEqual` (deep value). `nextReleases` (the "Bientôt" block data) is
+// derived from `dayGroups` exactly like `upcomingCount` — never from the
+// watched set — so it must survive a mark-watched mutation unchanged too,
+// same as the rest of Zone B. (`countdown` was retired from `HomeData`
+// entirely — the old `nextCountdown`/`NothingNowCountdownTicket` pair has
+// been replaced by `selectNextReleases`/`nextReleases`, the same data this
+// sentinel already covers.)
 const ZONE_B = {
   dayGroups: [{ date: "2099-01-01", entries: [] }],
   upcomingCount: 42,
-  countdown: null,
   nextReleases: [
     {
       show: show(999, "Sentinel Next Release"),
@@ -104,6 +112,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null, // irrelevant here — components only ever read from the cache after these calls
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -113,6 +122,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId,
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 2, // A's season 1 total (101 + 102)
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, initial);
@@ -201,6 +211,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null,
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -210,6 +221,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map(),
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 1, // fetched for heroShow's season 1
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, initial);
@@ -220,6 +232,142 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.hero?.show.id).toBe(2); // rotated — show 1 has no ready episode left
     expect(cur.heroProgress).toBeNull();
     expect(cur.raw.heroSeasonEpisodeCount).toBeNull();
+  });
+
+  // Étage 2.2 (progression saison sur "Reprendre") — exerce
+  // `reprendreProgressByShowId` à travers le même chemin optimiste que
+  // `heroProgress` ci-dessus, sur le modèle du test de rotation du hero.
+  it("[Reprendre progress] advances a Reprendre row's OWN season fraction optimistically, without touching the hero, and rolls back to the exact prior fraction on error", () => {
+    const qc = new QueryClient();
+    const heroShow = show(1, "Hero Show"); // older backlog — wins the hero slot
+    const reprendreShow = show(2, "Reprendre Show");
+
+    // Reprendre show: season 1 has 10 episodes, 5 already watched — nextEpisode
+    // is #6 (id 206). `reprendreSeasonEpisodeCounts` has the matching official
+    // count (10), so the tally is reliable from the start.
+    const reprendreSeason1 = Array.from({ length: 10 }, (_, i) =>
+      ep(reprendreShow, 200 + i + 1, 1, i + 1, `2026-01-${String(i + 1).padStart(2, "0")}`),
+    );
+    const episodes = [ep(heroShow, 101, 1, 1, "2025-12-01"), ...reprendreSeason1];
+
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-05T00:00:00.000Z"], // both fresh — neither hero-stale nor list-stale
+      [2, "2026-07-06T00:00:00.000Z"],
+    ]);
+    const watchedEpisodeIds = new Set([201, 202, 203, 204, 205]); // 5/10 — nextEpisode = 206
+
+    const initial: HomeData = {
+      today: TODAY,
+      followedActiveCount: 2,
+      hero: null,
+      heroProgress: null,
+      reprendre: [],
+      reprendreProgressByShowId: new Map(),
+      nouveau: [],
+      readyCount: 0,
+      ...ZONE_B,
+      raw: {
+        episodes,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        watchedEpisodeIds,
+        heroSeasonEpisodeCount: 1,
+        reprendreSeasonEpisodeCounts: new Map([[seasonCountKey(2, 1), 10]]),
+      },
+    };
+    seedHomeData(qc, USER_ID, initial);
+
+    // --- Sanity check on the seeded state (before any tap) ---
+    let cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.hero?.show.id).toBe(1); // Hero Show's older backlog wins
+    expect(cur.reprendre.map((i) => i.show.id)).toEqual([2]);
+    expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 5, total: 10 });
+
+    // --- Tap the Reprendre row's own next episode (206) ---
+    const patched = markWatchedOnMutate(qc, USER_ID, { episodeId: 206, showId: 2 });
+    expect(patched).toBe(true);
+
+    cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 6, total: 10 }); // advanced
+    expect(cur.reprendre[0]?.nextEpisode.id).toBe(207); // advanced in place, same season
+    // A DIFFERENT show's tap must never touch the hero or its own progress.
+    expect(cur.hero?.show.id).toBe(1);
+    expect(cur.hero?.nextEpisode.id).toBe(101);
+    expect(cur.heroProgress).toEqual({ watched: 0, total: 1 });
+
+    // --- Rollback: the mutation fails ---
+    markWatchedOnSettled(qc, USER_ID, 206, "error");
+
+    cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 5, total: 10 }); // reverted exactly
+    expect(cur.reprendre[0]?.nextEpisode.id).toBe(206);
+    expect(cur.hero?.show.id).toBe(1); // still untouched throughout
+  });
+
+  it("[Reprendre progress] the fraction disappears cleanly (never a wrong one) once a row's nextEpisode rolls into a season with no official count yet", () => {
+    const qc = new QueryClient();
+    const heroShow = show(1, "Hero Show");
+    const reprendreShow = show(2, "Reprendre Show");
+
+    // Reprendre show: season 1 has only 2 episodes (1 watched, 1 remaining —
+    // the finale), plus a lone season 2 episode already aired. Marking the
+    // finale rolls `nextEpisode` straight into season 2, a season
+    // `reprendreSeasonEpisodeCounts` was never fetched for (only season 1 was,
+    // matching what the initial render actually needed).
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2025-12-01"),
+      ep(reprendreShow, 201, 1, 1, "2026-01-01"),
+      ep(reprendreShow, 202, 1, 2, "2026-01-08"), // the finale — about to be tapped
+      ep(reprendreShow, 301, 2, 1, "2026-02-01"), // already aired, unwatched
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-05T00:00:00.000Z"],
+      [2, "2026-07-06T00:00:00.000Z"],
+    ]);
+    const watchedEpisodeIds = new Set([201]); // season 1: 1/2 watched — nextEpisode = 202 (finale)
+
+    const initial: HomeData = {
+      today: TODAY,
+      followedActiveCount: 2,
+      hero: null,
+      heroProgress: null,
+      reprendre: [],
+      reprendreProgressByShowId: new Map(),
+      nouveau: [],
+      readyCount: 0,
+      ...ZONE_B,
+      raw: {
+        episodes,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        watchedEpisodeIds,
+        heroSeasonEpisodeCount: 1,
+        reprendreSeasonEpisodeCounts: new Map([[seasonCountKey(2, 1), 2]]), // season 1 only
+      },
+    };
+    seedHomeData(qc, USER_ID, initial);
+
+    // --- Sanity check: reliable fraction on season 1 before the tap ---
+    let cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.reprendre[0]?.nextEpisode.id).toBe(202);
+    expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 1, total: 2 });
+
+    // --- Tap the season finale (202) — nextEpisode rolls to season 2 (301) ---
+    markWatchedOnMutate(qc, USER_ID, { episodeId: 202, showId: 2 });
+
+    cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.reprendre[0]?.nextEpisode.id).toBe(301); // rolled over to season 2
+    // No entry at all for show 2 — never a stale/wrong season-1 fraction, and
+    // never a falsely-reassuring "0/1" for the not-yet-fetched season 2.
+    expect(cur.reprendreProgressByShowId.has(2)).toBe(false);
   });
 
   // TODO: la régression réelle corrigée dans ce lot (relecture RÉACTIVE de
@@ -250,6 +398,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null,
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -259,6 +408,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map(),
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 2,
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, v1);
@@ -291,6 +441,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map([[1, "2026-07-08T00:00:00.000Z"]]),
         watchedEpisodeIds: new Set([101]),
         heroSeasonEpisodeCount: 3, // official count grew server-side
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     };
     seedHomeData(qc, USER_ID, v2);
@@ -320,6 +471,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       hero: null,
       heroProgress: null,
       reprendre: [],
+      reprendreProgressByShowId: new Map(),
       nouveau: [],
       readyCount: 0,
       ...ZONE_B,
@@ -329,6 +481,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
         lastWatchedAtByShowId: new Map(),
         watchedEpisodeIds: new Set(),
         heroSeasonEpisodeCount: 1,
+        reprendreSeasonEpisodeCounts: new Map(),
       },
     });
 

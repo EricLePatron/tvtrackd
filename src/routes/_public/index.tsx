@@ -16,13 +16,15 @@ import {
   countUpcomingEntries,
   deriveHomeView,
   groupUpcomingByDay,
-  nextCountdown,
-  nextUpcomingPerShow,
   resolveHomeState,
   formatReadyLabel,
+  seasonCountKey,
   selectNextReleases,
   type ActiveStatus,
   type HomeData,
+  type HomeRawInputs,
+  type HomeState,
+  type NextReleaseItem,
   type ReadyItem,
   type ScheduleEpisode,
 } from "@/lib/schedule";
@@ -30,12 +32,12 @@ import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
 import { NextReleaseCard } from "@/components/home/next-release-card";
+import { NextReleaseHeroCard } from "@/components/home/next-release-hero-card";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
 import {
   NoShowsPanel,
   AllCaughtUpBanner,
-  NothingNowCountdownTicket,
   NothingScheduledNotice,
 } from "@/components/home/empty-states";
 
@@ -76,6 +78,23 @@ function pad(n: number) {
 /** Rows shown before "Reprendre" collapses into a "Voir tout" link. */
 const REPRENDRE_VISIBLE_COUNT = 3;
 
+/**
+ * Per-state `ScreenHeader` subtitle (`children`) — the eyebrow ("Ce soir")
+ * and title ("Programme") stay constant across every state (design review:
+ * no "À venir"/"À jour" eyebrow variants), only this one line changes.
+ * Deliberately a plain local object rather than something exported from
+ * `schedule.ts` — this wording is still flagged as reversible by the design
+ * review, so reverting to the old single static subtitle should stay a
+ * one-file, one-block edit.
+ */
+const HOME_SUBTITLE_BY_STATE: Record<HomeState, string> = {
+  normal: "Ce qui est prêt, et ce qui arrive ensuite.",
+  upcoming_only: "Rien de prêt ce soir — voici ce qui arrive.",
+  ready_only: "Vos épisodes prêts à regarder.",
+  all_caught_up: "Vous êtes à jour — rien en attente.",
+  no_shows: "Ajoutez des séries pour voir votre programme.",
+};
+
 function HomeScreen() {
   const { user } = useAuth();
   // The anonymous demo hero already carries its own "Créer un compte" /
@@ -108,11 +127,11 @@ function HomeScreen() {
           hero: null,
           heroProgress: null,
           reprendre: [],
+          reprendreProgressByShowId: new Map(),
           nouveau: [],
           readyCount: 0,
           dayGroups: [],
           upcomingCount: 0,
-          countdown: null,
           nextReleases: [],
           raw: {
             episodes: [],
@@ -120,6 +139,7 @@ function HomeScreen() {
             lastWatchedAtByShowId: new Map(),
             watchedEpisodeIds: new Set(),
             heroSeasonEpisodeCount: null,
+            reprendreSeasonEpisodeCounts: new Map(),
           },
         };
       }
@@ -182,52 +202,119 @@ function HomeScreen() {
       // are only reachable through /library — but the split itself already
       // shapes `reprendre` (active-only, capped to 3 + "Voir tout").
       //
-      // First pass without the hero's official season episode count (not
-      // known yet — depends on which show wins hero, computed just below).
-      // `hero`/`reprendre`/`nouveau`/`readyCount` are already final at this
-      // point (none of them depend on `heroSeasonEpisodeCount`); only
-      // `heroProgress` is discarded and recomputed in the second pass below.
-      const rawWithoutHeroCount = {
+      // First pass without the hero's/Reprendre rows' official season
+      // episode counts (not known yet — depend on which show wins hero and
+      // which shows land in the visible "Reprendre" rows, both computed just
+      // below). `hero`/`reprendre`/`nouveau`/`readyCount` are already final
+      // at this point (none of them depend on the season-count maps); only
+      // `heroProgress`/`reprendreProgressByShowId` are discarded and
+      // recomputed in the second pass below.
+      const rawWithoutSeasonCounts = {
         episodes,
         showStatusByShowId,
         lastWatchedAtByShowId,
         watchedEpisodeIds: watchedSet,
         heroSeasonEpisodeCount: null,
+        reprendreSeasonEpisodeCounts: new Map<string, number>(),
       };
-      const { hero, reprendre, nouveau, readyCount } = deriveHomeView(rawWithoutHeroCount, today);
+      const { hero, reprendre, nouveau, readyCount } = deriveHomeView(
+        rawWithoutSeasonCounts,
+        today,
+      );
 
-      let heroSeasonEpisodeCount: number | null = null;
-      let heroProgress: { watched: number; total: number } | null = null;
-      if (hero) {
-        // One cheap single-row lookup (unique-indexed on show_id+season_number)
-        // for the hero's own season only — never for every followed show —
-        // to know the season's OFFICIAL episode count and confirm the tally
-        // isn't undercounted by the 90-day future cap above. See
-        // `isSeasonTallyReliable` for why an unreliable tally hides the
-        // fraction/bar entirely rather than risking a falsely-~100% bar.
-        const { data: seasonRow } = await supabase
-          .from("seasons")
-          .select("episode_count")
-          .eq("show_id", hero.show.id)
-          .eq("season_number", hero.nextEpisode.season_number)
-          .maybeSingle();
-        heroSeasonEpisodeCount = seasonRow?.episode_count ?? null;
-        heroProgress = deriveHomeView(
-          { ...rawWithoutHeroCount, heroSeasonEpisodeCount },
-          today,
-        ).heroProgress;
-      }
+      // Only the rows actually rendered under "Reprendre" (REPRENDRE_VISIBLE_COUNT,
+      // see HomeContent) need a season-count fetch — the rest of `reprendre`
+      // is only ever reached through /library, which computes its own
+      // progress independently (`buildLibraryProgress`, unbounded episodes
+      // fetch, no reliability guard needed there).
+      const reprendreVisible = reprendre.slice(0, REPRENDRE_VISIBLE_COUNT);
+      const reprendreShowIds = [...new Set(reprendreVisible.map((item) => item.show.id))];
 
-      const raw = { ...rawWithoutHeroCount, heroSeasonEpisodeCount };
+      // Both lookups are independent single-purpose reads of the `seasons`
+      // cache (hero's own season vs. each visible Reprendre row's own
+      // season) — run in parallel rather than as a waterfall, same reasoning
+      // as the `episodes`/`recencyRows` pair above. PostgREST has no
+      // composite-tuple `IN` filter, so the Reprendre lookup fetches every
+      // season row for the (small, <=3) set of show ids and filters to the
+      // exact (show, season) pairs needed client-side — cheap at this scale.
+      const [heroSeasonRes, reprendreSeasonsRes] = await Promise.all([
+        hero
+          ? supabase
+              .from("seasons")
+              .select("episode_count")
+              .eq("show_id", hero.show.id)
+              .eq("season_number", hero.nextEpisode.season_number)
+              .maybeSingle()
+          : Promise.resolve({ data: null as { episode_count: number | null } | null }),
+        reprendreShowIds.length
+          ? supabase
+              .from("seasons")
+              .select("show_id, season_number, episode_count")
+              .in("show_id", reprendreShowIds)
+          : Promise.resolve({
+              data: [] as {
+                show_id: number;
+                season_number: number;
+                episode_count: number | null;
+              }[],
+            }),
+      ]);
+
+      // One cheap single-row lookup (unique-indexed on show_id+season_number)
+      // for the hero's own season only — never for every followed show —
+      // to know the season's OFFICIAL episode count and confirm the tally
+      // isn't undercounted by the 90-day future cap above. See
+      // `isSeasonTallyReliable` for why an unreliable tally hides the
+      // fraction/bar entirely rather than risking a falsely-~100% bar.
+      const heroSeasonEpisodeCount = heroSeasonRes.data?.episode_count ?? null;
+
+      const neededReprendreKeys = new Set(
+        reprendreVisible.map((item) =>
+          seasonCountKey(item.show.id, item.nextEpisode.season_number),
+        ),
+      );
+      const reprendreSeasonEpisodeCounts = new Map<string, number>(
+        (reprendreSeasonsRes.data ?? [])
+          .filter(
+            (row): row is { show_id: number; season_number: number; episode_count: number } =>
+              row.episode_count != null &&
+              neededReprendreKeys.has(seasonCountKey(row.show_id, row.season_number)),
+          )
+          .map((row): [string, number] => [
+            seasonCountKey(row.show_id, row.season_number),
+            row.episode_count,
+          ]),
+      );
+
+      const raw: HomeRawInputs = {
+        ...rawWithoutSeasonCounts,
+        heroSeasonEpisodeCount,
+        reprendreSeasonEpisodeCounts,
+      };
+      const { heroProgress, reprendreProgressByShowId } = deriveHomeView(raw, today);
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
-      const countdown = nextCountdown(episodes, today);
+      // `limit` varies by state: `normal` caps the "Bientôt" teaser at 2 (1
+      // big + 1 compact) alongside the hero/backlog, while `upcoming_only`
+      // (no ready backlog at all — see `resolveHomeState`) makes this block
+      // the PRIMARY content of the screen, so it gets a higher cap (~5: 1
+      // big + up to 4 compact). Overflow beyond either cap stays covered by
+      // the "Programme à venir" rail below, unaffected by this cap.
+      const homeState = resolveHomeState({
+        followedActiveCount: showIds.length,
+        readyCount,
+        upcomingCount,
+      });
+      const nextReleasesLimit = homeState === "upcoming_only" ? 5 : 2;
       // Excludes the hero's own show — it already dominates that show's
-      // slot as "à voir maintenant"; repeating it here as "dans Nj" would
-      // read as redundant rather than as a genuinely different upcoming
-      // release. See `selectNextReleases`'s doc comment.
+      // slot as "à voir maintenant"; repeating it here as "Nj" would read as
+      // redundant rather than as a genuinely different upcoming release.
+      // `hero` is always null in `upcoming_only` (readyCount 0), so this
+      // naturally becomes `undefined` there — no special-casing needed. See
+      // `selectNextReleases`'s doc comment.
       const nextReleases = selectNextReleases(dayGroups, today, {
+        limit: nextReleasesLimit,
         excludeShowIds: hero ? new Set([hero.show.id]) : undefined,
       });
 
@@ -237,21 +324,40 @@ function HomeScreen() {
         hero,
         heroProgress,
         reprendre,
+        reprendreProgressByShowId,
         nouveau,
         readyCount,
         dayGroups,
         upcomingCount,
-        countdown,
         nextReleases,
         raw,
       };
     },
   });
 
+  // Computed here (not lifted from `HomeContent`, which needs it too) so the
+  // subtitle and the "À découvrir" eyebrow below can react to the actual
+  // state without prop-drilling — `resolveHomeState` is pure and cheap, a
+  // second call is preferable to state lifting for a header-only concern.
+  // `null` while signed out or still loading — the anonymous screen has its
+  // own messaging (`AnonymousHome`) and a mid-fetch state has no resolved
+  // state yet, so both keep the previous static subtitle as a sensible
+  // default rather than guessing.
+  const state: HomeState | null = data
+    ? resolveHomeState({
+        followedActiveCount: data.followedActiveCount,
+        readyCount: data.readyCount,
+        upcomingCount: data.upcomingCount,
+      })
+    : null;
+  const subtitle = state
+    ? HOME_SUBTITLE_BY_STATE[state]
+    : "Vos prochaines diffusions, en un coup d'œil.";
+
   return (
     <>
       <ScreenHeader eyebrow="Ce soir" title="Programme" hideAuthPill={hideHeaderAuthPill}>
-        Vos prochaines diffusions, en un coup d'œil.
+        {subtitle}
       </ScreenHeader>
 
       {!user ? (
@@ -263,8 +369,18 @@ function HomeScreen() {
       )}
 
       {/* Découverte — un seul encart, à un emplacement fixe, quel que soit
-          l'état de la Home. */}
+          l'état de la Home. Eyebrow "À découvrir" ajouté UNIQUEMENT pour
+          no_shows/all_caught_up : dans ces deux états, ce rail EST le
+          contenu principal restant sur l'écran (Zone A/B est vide ou quasi),
+          il mérite un titre — dans tous les autres états, il reste un
+          post-scriptum sans en-tête, comme avant. Pas de "raison"
+          personnalisée : ce rail reste le contenu TMDb générique existant
+          (Tendances/Nouvelles sorties), seulement relabellisé honnêtement —
+          voir la note du plan sur l'absence de moteur de recommandation. */}
       <div className="mx-5 mt-8">
+        {(state === "no_shows" || state === "all_caught_up") && (
+          <p className="mb-3 font-display text-sm font-semibold text-foreground">À découvrir</p>
+        )}
         <DiscoverySection variant="compact" />
       </div>
     </>
@@ -404,10 +520,14 @@ function HomeContent({ data }: { data: HomeData }) {
   const buckets = bucketUpcoming(data.dayGroups, data.today);
 
   if (state === "upcoming_only") {
-    const awaited = nextUpcomingPerShow(data.raw.episodes, data.today);
+    // No hero/backlog at all in this state — the "Bientôt" block (same
+    // shared gabarit as in `normal`, just a higher `limit` set server-side
+    // in the queryFn) IS the primary content at the top of the screen.
     return (
       <>
-        <NothingNowCountdownTicket awaited={awaited} />
+        <div className="mx-5">
+          <NextReleasesBlock items={data.nextReleases} today={data.today} />
+        </div>
         <div className="mt-8 space-y-6 px-5">
           <UpcomingSectionHeader />
           <UpcomingRails buckets={buckets} today={data.today} />
@@ -439,40 +559,10 @@ function HomeContent({ data }: { data: HomeData }) {
           />
         )}
 
-        {/* Encart(s) "prochaine sortie" — UNIQUEMENT en état `normal` (backlog
-            ET sortie future connues, cf. resolveHomeState) : `upcoming_only`
-            garde sa propre carte dédiée (NothingNowCountdownTicket, plus
-            haut dans ce fichier) et `ready_only` n'a par construction aucune
-            entrée à afficher ici (upcomingCount === 0 => dayGroups vide =>
-            nextReleases vide). Placé volontairement JUSTE SOUS le hero,
-            AVANT "Reprendre"/"À commencer" (décision produit) — assume le
-            léger mélange à-voir / à-venir plutôt que de repousser l'encart
-            en bas de la Zone A. */}
-        {state === "normal" && data.nextReleases.length > 0 && (
-          <div className="mt-5">
-            {/* Eyebrow "Bientôt" seulement à partir de 2 encarts — avec un
-                seul, la carte se suffit à elle-même (fidèle à la maquette
-                validée), un eyebrow solitaire au-dessus d'un item unique
-                serait un bruit visuel superflu. */}
-            {data.nextReleases.length >= 2 && (
-              <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-                Bientôt
-              </p>
-            )}
-            <div className="space-y-2">
-              {data.nextReleases.map((item) => (
-                <NextReleaseCard key={item.show.id} item={item} today={data.today} />
-              ))}
-            </div>
-          </div>
-        )}
-
         {data.reprendre.length > 0 && (
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-              <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-                Reprendre
-              </p>
+              <p className="font-display text-sm font-semibold text-foreground">Reprendre</p>
               {/* "Reprendre" is capped to 3 visible rows — the rest is only
                   reachable through the library, filtered on the en_cours tab
                   via the shared status search-param (see library.tsx).
@@ -499,7 +589,11 @@ function HomeContent({ data }: { data: HomeData }) {
             </div>
             <div className="space-y-2">
               {data.reprendre.slice(0, REPRENDRE_VISIBLE_COUNT).map((item) => (
-                <ReadyListItem key={item.show.id} item={item} />
+                <ReadyListItem
+                  key={item.show.id}
+                  item={item}
+                  progress={data.reprendreProgressByShowId.get(item.show.id)}
+                />
               ))}
             </div>
           </div>
@@ -507,10 +601,23 @@ function HomeContent({ data }: { data: HomeData }) {
 
         {data.nouveau.length > 0 && (
           <div className="mt-5">
-            <p className="mb-2 font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-              À commencer
-            </p>
+            <p className="mb-2 font-display text-sm font-semibold text-foreground">À commencer</p>
             <StartRail items={data.nouveau} />
+          </div>
+        )}
+
+        {/* Bloc "Bientôt" — UNIQUEMENT en état `normal` (backlog ET sortie
+            future connues, cf. resolveHomeState) : `upcoming_only` rend son
+            propre bloc "Bientôt" plus haut dans ce fichier (même gabarit
+            partagé, `limit` plus élevé) et `ready_only` n'a par construction
+            aucune entrée à afficher ici (upcomingCount === 0 => dayGroups
+            vide => nextReleases vide). Placé APRÈS "Reprendre"/"À
+            commencer", juste avant la Zone B : l'ordre validé en état
+            `normal` est Hero → Reprendre → À commencer → Bientôt →
+            Programme à venir. */}
+        {state === "normal" && data.nextReleases.length > 0 && (
+          <div className="mt-5">
+            <NextReleasesBlock items={data.nextReleases} today={data.today} />
           </div>
         )}
       </div>
@@ -525,6 +632,37 @@ function HomeContent({ data }: { data: HomeData }) {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Shared "Bientôt" block — rang #1 en grand format (`NextReleaseHeroCard`),
+ * rangs #2+ en format compact (`NextReleaseCard`), sous un en-tête de
+ * section "Bientôt" (Archivo) TOUJOURS visible dès qu'il y a au moins un
+ * item (correctif design : une carte seule, sans étiquette, sous
+ * "Reprendre"/"À commencer" qui en ont une, lisait comme un oubli — la
+ * carte ne "se suffit" jamais à elle-même vis-à-vis des sections
+ * voisines). Même règle dans `HomeContent`'s `normal` et `upcoming_only`
+ * branches — plus de distinction entre les deux call sites. `limit` (le
+ * nombre d'`items` reçus) est décidé en amont, dans le queryFn de
+ * `HomeScreen` — ce composant se contente d'afficher ce qu'on lui donne.
+ */
+function NextReleasesBlock({ items, today }: { items: NextReleaseItem[]; today: string }) {
+  if (!items.length) return null;
+
+  return (
+    <div>
+      <p className="mb-2 font-display text-sm font-semibold text-foreground">Bientôt</p>
+      <div className="space-y-2">
+        {items.map((item, index) =>
+          index === 0 ? (
+            <NextReleaseHeroCard key={item.show.id} item={item} />
+          ) : (
+            <NextReleaseCard key={item.show.id} item={item} today={today} />
+          ),
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -560,19 +698,22 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      {/* Remonté au niveau de ses propres enfants (les <h3> "Demain"/"Cette
-          semaine"/"Plus tard" dans upcoming-section.tsx sont en
-          font-display text-sm text-foreground) : un h2 plus petit et muted
-          que ses h3 inversait la hiérarchie parent/enfant. Reste dans la
-          famille eyebrow mono (font-counter, uppercase, tracking-widest,
-          cf. "Reprendre"/"À commencer") — seuls la taille et la couleur
-          montent au niveau des enfants, pas la famille de police. Correctif
-          scopé à ce composant (Home uniquement) : `UpcomingBucketRails`
-          n'est aujourd'hui consommé que par cette page (pas encore par
-          /calendar), donc aucun impact sur cet écran. */}
-      <h2 className="font-counter text-sm uppercase tracking-widest text-foreground">
-        Programme à venir
-      </h2>
+      {/* `font-display font-semibold`, sans uppercase/tracking-widest —
+          révision design alignant les en-têtes de section ("Reprendre"/
+          "Bientôt"/"À commencer"/"Programme à venir") sur Archivo pleine
+          opacité plutôt que sur la famille eyebrow mono (font-counter),
+          désormais réservée aux libellés secondaires (badges, "Voir tout ›",
+          compteurs). `font-semibold` explicite (retour QA) : un `<p>` sans
+          poids explicite hérite du 400 (regular), contrairement à un `<h2>`
+          qui hérite du 700 par défaut — laisser l'inférence de balise
+          décider du poids aurait rendu "Reprendre"/"Bientôt"/"À commencer"
+          plus légers que "Programme à venir" alors que les 4 doivent former
+          un palier visuel homogène. Taille déjà `text-sm`/`text-foreground`
+          avant ce lot — seule la famille de police, le poids et le tracking
+          changent ici. Les <h3> "Demain"/"Cette semaine"/"Plus tard"
+          (upcoming-section.tsx) restent inchangés (hors périmètre de cette
+          révision, qui liste explicitement les 4 en-têtes concernés). */}
+      <h2 className="font-display text-sm font-semibold text-foreground">Programme à venir</h2>
       <Link
         to="/calendar"
         className="font-counter text-[10px] uppercase tracking-widest text-primary"
@@ -761,24 +902,28 @@ function HeroTicket({
             une rangée horizontale compacte, pas la carte verticale dédiée de
             ProgressCard) : le grand chiffre est cyan EN PERMANENCE (jamais
             seulement pendant le bump), avec le même glow léger et continu.
-            Le S/E, avant inline avec la fraction, est relégué en label
-            secondaire AU-DESSUS, réutilisant la position de l'eyebrow déjà
-            présent plus haut sur ce même ticket — mais en `text-muted-foreground`,
-            PAS ambre : l'eyebrow du haut (badge/`formatReadyLabel`, "Ce
-            soir"/"En retard · Nj") et le S/E partagaient exactement la même
-            classe ambre, un effet "deux étiquettes qui se répètent" relevé
-            en revue design. Répartition finale à 3 tons sur ce ticket :
-            cyan = vu/progression (chiffre + barre), ambre = urgence
-            temporelle (eyebrow du haut, seul), muted = identifiant neutre
-            de l'épisode (S/E) — ça évite aussi le déséquilibre "tout cyan"
-            relevé par la même revue. Le bloc [grand chiffre + barre]
-            n'existe QUE si `progress` est fourni — jamais de placeholder
-            quand la fraction n'est pas fiable (rotation en vol, cf. Lot 1) :
-            le S/E seul, rendu inconditionnellement, porte alors toute
-            l'information plutôt que de laisser un chiffre inventé.
+            Le S/E, inline avec la fraction, reste en label secondaire
+            AU-DESSUS, réutilisant la position de l'eyebrow déjà présent plus
+            haut sur ce même ticket.
+            Révision (mise en avant du n° d'épisode, design review) : le S/E
+            passe de `text-[10px] text-muted-foreground` à `text-lg
+            text-foreground` (phosphore, plus lisible) — MAIS reste hors de
+            la famille ambre (`text-primary`) pour ne PAS recréer le problème
+            identifié en Lot 4 : l'eyebrow du haut (badge/`formatReadyLabel`,
+            "Ce soir"/"Prêt · Nj") et le S/E partageaient alors exactement la
+            même classe ambre, un effet "deux étiquettes qui se répètent".
+            Répartition à 3 tons inchangée sur ce ticket : cyan = vu/
+            progression (chiffre + barre), ambre = urgence temporelle
+            (eyebrow du haut, seul), phosphore blanc = identifiant proéminent
+            de l'épisode (S/E, plus grand mais toujours neutre en couleur).
+            Le bloc [grand chiffre + barre] n'existe QUE si `progress` est
+            fourni — jamais de placeholder quand la fraction n'est pas
+            fiable (rotation en vol, cf. Lot 1) : le S/E seul, rendu
+            inconditionnellement, porte alors toute l'information plutôt que
+            de laisser un chiffre inventé.
           */}
           <div className="min-w-0 flex-1">
-            <p className="font-counter text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+            <p className="font-counter text-lg font-semibold tracking-wide text-foreground">
               S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
             </p>
             {progress && (

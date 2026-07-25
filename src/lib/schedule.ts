@@ -185,20 +185,21 @@ export function computeSeasonTally(
 
 /**
  * Whether a `computeSeasonTally` result can be trusted as a *complete*
- * season total — guards against the hero ticket's progress bar looking
- * falsely close to 100% for a long-hiatus season. The Home screen's
- * `episodes` fetch caps the future at J+90 (see index.tsx), so a season
- * still airing with episodes announced further out than that would have its
- * `total` silently undercounted by `computeSeasonTally` (which only ever
- * sees what got fetched). `officialEpisodeCount` is TMDb's own per-season
- * count (the `seasons.episode_count` cache column, fetched separately —
- * see index.tsx — only for the hero's own season, a single cheap row
- * lookup): the tally is only reliable once it has caught up to that
- * official count. `null`/`undefined` (not yet known, or the season row
- * isn't cached) is treated as unreliable — fail safe, never fail loud.
- * `0` is treated the same way: a season legitimately has at least one
- * episode by the time a hero ticket can point at it, so `episode_count = 0`
- * only ever means "not populated yet" in the `seasons` cache, never a real
+ * season total — guards against a progress bar/chip looking falsely close
+ * to 100% for a long-hiatus season. The Home screen's `episodes` fetch caps
+ * the future at J+90 (see index.tsx), so a season still airing with
+ * episodes announced further out than that would have its `total` silently
+ * undercounted by `computeSeasonTally` (which only ever sees what got
+ * fetched). `officialEpisodeCount` is TMDb's own per-season count (the
+ * `seasons.episode_count` cache column, fetched separately — see
+ * index.tsx — for the hero's own season AND, since Étage 2.2, for each
+ * visible "Reprendre" row's own season too, see `seasonCountKey`): the
+ * tally is only reliable once it has caught up to that official count.
+ * `null`/`undefined` (not yet known, or the season row isn't cached) is
+ * treated as unreliable — fail safe, never fail loud. `0` is treated the
+ * same way: a season legitimately has at least one episode by the time a
+ * hero/Reprendre row can point at it, so `episode_count = 0` only ever
+ * means "not populated yet" in the `seasons` cache, never a real
  * zero-episode season — trusting it would have let a tally of `{ total: 0 }`
  * through as "reliable" by pure coincidence (`0 >= 0`).
  */
@@ -209,6 +210,63 @@ export function isSeasonTallyReliable(
   return (
     officialEpisodeCount != null && officialEpisodeCount > 0 && tally.total >= officialEpisodeCount
   );
+}
+
+/**
+ * Composite key for the `seasons.episode_count` cache used to reliability-
+ * check a season tally OUTSIDE the hero (which uses a single scalar,
+ * `heroSeasonEpisodeCount` — it only ever needs one season at a time). A
+ * plain string (not a nested Map) so it can flow through `HomeRawInputs` as
+ * a simple `ReadonlyMap<string, number>`, cheaply serializable/comparable,
+ * and trivial to carry unchanged through `useMarkWatched`'s optimistic
+ * recompute (see `recomputeFromBatch`).
+ */
+export function seasonCountKey(showId: number, seasonNumber: number): string {
+  return `${showId}:${seasonNumber}`;
+}
+
+/**
+ * Season watched/total tally for each visible "Reprendre" row (its OWN
+ * current season, i.e. `item.nextEpisode.season_number` — mirrors the
+ * hero's own season-scoped progress, `heroProgress`) — feeds the
+ * `VhsCounter` "grid" chip on `ReadyListItem` (Étage 2.2 of the Home
+ * refonte: progression saison en cours, pas le total série).
+ *
+ * A show is present in the returned map ONLY when its tally is reliable
+ * (`isSeasonTallyReliable`) — same fail-safe behavior as the hero's
+ * `heroProgress` (`null` when unreliable): the caller must treat a missing
+ * entry as "no fraction to show yet" rather than rendering a falsely-low
+ * tally. This also means a show whose `nextEpisode` just rolled over to a
+ * NEW season (e.g. right after marking its previous season finale watched)
+ * naturally has no entry until the next server refetch populates
+ * `seasonEpisodeCounts` for that new `(showId, seasonNumber)` pair — no
+ * explicit "reset on rotation" needed here, unlike the hero's own
+ * `heroSeasonEpisodeCount`/`heroKeyOf` bookkeeping in `use-mark-watched.ts`:
+ * looking up a key that was never fetched is already indistinguishable from
+ * "not yet known" by construction.
+ */
+export function computeReprendreProgress(
+  reprendreItems: readonly ReadyItem[],
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  seasonEpisodeCounts: ReadonlyMap<string, number>,
+): ReadonlyMap<number, { watched: number; total: number }> {
+  const result = new Map<number, { watched: number; total: number }>();
+  for (const item of reprendreItems) {
+    const tally = computeSeasonTally(
+      episodes,
+      watchedEpisodeIds,
+      item.show.id,
+      item.nextEpisode.season_number,
+    );
+    const officialCount = seasonEpisodeCounts.get(
+      seasonCountKey(item.show.id, item.nextEpisode.season_number),
+    );
+    if (isSeasonTallyReliable(tally, officialCount)) {
+      result.set(item.show.id, tally);
+    }
+  }
+  return result;
 }
 
 /**
@@ -525,20 +583,6 @@ export function countUpcomingEntries(dayGroups: DayGroup[]): number {
   return dayGroups.reduce((sum, g) => sum + g.entries.length, 0);
 }
 
-/** For the "quelque chose arrive" empty ticket: the single closest future episode. */
-export function nextCountdown(
-  episodes: ScheduleEpisode[],
-  today: string,
-): { show: ShowLite; episode: ScheduleEpisode; daysUntil: number } | null {
-  let best: ScheduleEpisode | null = null;
-  for (const ep of episodes) {
-    if (!ep.air_date || ep.air_date <= today) continue;
-    if (!best || ep.air_date < best.air_date!) best = ep;
-  }
-  if (!best) return null;
-  return { show: best.show, episode: best, daysUntil: daysBetween(today, best.air_date!) };
-}
-
 export type NextReleaseItem = {
   show: ShowLite;
   episode: ScheduleEpisode;
@@ -568,6 +612,21 @@ export type NextReleaseItem = {
  * index.tsx's queryFn) — the hero already dominates that show's slot as
  * "à voir maintenant"; repeating it here as "dans Nj" would read as
  * redundant/confusing rather than as a genuinely different upcoming release.
+ * `hero` is always `null` in the `upcoming_only` state (no ready backlog at
+ * all), so callers passing `hero ? new Set([hero.show.id]) : undefined`
+ * naturally end up with no exclusion there — no special-casing needed.
+ *
+ * Also the SOLE selection function behind the Home's "Bientôt" teaser in
+ * BOTH the `normal` state (capped at 2: 1 big + 1 compact card, alongside
+ * the hero/backlog) and the `upcoming_only` state (capped higher, ~5: this
+ * IS the primary content of the screen there) — the caller picks `limit`
+ * per state (see `HomeScreen`'s queryFn). Deliberately NOT two separate
+ * selection functions for what is conceptually the same "what's coming up
+ * for each show" concept — an earlier revision had a second, parallel
+ * function (`nextUpcomingPerShow`/`UpcomingShowNext`) for the `upcoming_only`
+ * empty state; it has been retired in favor of this single function to
+ * avoid two selection algorithms (and two rendering templates) for the same
+ * idea drifting apart silently.
  */
 export function selectNextReleases(
   dayGroups: DayGroup[],
@@ -600,54 +659,26 @@ export function selectNextReleases(
 }
 
 /**
- * One entry per followed show that has at least one strictly-future episode,
- * pointing at that show's *soonest* upcoming episode, sorted by proximity.
- * Used by the Home "en attente" state to feature the closest show as a
- * graphic hero AND list the other awaited shows below it — a single-show
- * countdown wasn't enough when several shows are waiting at once.
- */
-export type UpcomingShowNext = {
-  show: ShowLite;
-  episode: ScheduleEpisode;
-  daysUntil: number;
-};
-
-export function nextUpcomingPerShow(
-  episodes: ScheduleEpisode[],
-  today: string,
-): UpcomingShowNext[] {
-  const byShow = new Map<number, ScheduleEpisode>();
-  for (const ep of episodes) {
-    if (!ep.air_date || ep.air_date <= today) continue;
-    const prev = byShow.get(ep.show.id);
-    if (!prev || ep.air_date < prev.air_date!) byShow.set(ep.show.id, ep);
-  }
-  return Array.from(byShow.values())
-    .map((ep) => ({ show: ep.show, episode: ep, daysUntil: daysBetween(today, ep.air_date!) }))
-    .sort((a, b) =>
-      a.daysUntil !== b.daysUntil
-        ? a.daysUntil - b.daysUntil
-        : a.show.title.localeCompare(b.show.title, "fr"),
-    );
-}
-
-/**
- * "aujourd'hui" / "demain" / "dans Nj" — vocabulaire de référence du
- * countdown, extrait à l'identique de `NextEpisodeCard` (fiche série,
- * `show.$mediaType.$tmdbId.tsx`) pour que la Home (`NothingNowCountdownTicket`,
- * `empty-states.tsx`) et la fiche partagent la même formulation plutôt que
- * deux implémentations qui redivergeraient silencieusement. Volontairement
- * "j" abrégé, jamais "jours" — aligné caractère pour caractère sur la fiche.
- * Suppose `daysUntil >= 0` (aucun clamp défensif ici) : les deux appelants
- * actuels le garantissent déjà — `nextCountdown` ci-dessus ne considère que
- * des épisodes strictement futurs (`daysUntil` toujours >= 1 en pratique),
- * et `NextEpisodeCard` clampe son propre calcul via `Math.max(0, ...)` avant
- * d'appeler cette fonction.
+ * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown
+ * partagé par les cartes "prochaine sortie" de la Home (`NextReleaseCard`,
+ * `NextReleaseHeroCard`), pensé pour un pill compact plutôt qu'une phrase :
+ * "2 j" / "demain" / "aujourd'hui", volontairement sans "dans" (retiré —
+ * wording validé en revue design) et avec "j" abrégé, jamais "jours".
+ *
+ * PAS partagé avec la fiche série : `UpcomingSchedule`
+ * (`show.$mediaType.$tmdbId.tsx`) a sa PROPRE fonction locale
+ * `formatCountdown`, indépendante de celle-ci, qui affiche toujours "Dans
+ * 2j"/"Demain"/"Aujourd'hui" (capitalisé, avec "dans") — un vocabulaire
+ * délibérément différent pour une carte plus phrasée que le pill compact de
+ * la Home. Les deux ont chacune leur propre garantie `daysUntil >= 0`
+ * (`selectNextReleases` ici, `Math.max(0, ...)` côté fiche) mais ne
+ * s'appellent jamais l'une l'autre — à ne pas présenter comme "extrait à
+ * l'identique" dans un futur commentaire, ce n'est pas le cas.
  */
 export function formatCountdownLabel(daysUntil: number): string {
   if (daysUntil === 0) return "aujourd'hui";
   if (daysUntil === 1) return "demain";
-  return `dans ${daysUntil} j`;
+  return `${daysUntil} j`;
 }
 
 /**
@@ -671,6 +702,18 @@ export type HomeRawInputs = {
    * season than the one this count was fetched for — see `deriveHomeView`).
    */
   heroSeasonEpisodeCount: number | null;
+  /**
+   * TMDb's official `episode_count` (same `seasons` cache column as
+   * `heroSeasonEpisodeCount`, see `seasonCountKey`) for every visible
+   * "Reprendre" row's OWN current season — Étage 2.2 (progression saison en
+   * cours sur "Reprendre", `computeReprendreProgress`). A missing key means
+   * "not yet fetched for this (show, season) pair" — the affected row simply
+   * shows no fraction until the next server refetch, no explicit reset
+   * needed (see `computeReprendreProgress`'s doc comment). Only ever
+   * populated for the rows actually rendered (`REPRENDRE_VISIBLE_COUNT`,
+   * index.tsx) — never for the full, unsliced `reprendre` list.
+   */
+  reprendreSeasonEpisodeCounts: ReadonlyMap<string, number>;
 };
 
 /**
@@ -686,36 +729,48 @@ export type HomeData = {
   /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
   heroProgress: { watched: number; total: number } | null;
   reprendre: ReadyItem[];
+  /** Season watched/total tally per visible "Reprendre" row, when reliable — see `computeReprendreProgress`. Feeds `ReadyListItem`'s `VhsCounter` "grid" chip. */
+  reprendreProgressByShowId: ReadonlyMap<number, { watched: number; total: number }>;
   nouveau: ReadyItem[];
   readyCount: number;
   dayGroups: DayGroup[];
   upcomingCount: number;
-  countdown: ReturnType<typeof nextCountdown>;
-  /** Up to 2 distinct-by-show upcoming releases (hero's own show excluded) — see `selectNextReleases`. Rendered only in the `normal` state, directly under the hero. */
+  /**
+   * Up to `limit` distinct-by-show upcoming releases (hero's own show
+   * excluded when there is one) — see `selectNextReleases`. Rendered under a
+   * shared "Bientôt" section in BOTH the `normal` state (capped at 2,
+   * alongside the hero/backlog) and the `upcoming_only` state (capped
+   * higher, ~5 — the primary content of the screen there). The caller
+   * (`HomeScreen`'s queryFn) picks `limit` per state.
+   */
   nextReleases: NextReleaseItem[];
   raw: HomeRawInputs;
 };
 
 /**
  * Derives the "À voir maintenant" part of `HomeData` (hero + heroProgress +
- * reprendre + nouveau + readyCount) from `HomeRawInputs` — the exact same
- * pipeline the Home screen's `queryFn` runs on initial load, factored out so
- * `useMarkWatched`'s `onMutate` can re-run it locally against an optimistic
- * `watchedEpisodeIds` (current watched set + the episode just tapped) instead
- * of hand-rolling a shortcut that would risk diverging from `selectHero`'s
- * actual rotation rules (freshness thresholds, en_cours > a_voir priority,
- * last-resort fallback, etc.).
+ * reprendre + reprendreProgressByShowId + nouveau + readyCount) from
+ * `HomeRawInputs` — the exact same pipeline the Home screen's `queryFn` runs
+ * on initial load, factored out so `useMarkWatched`'s `onMutate` can re-run
+ * it locally against an optimistic `watchedEpisodeIds` (current watched set
+ * + the episode just tapped) instead of hand-rolling a shortcut that would
+ * risk diverging from `selectHero`'s actual rotation rules (freshness
+ * thresholds, en_cours > a_voir priority, last-resort fallback, etc.).
  *
- * Deliberately does NOT touch `dayGroups`/`upcomingCount`/`countdown`
- * ("Programme à venir"): `groupUpcomingByDay` and `nextCountdown` only ever
- * consider `air_date > today` and take no watched-set input at all, so
- * marking a past/today episode watched cannot affect them — callers should
- * carry those three fields over unchanged from the previous `HomeData`.
+ * Deliberately does NOT touch `dayGroups`/`upcomingCount`/`nextReleases`
+ * ("Programme à venir" / "Bientôt"): `groupUpcomingByDay` and
+ * `selectNextReleases` only ever consider `air_date > today` and take no
+ * watched-set input at all, so marking a past/today episode watched cannot
+ * affect them — callers should carry those fields over unchanged from the
+ * previous `HomeData`.
  */
 export function deriveHomeView(
   raw: HomeRawInputs,
   today: string,
-): Pick<HomeData, "hero" | "heroProgress" | "reprendre" | "nouveau" | "readyCount"> {
+): Pick<
+  HomeData,
+  "hero" | "heroProgress" | "reprendre" | "reprendreProgressByShowId" | "nouveau" | "readyCount"
+> {
   const ready = buildReadyItems(raw.episodes, raw.watchedEpisodeIds, raw.showStatusByShowId, today);
   const { hero, reprendre, nouveau } = selectHero(ready, today, raw.lastWatchedAtByShowId);
 
@@ -730,7 +785,21 @@ export function deriveHomeView(
     heroProgress = isSeasonTallyReliable(tally, raw.heroSeasonEpisodeCount) ? tally : null;
   }
 
-  return { hero, heroProgress, reprendre, nouveau, readyCount: ready.length };
+  const reprendreProgressByShowId = computeReprendreProgress(
+    reprendre,
+    raw.episodes,
+    raw.watchedEpisodeIds,
+    raw.reprendreSeasonEpisodeCounts,
+  );
+
+  return {
+    hero,
+    heroProgress,
+    reprendre,
+    reprendreProgressByShowId,
+    nouveau,
+    readyCount: ready.length,
+  };
 }
 
 /** Dispatch logic for the 4 (+1 normal) home states. */
@@ -748,20 +817,22 @@ export function resolveHomeState(input: {
 }
 
 /**
- * "En retard · Nj" / "Ce soir" — never the word "à voir" (reserved for the
- * library status). Degrades as the backlog ages rather than staying in days
- * forever: 1-6j shows the day count, 7-29j switches to a week count, and
- * 30j+ shows nothing at all (no "Prêt", no filler word — callers must treat
- * `null` as "omit this line entirely"). Whatever the bucket, the caller's
- * styling stays amber (`text-primary`), never red — this function only
- * decides the text, never a color.
+ * "Prêt · Nj" / "Ce soir" — never "à voir" (reserved for the library status)
+ * nor "en retard" (too anxiety-inducing for what's meant to be a positive
+ * "your next episode is ready" signal — wording change validated by the
+ * design/product review). Degrades as the backlog ages rather than staying
+ * in days forever: 1-6j shows the day count, 7-29j switches to a week count,
+ * and 30j+ shows nothing at all (callers must treat `null` as "omit this
+ * line entirely" rather than inventing a filler word). Whatever the bucket,
+ * the caller's styling stays amber (`text-primary`), never red — this
+ * function only decides the text, never a color.
  */
 export function formatReadyLabel(item: Pick<ReadyItem, "isLate" | "lateDays">): string | null {
   if (!item.isLate || item.lateDays === 0) return "Ce soir";
-  if (item.lateDays < 7) return `En retard · ${item.lateDays}j`;
+  if (item.lateDays < 7) return `Prêt · ${item.lateDays}j`;
   if (item.lateDays < 30) {
     const weeks = Math.max(1, Math.floor(item.lateDays / 7));
-    return `En retard · ${weeks} sem`;
+    return `Prêt · ${weeks} sem`;
   }
   return null;
 }

@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import type { ReadyItem } from "@/lib/schedule";
 import { formatReadyLabel } from "@/lib/schedule";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
+import { VhsCounter } from "@/components/vhs-counter";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -13,8 +14,31 @@ function pad(n: number) {
  * "list item per episode" — one row per followed show. ("À commencer" no
  * longer uses this row — it renders as a horizontal poster rail instead, see
  * `start-rail.tsx`.)
+ *
+ * `progress` (Étage 2.2 — progression saison en cours sur "Reprendre") is
+ * the show's OWN current-season watched/total tally, computed by
+ * `computeReprendreProgress` (schedule.ts) and passed down by `HomeContent`
+ * (index.tsx) — `undefined` when not (yet) reliable (see
+ * `isSeasonTallyReliable`), in which case this row falls back to the plain
+ * `SxxExx` text label it always showed before this lot, exactly like the
+ * hero ticket falls back to its bare S/E label when `heroProgress` is
+ * `null`. Reuses `VhsCounter`'s "grid" variant (previously library.tsx
+ * only) rather than a new component — same compact chip, WITH
+ * `showFraction` (design review correction): CLAUDE.md reserves the
+ * fraction-less "S02·E06 + bar only" shape to the library grid vignette
+ * specifically ("à ne pas généraliser aux autres surfaces") — this row is a
+ * different surface, and the validated product intent here is showing the
+ * current season's NUMERIC progress ("S02·E06 · 6/13"), not just its
+ * proportion. Still kept discreet/muted (`tone="muted"`, no glow) —
+ * subordinate to the hero, never a second big counter.
  */
-export function ReadyListItem({ item }: { item: ReadyItem }) {
+export function ReadyListItem({
+  item,
+  progress,
+}: {
+  item: ReadyItem;
+  progress?: { watched: number; total: number };
+}) {
   const { show, nextEpisode, extraCount } = item;
   const markWatched = useMarkWatched();
   const label = formatReadyLabel(item);
@@ -49,10 +73,42 @@ export function ReadyListItem({ item }: { item: ReadyItem }) {
           <p className="font-counter text-[10px] uppercase tracking-widest text-primary">{label}</p>
         )}
         <h4 className="mt-0.5 truncate text-sm text-foreground">{show.title}</h4>
-        <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-          S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-          {extraCount > 0 && <span className="ml-2 text-primary">+{extraCount}</span>}
-        </p>
+        {progress ? (
+          <div className="mt-1 flex items-center gap-2">
+            <VhsCounter
+              variant="grid"
+              seasonNumber={nextEpisode.season_number}
+              nextEpisodeNumber={nextEpisode.episode_number}
+              watched={progress.watched}
+              total={progress.total}
+              // "muted", pas le "amber" par défaut : l'eyebrow formatReadyLabel
+              // juste au-dessus ("Prêt · Nj") est déjà ambre — deux étiquettes
+              // ambre consécutives recréerait exactement l'effet "deux
+              // labels qui se répètent" corrigé au Lot 4 sur le hero (voir
+              // HeroTicket, index.tsx). Le bump reste cyan quoi qu'il arrive
+              // (VhsCounter le gère indépendamment du tone).
+              tone="muted"
+              // Fraction chiffrée EN PLUS de la barre, jamais à sa place —
+              // les deux coexistent (revue design) : "S02·E06 · 6/13" +
+              // la barre fine juste en-dessous, toutes deux rendues par
+              // VhsCounter (voir vhs-counter.tsx). Cf. doc du composant pour
+              // pourquoi ce n'est PAS le comportement par défaut du variant
+              // "grid" (réservé, sans fraction, à la vignette de la grille
+              // bibliothèque — CLAUDE.md).
+              showFraction
+            />
+            {extraCount > 0 && (
+              <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
+                +{extraCount}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
+            S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
+            {extraCount > 0 && <span className="ml-2 text-primary">+{extraCount}</span>}
+          </p>
+        )}
       </div>
       {/* 44px tap target (WCAG 2.5.5) — the visible icon stays small (~16px),
           only the hitbox grows, matching the hero ticket's own check button. */}
