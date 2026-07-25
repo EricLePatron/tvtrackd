@@ -31,6 +31,12 @@ function pad(n: number) {
  * current season's NUMERIC progress ("S02·E06 · 6/13"), not just its
  * proportion. Still kept discreet/muted (`tone="muted"`, no glow) —
  * subordinate to the hero, never a second big counter.
+ *
+ * No `extraCount` ("+N") badge (design review correction — removed, was
+ * never part of the validated maquette): the section header's own "+N
+ * actives" summary (`HomeContent`, index.tsx) already covers that count at
+ * the list level — repeating it per-row amber-badged just added visual
+ * noise this card doesn't need.
  */
 export function ReadyListItem({
   item,
@@ -39,7 +45,7 @@ export function ReadyListItem({
   item: ReadyItem;
   progress?: { watched: number; total: number };
 }) {
-  const { show, nextEpisode, extraCount } = item;
+  const { show, nextEpisode } = item;
   const markWatched = useMarkWatched();
   const label = formatReadyLabel(item);
 
@@ -74,7 +80,7 @@ export function ReadyListItem({
         )}
         <h4 className="mt-0.5 truncate text-sm text-foreground">{show.title}</h4>
         {progress ? (
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1">
             <VhsCounter
               variant="grid"
               seasonNumber={nextEpisode.season_number}
@@ -97,16 +103,10 @@ export function ReadyListItem({
               // bibliothèque — CLAUDE.md).
               showFraction
             />
-            {extraCount > 0 && (
-              <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
-                +{extraCount}
-              </span>
-            )}
           </div>
         ) : (
           <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-            {extraCount > 0 && <span className="ml-2 text-primary">+{extraCount}</span>}
           </p>
         )}
       </div>

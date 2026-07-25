@@ -892,7 +892,26 @@ function HeroTicket({
           <h2 className="font-display text-xl leading-tight text-foreground line-clamp-2">
             {show.title}
           </h2>
-          <p className="text-sm text-muted-foreground line-clamp-1">{nextEpisode.title ?? "—"}</p>
+          {/*
+            S/E PROÉMINENT d'abord, titre d'épisode muted ensuite, sur la
+            même ligne (alignement maquette, revue design) — inverse l'ordre
+            précédent (titre d'épisode seul ici, S/E relégué tout en bas dans
+            le bloc compteur). Phosphore (`text-foreground`), jamais ambre :
+            l'eyebrow ci-dessus est la SEULE étiquette ambre du ticket, cf.
+            le problème "deux étiquettes qui se répètent" identifié au Lot 4
+            — toujours d'actualité, seul l'EMPLACEMENT du S/E a changé, pas
+            sa couleur. `min-w-0`/`truncate` sur le titre d'épisode : le S/E
+            (longueur fixe, `shrink-0`) ne doit jamais céder de place à un
+            titre d'épisode long.
+          */}
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <span className="shrink-0 font-counter text-base font-semibold tracking-wide text-foreground">
+              S{pad(nextEpisode.season_number)} · E{pad(nextEpisode.episode_number)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+              {nextEpisode.title ?? "—"}
+            </span>
+          </div>
         </div>
 
         <div className="mt-4 flex items-end justify-between gap-3">
@@ -902,29 +921,23 @@ function HeroTicket({
             une rangée horizontale compacte, pas la carte verticale dédiée de
             ProgressCard) : le grand chiffre est cyan EN PERMANENCE (jamais
             seulement pendant le bump), avec le même glow léger et continu.
-            Le S/E, inline avec la fraction, reste en label secondaire
-            AU-DESSUS, réutilisant la position de l'eyebrow déjà présent plus
-            haut sur ce même ticket.
-            Révision (mise en avant du n° d'épisode, design review) : le S/E
-            passe de `text-[10px] text-muted-foreground` à `text-lg
-            text-foreground` (phosphore, plus lisible) — MAIS reste hors de
-            la famille ambre (`text-primary`) pour ne PAS recréer le problème
-            identifié en Lot 4 : l'eyebrow du haut (badge/`formatReadyLabel`,
-            "Ce soir"/"Prêt · Nj") et le S/E partageaient alors exactement la
-            même classe ambre, un effet "deux étiquettes qui se répètent".
-            Répartition à 3 tons inchangée sur ce ticket : cyan = vu/
-            progression (chiffre + barre), ambre = urgence temporelle
-            (eyebrow du haut, seul), phosphore blanc = identifiant proéminent
-            de l'épisode (S/E, plus grand mais toujours neutre en couleur).
-            Le bloc [grand chiffre + barre] n'existe QUE si `progress` est
-            fourni — jamais de placeholder quand la fraction n'est pas
-            fiable (rotation en vol, cf. Lot 1) : le S/E seul, rendu
-            inconditionnellement, porte alors toute l'information plutôt que
-            de laisser un chiffre inventé.
+            Révision (alignement maquette) : le S/E n'est PLUS répété ici — il
+            vit maintenant dans l'en-tête, accolé au titre d'épisode (voir
+            ci-dessus). Ce label devient "SAISON {N}" (mono muted, uppercase),
+            purement contextuel pour la fraction cyan juste en dessous — sans
+            redonder le numéro d'épisode déjà visible plus haut. Répartition à
+            3 tons inchangée sur ce ticket : cyan = vu/progression (chiffre +
+            barre), ambre = urgence temporelle (eyebrow du haut, seul),
+            phosphore blanc = identifiant proéminent de l'épisode (S/E,
+            en-tête). Le bloc [grand chiffre + barre] n'existe QUE si
+            `progress` est fourni — jamais de placeholder quand la fraction
+            n'est pas fiable (rotation en vol, cf. Lot 1) : le label "SAISON
+            {N}" seul, rendu inconditionnellement, reste alors informatif sans
+            inventer de chiffre.
           */}
           <div className="min-w-0 flex-1">
-            <p className="font-counter text-lg font-semibold tracking-wide text-foreground">
-              S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
+            <p className="font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Saison {nextEpisode.season_number}
             </p>
             {progress && (
               <>

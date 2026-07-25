@@ -68,7 +68,7 @@ export function NextReleaseHeroCard({ item }: { item: NextReleaseItem }) {
               {show.title}
             </h3>
             <p className="font-counter text-sm font-semibold tracking-wide text-foreground">
-              S{pad(episode.season_number)} E{pad(episode.episode_number)}
+              S{pad(episode.season_number)} · E{pad(episode.episode_number)}
             </p>
           </div>
           <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent">
