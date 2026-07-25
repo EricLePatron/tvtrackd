@@ -379,7 +379,7 @@ function HomeScreen() {
           voir la note du plan sur l'absence de moteur de recommandation. */}
       <div className="mx-5 mt-8">
         {(state === "no_shows" || state === "all_caught_up") && (
-          <p className="mb-3 font-display text-sm font-semibold text-foreground">À découvrir</p>
+          <p className="mb-3 font-display text-xl font-bold text-foreground">À découvrir</p>
         )}
         <DiscoverySection variant="compact" />
       </div>
@@ -562,7 +562,7 @@ function HomeContent({ data }: { data: HomeData }) {
         {data.reprendre.length > 0 && (
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-              <p className="font-display text-sm font-semibold text-foreground">Reprendre</p>
+              <p className="font-display text-xl font-bold text-foreground">Reprendre</p>
               {/* "Reprendre" is capped to 3 visible rows — the rest is only
                   reachable through the library, filtered on the en_cours tab
                   via the shared status search-param (see library.tsx).
@@ -601,7 +601,7 @@ function HomeContent({ data }: { data: HomeData }) {
 
         {data.nouveau.length > 0 && (
           <div className="mt-5">
-            <p className="mb-2 font-display text-sm font-semibold text-foreground">À commencer</p>
+            <p className="mb-2 font-display text-xl font-bold text-foreground">À commencer</p>
             <StartRail items={data.nouveau} />
           </div>
         )}
@@ -652,7 +652,7 @@ function NextReleasesBlock({ items, today }: { items: NextReleaseItem[]; today: 
 
   return (
     <div>
-      <p className="mb-2 font-display text-sm font-semibold text-foreground">Bientôt</p>
+      <p className="mb-2 font-display text-xl font-bold text-foreground">Bientôt</p>
       <div className="space-y-2">
         {items.map((item, index) =>
           index === 0 ? (
@@ -713,7 +713,7 @@ function UpcomingSectionHeader() {
           changent ici. Les <h3> "Demain"/"Cette semaine"/"Plus tard"
           (upcoming-section.tsx) restent inchangés (hors périmètre de cette
           révision, qui liste explicitement les 4 en-têtes concernés). */}
-      <h2 className="font-display text-sm font-semibold text-foreground">Programme à venir</h2>
+      <h2 className="font-display text-xl font-bold text-foreground">Programme à venir</h2>
       <Link
         to="/calendar"
         className="font-counter text-[10px] uppercase tracking-widest text-primary"
