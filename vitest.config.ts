@@ -5,10 +5,17 @@
 // workflow — scope limited to what was validated in the plan): only the
 // pure functions in src/lib are covered, no DOM/React test environment.
 import { defineConfig } from "vitest/config";
+import path from "node:path";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
   },
 });
+
