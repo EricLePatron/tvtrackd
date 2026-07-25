@@ -908,7 +908,7 @@ function HeroTicket({
             <span className="shrink-0 font-counter text-base font-semibold tracking-wide text-foreground">
               S{pad(nextEpisode.season_number)} · E{pad(nextEpisode.episode_number)}
             </span>
-            <span className="truncate text-sm text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
               {nextEpisode.title ?? "—"}
             </span>
           </div>
