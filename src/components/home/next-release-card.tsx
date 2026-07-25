@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
 import type { NextReleaseItem } from "@/lib/schedule";
 import { formatCountdownLabel } from "@/lib/schedule";
 
@@ -18,18 +17,28 @@ function pad(n: number) {
  * `selectNextReleases` (see index.tsx's queryFn) — so tapping it always
  * leads somewhere new, never back to the hero's own fiche.
  *
+ * Layout (aligné sur la maquette, revue design — remplace l'ancienne mise en
+ * page "gros countdown à gauche + chevron à droite, sans poster") :
+ * vignette poster à gauche (même gabarit `h-14 w-10` que `ReadyListItem`,
+ * pour une cohérence visuelle entre les deux rangées compactes de la Home)
+ * → titre + S/E au centre (`flex-1`) → pill cyan "N j" à droite, SEUL
+ * porteur du compte à rebours désormais. Plus de gros texte de countdown à
+ * gauche, plus de chevron `›` — toute la carte reste un `Link` cliquable,
+ * l'affordance de navigation n'a jamais dépendu du chevron.
+ *
  * Cyan, not amber (design review correction) — this card is pure
  * anticipation ("à venir"), not urgency: cyan is this app's "à venir /
- * info" color everywhere else it's used (`NextReleaseHeroCard`, the
- * "prochains épisodes" pill in `UpcomingSchedule` on the fiche série), while
- * amber is reserved for the hero's own "à voir maintenant" urgency signal
- * (`formatReadyLabel`'s eyebrow) — this card must never be confused with
- * that.
+ * info" color everywhere else it's used (`NextReleaseHeroCard`'s own pill,
+ * the "prochains épisodes" pill in `UpcomingSchedule` on the fiche série),
+ * while amber is reserved for the hero's own "à voir maintenant" urgency
+ * signal (`formatReadyLabel`'s eyebrow) — this card must never be confused
+ * with that.
  *
  * Deliberately reuses `formatCountdownLabel` (the same "aujourd'hui"/
- * "demain"/"Nj" wording already used by `NextReleaseHeroCard`) for the
- * urgency label, rather than inventing a second countdown vocabulary WITHIN
- * the Home screen. NOT shared with the fiche série, though: `UpcomingSchedule`
+ * "demain"/"Nj" wording already used by `NextReleaseHeroCard`, same pill
+ * shape too — `rounded-full`, cyan) for the urgency label, rather than
+ * inventing a second countdown vocabulary WITHIN the Home screen. NOT
+ * shared with the fiche série, though: `UpcomingSchedule`
  * (`show.$mediaType.$tmdbId.tsx`) has its own independent local
  * `formatCountdown`, which always shows "Dans 2j"/"Demain"/"Aujourd'hui" —
  * deliberately fuller/capitalized phrasing for that card, vs. this compact
@@ -62,18 +71,27 @@ export function NextReleaseCard({ item }: { item: NextReleaseItem; today: string
     <Link
       to="/show/$mediaType/$tmdbId"
       params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-      className="flex items-center gap-3 rounded-lg border border-cyan-accent/30 bg-cyan-accent/10 px-4 py-3 transition-colors hover:bg-cyan-accent/15"
+      className="flex items-center gap-3 rounded-lg border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-2.5 transition-colors hover:bg-cyan-accent/15"
     >
-      <p className="shrink-0 font-counter text-sm uppercase tracking-widest text-cyan-accent">
-        {formatCountdownLabel(daysUntil)}
-      </p>
+      <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-elevated">
+        {show.poster_path && (
+          <img
+            src={show.poster_path}
+            alt={show.title}
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         <p className="line-clamp-1 text-sm font-medium text-foreground">{show.title}</p>
         <p className="font-counter text-xs font-semibold tracking-wide text-foreground">
-          S{pad(episode.season_number)}·E{pad(episode.episode_number)}
+          S{pad(episode.season_number)} · E{pad(episode.episode_number)}
         </p>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-cyan-accent/70" aria-hidden="true" />
+      <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent">
+        {formatCountdownLabel(daysUntil)}
+      </span>
     </Link>
   );
 }
