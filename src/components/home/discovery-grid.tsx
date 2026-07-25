@@ -47,8 +47,8 @@ export function DiscoveryGrid({
   if (!isLoading && !showError && items.length === 0) return null;
 
   return (
-    <section className={variant === "grid" ? "mt-8" : "mt-6"}>
-      <h3 className="mb-3 font-display text-sm uppercase tracking-widest text-foreground">
+    <section className={variant === "grid" ? "mt-10" : "mt-8"}>
+      <h3 className="mb-4 font-display text-xl font-bold text-foreground sm:text-2xl">
         {title}
       </h3>
       {showError ? (
@@ -66,8 +66,8 @@ export function DiscoveryGrid({
           {Array.from({ length: variant === "grid" ? 6 : 4 }).map((_, i) => (
             <div
               key={i}
-              className={`aspect-[2/3] animate-pulse rounded-md bg-surface-elevated ${
-                variant === "compact" ? "w-32 shrink-0" : ""
+              className={`aspect-[2/3] animate-pulse rounded-lg bg-surface-elevated ${
+                variant === "compact" ? "w-36 shrink-0" : ""
               }`}
             />
           ))}
@@ -77,7 +77,7 @@ export function DiscoveryGrid({
           className={
             variant === "grid"
               ? "grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
-              : "flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1"
+              : "-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1"
           }
         >
           {items.map((item) => {
@@ -87,15 +87,16 @@ export function DiscoveryGrid({
             return (
               <div
                 key={key}
-                className={variant === "compact" ? "w-32 shrink-0 snap-start" : undefined}
+                className={variant === "compact" ? "w-36 shrink-0 snap-start" : undefined}
               >
+
                 <div className="relative">
                   <Link
                     to="/show/$mediaType/$tmdbId"
                     params={{ mediaType: item.media_type, tmdbId: String(item.tmdb_id) }}
                     className="block"
                   >
-                    <div className="aspect-[2/3] overflow-hidden rounded-md border border-border bg-surface-elevated">
+                    <div className="aspect-[2/3] overflow-hidden rounded-lg border border-border bg-surface-elevated transition-transform duration-200 hover:scale-[1.03]">
                       {item.poster_url ? (
                         <img
                           src={item.poster_url}
@@ -114,7 +115,7 @@ export function DiscoveryGrid({
                     onClick={() => !followed && onFollow(item)}
                     disabled={followed || pending}
                     aria-label={followed ? "Déjà suivi" : `Suivre ${item.title}`}
-                    className={`absolute bottom-1.5 right-1.5 grid place-items-center rounded-full border transition-colors ${
+                    className={`absolute bottom-2 right-2 grid place-items-center rounded-full border transition-colors ${
                       variant === "grid" ? "h-9 w-9" : "h-11 w-11"
                     } ${
                       followed
@@ -127,18 +128,16 @@ export function DiscoveryGrid({
                 </div>
                 {/* Même pattern de troncature que les grilles bibliothèque et
                     recherche : `truncate` sur une ligne + `title` pour le nom
-                    complet au survol. En variante grille, `text-xs` s'aligne sur
-                    la grille de résultats de recherche juste au-dessus ; le rail
-                    Home (variante compact) garde `text-sm`, adapté à ses
-                    vignettes plus larges. */}
+                    complet au survol. */}
                 <p
-                  className={`mt-1.5 truncate text-foreground ${
+                  className={`mt-2 truncate font-medium text-foreground ${
                     variant === "grid" ? "text-xs" : "text-sm"
                   }`}
                   title={item.title}
                 >
                   {item.title}
                 </p>
+
               </div>
             );
           })}
