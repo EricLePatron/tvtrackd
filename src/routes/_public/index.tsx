@@ -522,13 +522,11 @@ function HomeContent({ data }: { data: HomeData }) {
   if (state === "upcoming_only") {
     // No hero/backlog at all in this state — the "Bientôt" block (same
     // shared gabarit as in `normal`, just a higher `limit` set server-side
-    // in the queryFn) IS the primary content at the top of the screen, so
-    // its header is always shown (never gated on `length >= 2` the way
-    // `normal`'s is — see `NextReleasesBlock`).
+    // in the queryFn) IS the primary content at the top of the screen.
     return (
       <>
         <div className="mx-5">
-          <NextReleasesBlock items={data.nextReleases} today={data.today} alwaysShowHeader />
+          <NextReleasesBlock items={data.nextReleases} today={data.today} />
         </div>
         <div className="mt-8 space-y-6 px-5">
           <UpcomingSectionHeader />
@@ -640,31 +638,21 @@ function HomeContent({ data }: { data: HomeData }) {
 /**
  * Shared "Bientôt" block — rang #1 en grand format (`NextReleaseHeroCard`),
  * rangs #2+ en format compact (`NextReleaseCard`), sous un en-tête de
- * section "Bientôt" (Archivo). Seule différence entre ses deux call sites
- * (`HomeContent`'s `normal` et `upcoming_only` branches) : `alwaysShowHeader`
- * — `normal` garde la règle "eyebrow seulement à partir de 2 items" (un item
- * seul se suffit à lui-même, à côté du hero/backlog déjà présents),
- * `upcoming_only` affiche toujours l'en-tête puisque ce bloc est alors le
- * seul contenu en tête d'écran (pas de hero pour l'accompagner). `limit` (le
+ * section "Bientôt" (Archivo) TOUJOURS visible dès qu'il y a au moins un
+ * item (correctif design : une carte seule, sans étiquette, sous
+ * "Reprendre"/"À commencer" qui en ont une, lisait comme un oubli — la
+ * carte ne "se suffit" jamais à elle-même vis-à-vis des sections
+ * voisines). Même règle dans `HomeContent`'s `normal` et `upcoming_only`
+ * branches — plus de distinction entre les deux call sites. `limit` (le
  * nombre d'`items` reçus) est décidé en amont, dans le queryFn de
  * `HomeScreen` — ce composant se contente d'afficher ce qu'on lui donne.
  */
-function NextReleasesBlock({
-  items,
-  today,
-  alwaysShowHeader = false,
-}: {
-  items: NextReleaseItem[];
-  today: string;
-  alwaysShowHeader?: boolean;
-}) {
+function NextReleasesBlock({ items, today }: { items: NextReleaseItem[]; today: string }) {
   if (!items.length) return null;
 
   return (
     <div>
-      {(alwaysShowHeader || items.length >= 2) && (
-        <p className="mb-2 font-display text-sm font-semibold text-foreground">Bientôt</p>
-      )}
+      <p className="mb-2 font-display text-sm font-semibold text-foreground">Bientôt</p>
       <div className="space-y-2">
         {items.map((item, index) =>
           index === 0 ? (

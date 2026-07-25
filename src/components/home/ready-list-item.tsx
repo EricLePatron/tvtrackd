@@ -23,7 +23,14 @@ function pad(n: number) {
  * `SxxExx` text label it always showed before this lot, exactly like the
  * hero ticket falls back to its bare S/E label when `heroProgress` is
  * `null`. Reuses `VhsCounter`'s "grid" variant (previously library.tsx
- * only) rather than a new component — same compact `S02·E06` + bar chip.
+ * only) rather than a new component — same compact chip, WITH
+ * `showFraction` (design review correction): CLAUDE.md reserves the
+ * fraction-less "S02·E06 + bar only" shape to the library grid vignette
+ * specifically ("à ne pas généraliser aux autres surfaces") — this row is a
+ * different surface, and the validated product intent here is showing the
+ * current season's NUMERIC progress ("S02·E06 · 6/13"), not just its
+ * proportion. Still kept discreet/muted (`tone="muted"`, no glow) —
+ * subordinate to the hero, never a second big counter.
  */
 export function ReadyListItem({
   item,
@@ -81,6 +88,14 @@ export function ReadyListItem({
               // HeroTicket, index.tsx). Le bump reste cyan quoi qu'il arrive
               // (VhsCounter le gère indépendamment du tone).
               tone="muted"
+              // Fraction chiffrée EN PLUS de la barre, jamais à sa place —
+              // les deux coexistent (revue design) : "S02·E06 · 6/13" +
+              // la barre fine juste en-dessous, toutes deux rendues par
+              // VhsCounter (voir vhs-counter.tsx). Cf. doc du composant pour
+              // pourquoi ce n'est PAS le comportement par défaut du variant
+              // "grid" (réservé, sans fraction, à la vignette de la grille
+              // bibliothèque — CLAUDE.md).
+              showFraction
             />
             {extraCount > 0 && (
               <span className="font-counter text-[10px] uppercase tracking-widest text-primary">
