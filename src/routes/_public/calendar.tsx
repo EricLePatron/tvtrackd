@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BackButton } from "@/components/back-button";
+import { ProfileLink } from "@/components/screen-header";
 import { useAuth } from "@/hooks/use-auth";
 import { useCalendarTimeline } from "@/hooks/use-calendar-timeline";
 import { CalendarTimelineList } from "@/components/home/calendar-timeline";
+import { CalendarWeekView } from "@/components/home/calendar-week-view";
 import { NoShowsPanel } from "@/components/home/empty-states";
 import { SITE_URL } from "@/lib/app-config";
 import { fetchPublicCalendar } from "@/hooks/use-public-calendar";
@@ -59,13 +62,14 @@ function CalendarScreen() {
   const { user } = useAuth();
   const timeline = useCalendarTimeline();
   const loaderData = Route.useLoaderData();
+  const [mode, setMode] = useState<"timeline" | "week">("timeline");
 
   return (
     <>
       <div className="flex items-center gap-3 px-5 pt-6">
         <BackButton fallbackTo="/" />
 
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Calendrier
           </p>
@@ -73,6 +77,7 @@ function CalendarScreen() {
             {user ? "Programme à venir" : "Programme de la semaine"}
           </h1>
         </div>
+        {user && <ProfileLink />}
       </div>
 
       <div className="mt-6 pb-10">
@@ -98,7 +103,37 @@ function CalendarScreen() {
         ) : !timeline.isLoading && !timeline.hasFollowedShows ? (
           <NoShowsPanel />
         ) : (
-          <CalendarTimelineList timeline={timeline} />
+          <>
+            {/* Bascule vue continue (timeline) / vue semaine par semaine —
+                mêmes données, deux modes de lecture. */}
+            <div className="mb-6 flex gap-1 rounded-full border border-border bg-surface p-1 mx-5 w-fit">
+              {(
+                [
+                  ["timeline", "Continu"],
+                  ["week", "Semaine"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  aria-pressed={mode === value}
+                  className={`rounded-full px-4 py-1.5 font-counter text-[11px] uppercase tracking-widest transition-colors ${
+                    mode === value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {mode === "timeline" ? (
+              <CalendarTimelineList timeline={timeline} />
+            ) : (
+              <CalendarWeekView timeline={timeline} />
+            )}
+          </>
         )}
       </div>
     </>
