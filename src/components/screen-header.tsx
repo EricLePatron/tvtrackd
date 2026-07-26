@@ -1,7 +1,24 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogIn } from "lucide-react";
+import { LogIn, User } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+
+/**
+ * Accès au profil, désormais en haut à droite de chaque écran (il a quitté
+ * la bottom nav, remplacé par l'entrée Calendrier).
+ */
+export function ProfileLink() {
+  return (
+    <Link
+      to="/profile"
+      aria-label="Profil"
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface-elevated text-foreground transition-colors hover:border-primary/60 hover:text-primary"
+    >
+      <User className="h-4 w-4" />
+    </Link>
+  );
+}
+
 
 export function ScreenHeader({
   eyebrow,
