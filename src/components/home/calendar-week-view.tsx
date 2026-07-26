@@ -104,35 +104,96 @@ export function CalendarWeekView({ timeline }: { timeline: CalendarTimelineData 
         </button>
       </div>
 
-      <div className="space-y-6">
-        {days.map((date) => {
-          const row = rowsByDate.get(date);
-          return (
-            <div key={date} className="flex gap-3">
-              <span
-                aria-hidden="true"
-                className={`shrink-0 self-stretch rounded-full ${getTemporalBarClass(date, today)}`}
-              />
-              <div className="min-w-0 flex-1">
-                {row && row.kind === "day" ? (
-                  <DayRail
-                    group={{ date, entries: row.entries }}
-                    today={today}
-                    saturated={row.saturated}
-                    dateHeader={<CalendarDayHeader date={date} today={today} />}
-                  />
-                ) : (
-                  <>
-                    <div className="mb-2">
-                      <CalendarDayHeader date={date} today={today} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">Rien de prévu.</p>
-                  </>
-                )}
+      {/* Vraie grille hebdomadaire : 7 colonnes côte à côte (une par jour),
+          scrollables horizontalement sur petit écran — volontairement
+          différente de la vue continue jour par jour. */}
+      <div className="-mx-5 overflow-x-auto px-5 pb-2">
+        <div className="grid min-w-[560px] grid-cols-7 gap-2">
+          {days.map((date) => {
+            const row = rowsByDate.get(date);
+            const entries = row && row.kind === "day" ? row.entries : [];
+            const isToday = date === today;
+            const parts = getDayLabelParts(date, today);
+            return (
+              <div
+                key={date}
+                className={`flex min-h-[220px] flex-col rounded-lg border bg-surface p-1.5 ${
+                  isToday ? "border-primary/60 bg-primary/5" : "border-border"
+                }`}
+              >
+                <div className="mb-2 text-center">
+                  <p
+                    className={`font-counter text-[9px] uppercase tracking-widest ${
+                      isToday ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  >
+                    {parts.isToday ? "AUJ." : parts.weekday}
+                  </p>
+                  <p
+                    className={`font-counter text-lg leading-none ${
+                      isToday ? "text-primary" : "text-foreground"
+                    }`}
+                  >
+                    {parts.dayNumber}
+                  </p>
+                </div>
+                <span
+                  aria-hidden="true"
+                  className={`mb-2 h-[3px] w-full rounded-full ${
+                    date === today
+                      ? "bg-primary"
+                      : date < today
+                        ? "bg-cyan-accent/70"
+                        : "bg-border"
+                  }`}
+                />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  {entries.length === 0 ? (
+                    <span className="mt-2 text-center font-counter text-[9px] uppercase tracking-widest text-muted-foreground/60">
+                      —
+                    </span>
+                  ) : (
+                    entries.map((entry) => (
+                      <Link
+                        key={entry.episode.id}
+                        to="/show/$mediaType/$tmdbId"
+                        params={{
+                          mediaType: entry.show.media_type,
+                          tmdbId: String(entry.show.tmdb_id),
+                        }}
+                        className="group block"
+                      >
+                        <div
+                          className={`relative aspect-[2/3] overflow-hidden rounded border border-border bg-surface-elevated ${
+                            date <= today ? "" : "opacity-70"
+                          }`}
+                        >
+                          {entry.show.poster_path && (
+                            <img
+                              src={entry.show.poster_path}
+                              alt={entry.show.title}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                          )}
+                          {entry.watched && (
+                            <span className="absolute inset-x-0 bottom-0 bg-background/85 py-0.5 text-center font-counter text-[8px] uppercase tracking-widest text-cyan-accent">
+                              Vu
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-center font-counter text-[9px] text-muted-foreground">
+                          S{String(entry.episode.season_number).padStart(2, "0")}E
+                          {String(entry.episode.episode_number).padStart(2, "0")}
+                        </p>
+                      </Link>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
