@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { addDaysToDateString } from "@/lib/schedule";
+import { addDaysToDateString, getDayLabelParts } from "@/lib/schedule";
 import type { CalendarTimeline as CalendarTimelineData } from "@/hooks/use-calendar-timeline";
-import { DayRail } from "./day-rail";
-import { CalendarDayHeader } from "./calendar-day-header";
-import { buildFlatRows, getTemporalBarClass } from "./calendar-timeline-rows";
+import { buildFlatRows } from "./calendar-timeline-rows";
 
 /** Lundi de la semaine contenant `date` (chaîne YYYY-MM-DD). */
 function startOfWeek(date: string): string {

@@ -4,14 +4,14 @@ import { useAuth } from "@/hooks/use-auth";
 
 const publicItems = [
   { to: "/" as const, label: "Accueil", Icon: Home, exact: true },
-  { to: "/search" as const, label: "Recherche", Icon: Search },
   { to: "/calendar" as const, label: "Calendrier", Icon: CalendarDays },
+  { to: "/search" as const, label: "Recherche", Icon: Search },
 ];
 
 const authedItems = [
   { to: "/" as const, label: "Accueil", Icon: Home, exact: true },
-  { to: "/search" as const, label: "Recherche", Icon: Search },
   { to: "/calendar" as const, label: "Calendrier", Icon: CalendarDays },
+  { to: "/search" as const, label: "Recherche", Icon: Search },
   { to: "/library" as const, label: "Bibliothèque", Icon: Library },
 ];
 
