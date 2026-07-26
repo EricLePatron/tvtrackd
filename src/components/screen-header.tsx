@@ -56,6 +56,7 @@ export function ScreenHeader({
             Se connecter
           </Link>
         )}
+        {user && <ProfileLink />}
       </div>
       {children ? <div className="mt-3 text-[15px] text-muted-foreground">{children}</div> : null}
     </header>
