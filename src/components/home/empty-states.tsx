@@ -51,9 +51,9 @@ export function AllCaughtUpBanner() {
 }
 
 /**
- * Cas 3 — rien à voir maintenant, mais des sorties à venir : n'a plus de
+ * Cas 3 — rien à voir maintenant, mais une sortie à venir : n'a plus de
  * composant dédié. La Home rend directement le bloc "Bientôt" partagé
- * (`NextReleaseHeroCard` + `NextReleaseCard`, alimentés par
+ * (`NextReleaseHeroCard`, un seul item en grand format, alimenté par
  * `selectNextReleases`) depuis `HomeContent` (index.tsx) pour cet état — le
  * même gabarit que celui utilisé sous le hero en état `normal`, plutôt qu'un
  * troisième template dédié (ex-`NothingNowCountdownTicket`/`AwaitedHeroCard`/
