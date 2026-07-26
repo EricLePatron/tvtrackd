@@ -1,18 +1,18 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Search, Library, User, LogIn } from "lucide-react";
+import { Home, Search, Library, CalendarDays, LogIn } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const publicItems = [
   { to: "/" as const, label: "Accueil", Icon: Home, exact: true },
   { to: "/search" as const, label: "Recherche", Icon: Search },
-  { to: "/calendar" as const, label: "Calendrier", Icon: Library },
+  { to: "/calendar" as const, label: "Calendrier", Icon: CalendarDays },
 ];
 
 const authedItems = [
   { to: "/" as const, label: "Accueil", Icon: Home, exact: true },
   { to: "/search" as const, label: "Recherche", Icon: Search },
+  { to: "/calendar" as const, label: "Calendrier", Icon: CalendarDays },
   { to: "/library" as const, label: "Bibliothèque", Icon: Library },
-  { to: "/profile" as const, label: "Profil", Icon: User },
 ];
 
 export function BottomNav() {
