@@ -372,6 +372,39 @@ function byEarliestAirDate(a: ReadyItem, b: ReadyItem) {
 }
 
 /**
+ * Ranks `en_cours` ReadyItems by *watch* recency (most recently watched
+ * first) — the primary sort for the hero slot among fresh candidates (see
+ * `selectHero`), and also for `reprendre`/`reprendreDormant` (Option A:
+ * "Reprendre" reads as a continue-watching list, consistent with the hero).
+ *
+ * A show with a known `lastWatchedAt` always outranks one with none at all —
+ * an actual watch (even a fairly old one, as long as it's still
+ * hero-fresh-eligible) is a stronger "currently watching" signal than "never
+ * touched". When neither item has a known `lastWatchedAt` (both fresh,
+ * never-watched `en_cours` shows — e.g. just flagged `en_cours` with no
+ * `watch_status` row yet), OR the two timestamps are exactly equal instants
+ * (e.g. a burst of concurrent optimistic mark-watched taps that stamps
+ * several shows with the identical `now()` — see `recomputeFromBatch` in
+ * `use-mark-watched.ts`), falls back to `byEarliestAirDate` (oldest backlog
+ * first, then title) — the OLD backlog-based rule, preserved here as a
+ * deterministic tie-break rather than dropped.
+ */
+function compareByHeroRecency(lastWatchedAtByShowId: ReadonlyMap<number, string>) {
+  return (a: ReadyItem, b: ReadyItem) => {
+    const aTime = lastWatchedAtByShowId.get(a.show.id);
+    const bTime = lastWatchedAtByShowId.get(b.show.id);
+    if (aTime && bTime) {
+      const diff = new Date(bTime).getTime() - new Date(aTime).getTime();
+      if (diff !== 0) return diff;
+      return byEarliestAirDate(a, b);
+    }
+    if (aTime && !bTime) return -1;
+    if (!aTime && bTime) return 1;
+    return byEarliestAirDate(a, b);
+  };
+}
+
+/**
  * Aggregates `watch_status.watched_at` into "most recent watch per show".
  * Takes rows that already carry `show_id` directly (resolved server-side via
  * a join — see the home screen's dedicated recency query in
@@ -441,25 +474,61 @@ export function splitEnCoursByFreshness(
 
 /**
  * Hero selection rule: among `en_cours` shows not stale for the hero slot
- * (see `HERO_STALE_DAYS`), the one with the oldest ready backlog always wins
- * over any `a_voir` show, no matter how much older the `a_voir` show's
- * backlog is. Falls back to the oldest `a_voir` item when there is no fresh
- * `en_cours` candidate, and — only when neither exists — falls back to the
- * oldest `en_cours` item even if it IS stale, rather than ever leaving
- * `hero` null while `readyItems` is non-empty: the 60j guard is a
- * *preference* for a fresher show, never an absolute exclusion that could
- * leave Zone A completely blank.
+ * (see `HERO_STALE_DAYS`), the one *most recently watched* wins — see
+ * `compareByHeroRecency` — always over any `a_voir` show, no matter how old
+ * or recent the `a_voir` show's backlog is (an `a_voir` show has no watch
+ * history to rank by definition — it hasn't been started yet). This
+ * replaced an earlier "oldest ready backlog wins" rule: ranking by backlog
+ * age alone could pin the hero on a show whose oldest unwatched episode is
+ * years stale while a show the user is actively bingeing right now sits one
+ * slot down (e.g. an old, long-abandoned rewatch backlog outranking a show
+ * watched yesterday) — recency of the last actual watch is what the hero is
+ * meant to represent ("what am I watching right now"); backlog age now only
+ * survives as `compareByHeroRecency`'s deterministic tie-break for shows
+ * with no comparable watch-recency signal.
  *
- * Beyond the hero, the remaining `en_cours` shows split into `reprendre`
- * (last watched < `LIST_STALE_DAYS`) and `reprendreDormant` (>=
- * `LIST_STALE_DAYS`) — the Home screen only ever renders `reprendre`
- * (capped to 3 rows + a "Voir tout" link), `reprendreDormant` is only
- * reachable through the library. A show with no watch history at all is
- * never dormant, same reasoning as the hero guard. Note the two thresholds
- * are independent: a hero picked from the 30-59j band is still fresh enough
- * to win the hero slot, it just wouldn't also show up in `reprendre` if it
- * *hadn't* won hero — no double-counting either way since the hero is
- * always excluded from both `reprendre` and `reprendreDormant`.
+ * Falls back to the oldest `a_voir` item (by backlog age, `byEarliestAirDate`
+ * — recency doesn't apply, there is no watch history yet) when there is no
+ * fresh `en_cours` candidate, and — only when neither exists — falls back to
+ * the oldest `en_cours` item by backlog age even if it IS stale, rather than
+ * ever leaving `hero` null while `readyItems` is non-empty: the 60j guard is
+ * a *preference* for a fresher show, never an absolute exclusion that could
+ * leave Zone A completely blank. Both fallback branches deliberately stay on
+ * `byEarliestAirDate` rather than `compareByHeroRecency`: recency is only a
+ * meaningful primary signal among the fresh `en_cours` set the hero rule
+ * cares about — once we're already in a fallback branch there's no
+ * "currently watching" candidate left to rank by recency in the first place.
+ *
+ * Beyond the hero, the remaining `en_cours` shows are ALSO ranked by
+ * `compareByHeroRecency` (not `byEarliestAirDate`) before splitting into
+ * `reprendre` (last watched < `LIST_STALE_DAYS`) and `reprendreDormant` (>=
+ * `LIST_STALE_DAYS`) — "Reprendre" reads as a continue-watching list, most
+ * recently watched first, consistent with how the hero itself is now picked.
+ * The Home screen only ever renders `reprendre` (capped to 3 rows + a "Voir
+ * tout" link, see index.tsx's `REPRENDRE_VISIBLE_COUNT`) — this ranking
+ * directly decides WHICH 3 shows are visible there, not just their order.
+ * `reprendreDormant` is only reachable through the library. A show with no
+ * watch history at all is never dormant, same reasoning as the hero guard.
+ * Note the two thresholds are independent: a hero picked from the 30-59j
+ * band is still fresh enough to win the hero slot, it just wouldn't also
+ * show up in `reprendre` if it *hadn't* won hero — no double-counting either
+ * way since the hero is always excluded from both `reprendre` and
+ * `reprendreDormant`.
+ *
+ * ASSUMED CONSEQUENCE — DO NOT "FIX" WITHOUT PRODUCT SIGN-OFF: tapping the
+ * episode of ANY fresh `en_cours` show (not just the current hero's own —
+ * this includes a visible "Reprendre" row) can promote that show to hero
+ * IMMEDIATELY, because `useMarkWatched`'s optimistic `recomputeFromBatch`
+ * (`src/hooks/use-mark-watched.ts`) bumps the tapped show's
+ * `lastWatchedAtByShowId` entry to `now()`, and `now()` will essentially
+ * always outrank any other show's real (historical) watch timestamp under
+ * `compareByHeroRecency`. This is a deliberate, product-validated
+ * consequence of "hero = what I'm watching right now" (Option A / "Direction
+ * A" of the hero-recency rework), not an accidental side effect — see the
+ * `[Direction A]`-tagged tests in `src/hooks/use-mark-watched.test.ts` for
+ * the exact promotion/demotion behavior this produces. A future change that
+ * tries to make a non-hero show's tap "never touch the hero" would be
+ * reverting this decision, not fixing a bug.
  */
 export function selectHero(
   readyItems: ReadyItem[],
@@ -471,6 +540,9 @@ export function selectHero(
   reprendreDormant: ReadyItem[];
   nouveau: ReadyItem[];
 } {
+  // Sorted by backlog age (byEarliestAirDate) — kept as-is for the
+  // last-resort hero fallback below, which deliberately stays on backlog age
+  // rather than recency (see doc comment above).
   const enCours = readyItems.filter((i) => i.status === "en_cours").sort(byEarliestAirDate);
   const aVoir = readyItems.filter((i) => i.status === "a_voir").sort(byEarliestAirDate);
 
@@ -480,7 +552,14 @@ export function selectHero(
     const days = daysSince(item);
     return days !== null && days >= HERO_STALE_DAYS;
   };
-  const freshEnCours = enCours.filter((i) => !isHeroStale(i));
+
+  // Fresh en_cours shows, ranked by watch recency (most recently watched
+  // first) — this is the actual hero ranking. `enCours` itself is left
+  // sorted by backlog age (untouched) so the last-resort fallback below
+  // (`enCours[0]`) keeps its original semantics.
+  const freshEnCours = enCours
+    .filter((i) => !isHeroStale(i))
+    .sort(compareByHeroRecency(lastWatchedAtByShowId));
 
   let hero: ReadyItem | null = null;
   if (freshEnCours.length) {
@@ -491,9 +570,12 @@ export function selectHero(
     hero = enCours[0]; // last-resort fallback — see doc comment above.
   }
 
+  // Every non-hero en_cours show, ranked by the SAME watch-recency rule as
+  // the hero (Option A — see doc comment above), then split active/dormant.
+  const enCoursByRecency = [...enCours].sort(compareByHeroRecency(lastWatchedAtByShowId));
   const reprendre: ReadyItem[] = [];
   const reprendreDormant: ReadyItem[] = [];
-  for (const item of enCours) {
+  for (const item of enCoursByRecency) {
     if (item.show.id === hero?.show.id) continue; // never duplicate the hero into either list
     const days = daysSince(item);
     if (days !== null && days >= LIST_STALE_DAYS) reprendreDormant.push(item);

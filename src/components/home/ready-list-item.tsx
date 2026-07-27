@@ -52,9 +52,22 @@ function pad(n: number) {
 export function ReadyListItem({
   item,
   progress,
+  onTap,
 }: {
   item: ReadyItem;
   progress?: { watched: number; total: number };
+  /**
+   * (§5 a11y fix — design review) Called with the exact "Marquer comme vu"
+   * button element at the moment it's clicked, BEFORE the mutation fires —
+   * lets `HomeContent` (index.tsx) remember which button had focus, so a
+   * post-commit effect there can detect if THIS row got removed (Direction
+   * A promoted it to hero — see `schedule.ts`'s selectHero doc comment) and
+   * recover focus explicitly instead of letting the browser silently drop
+   * it to `<body>`. See `HomeContent`'s own doc comment for the full
+   * mechanism — this component only ever reports "I was tapped", it has no
+   * opinion on what happens after.
+   */
+  onTap?: (button: HTMLButtonElement) => void;
 }) {
   const { show, nextEpisode } = item;
   const markWatched = useMarkWatched();
@@ -62,10 +75,11 @@ export function ReadyListItem({
   const pct =
     progress && progress.total ? Math.min(100, (progress.watched / progress.total) * 100) : 0;
 
-  const handleMark = (e: React.MouseEvent) => {
+  const handleMark = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (markWatched.isPending) return;
+    onTap?.(e.currentTarget);
     markWatched.mutate({ episodeId: nextEpisode.id, showId: show.id });
   };
 

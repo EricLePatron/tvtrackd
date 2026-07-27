@@ -493,12 +493,188 @@ function AnonymousHome() {
   );
 }
 
+/**
+ * (§1 design review — "Reprendre" reflow polish, fallback path) Tracks which
+ * visible "Reprendre" rows just left `items` (promoted to hero — Direction
+ * A, see `selectHero`'s doc comment in schedule.ts — or otherwise dropped
+ * out of the top `REPRENDRE_VISIBLE_COUNT`) so they can fade out over
+ * ~200ms instead of vanishing instantly while the remaining rows snap up to
+ * fill the gap.
+ *
+ * View Transitions (`document.startViewTransition`) were the design
+ * review's preferred approach, but are deliberately NOT wired here —
+ * verified against the actually-installed `@tanstack/query-core` (v5.101)
+ * source: its `notifyManager` schedules cache-change notifications via
+ * `setTimeout(cb, 0)` (`notifyManager.ts` -> `timeoutManager.ts`'s
+ * `systemSetTimeoutZero`), a macrotask, never synchronous and not even
+ * microtask-scheduled. `startViewTransition(callback)` requires the DOM
+ * mutation to happen synchronously inside `callback` (or its returned
+ * promise) to correctly snapshot "before"/"after"; `flushSync` can only
+ * force-flush REACT updates that occur synchronously within ITS OWN
+ * callback — it structurally cannot reach a `setTimeout(0)`-deferred
+ * notification arriving later, so `startViewTransition(() =>
+ * flushSync(() => markWatched.mutate(...)))` would silently fail to capture
+ * the actual DOM change. Fixing this properly would mean either a global
+ * change to React Query's notification scheduler (app-wide blast radius,
+ * not justified for one visual polish) or restructuring this specific
+ * optimistic path to bypass `useQuery`'s async notification entirely — both
+ * too invasive for what the design review itself flagged as non-blocking.
+ * Falling back to a plain CSS opacity fade instead, as explicitly
+ * authorized for this case.
+ *
+ * Departure is detected DURING RENDER (not in a `useEffect`), by comparing
+ * against a ref of the previous `items` — this is what lets the very FIRST
+ * render that excludes a departed show ALREADY include it in the merged
+ * output as "leaving", so its row's DOM node/key is never actually
+ * unmounted-then-remounted (which would defeat the CSS transition: a
+ * freshly-mounted node can't visibly animate FROM a style it never had).
+ * Calling `setState` during render like this is the documented React
+ * pattern for "adjust state in response to a prop change without an
+ * Effect" — React discards and re-runs the current render before
+ * committing, so the actually-committed output already reflects it. A
+ * `useEffect` only handles the delayed cleanup (dropping it from state once
+ * the fade has had time to finish). Skips entirely under
+ * `prefers-reduced-motion` (`skipAnimation`) — rows are then added/removed
+ * exactly as before this change, no transient state at all.
+ */
+function useReprendreRows(
+  items: ReadyItem[],
+  skipAnimation: boolean,
+): { item: ReadyItem; leaving: boolean }[] {
+  const prevItemsRef = useRef<ReadyItem[]>(items);
+  const [leavingSnapshot, setLeavingSnapshot] = useState<ReadyItem[]>([]);
+
+  const currentIds = new Set(items.map((i) => i.show.id));
+  const justDeparted = skipAnimation
+    ? []
+    : prevItemsRef.current.filter((i) => !currentIds.has(i.show.id));
+  if (justDeparted.length) {
+    const departedIds = new Set(justDeparted.map((i) => i.show.id));
+    setLeavingSnapshot((cur) => [
+      ...cur.filter((i) => !departedIds.has(i.show.id)),
+      ...justDeparted,
+    ]);
+  }
+  prevItemsRef.current = items;
+
+  useEffect(() => {
+    if (!leavingSnapshot.length) return;
+    // ~220ms — just past the 200ms CSS fade (`duration-200`, the same
+    // duration HeroTicket's own bump animation already uses for its
+    // scale/flash timeout above — reused, not a new value) so the
+    // transition has fully finished before the row is actually dropped.
+    const timeoutId = setTimeout(() => setLeavingSnapshot([]), 220);
+    return () => clearTimeout(timeoutId);
+  }, [leavingSnapshot]);
+
+  if (!leavingSnapshot.length) {
+    return items.map((item) => ({ item, leaving: false }));
+  }
+  const stillLeaving = leavingSnapshot.filter((i) => !currentIds.has(i.show.id));
+  return [
+    ...stillLeaving.map((item) => ({ item, leaving: true })),
+    ...items.map((item) => ({ item, leaving: false })),
+  ];
+}
+
 function HomeContent({ data }: { data: HomeData }) {
   const state = resolveHomeState({
     followedActiveCount: data.followedActiveCount,
     readyCount: data.readyCount,
     upcomingCount: data.upcomingCount,
   });
+
+  const prefersReducedMotion = useReducedMotion();
+
+  /**
+   * (§5 a11y fix — design review) Focus/announcement recovery when an
+   * optimistic mark-watched tap causes the hero to rotate to a DIFFERENT
+   * show — either because a "Reprendre" row got promoted (Direction A) or
+   * because the CURRENT hero's own last ready episode just got marked
+   * watched and it rotated away to someone else (`hero.show.id` changes
+   * either way). Either case, the exact button the user just clicked can be
+   * removed from the DOM by React's reconciliation once its row/card no
+   * longer renders — the browser's default behavior is to silently drop
+   * focus to `<body>`.
+   *
+   * Deliberately does NOT diff `data.hero?.show.id` across renders to
+   * detect "a rotation happened" — that would also fire on an unrelated
+   * background refetch (e.g. `refetchOnWindowFocus`) that happens to land a
+   * different hero, which would steal focus/announce for something the
+   * user didn't just do. Instead, `lastTappedButtonRef` remembers the EXACT
+   * button element clicked (set by `handleMarkWatchedTap`, passed as `onTap`
+   * to both `HeroTicket` and `ReadyListItem`); the effect below only acts
+   * when THAT SPECIFIC element has been removed from the document AND focus
+   * genuinely fell back to `<body>` (not deliberately moved elsewhere by the
+   * user in the meantime) — a precise, tap-scoped signal that naturally
+   * no-ops for "tapped the current hero, no rotation" (its button persists,
+   * same DOM node, nothing to recover) without needing to special-case it.
+   *
+   * Known simplification: only the LAST tapped button is tracked (a plain
+   * ref, not a set) — a rapid double-tap on two DIFFERENT rows in the same
+   * optimistic batch (see the `[scenario A/B]` tests in
+   * use-mark-watched.test.ts) could miss recovering focus for the first one
+   * if the second overwrites the ref before the effect runs. Accepted as a
+   * rare edge case, same category as the other documented "transient,
+   * self-correcting" limits around this optimistic batching (see
+   * `recomputeFromBatch` in use-mark-watched.ts).
+   */
+  const lastTappedButtonRef = useRef<HTMLButtonElement | null>(null);
+  const heroButtonRef = useRef<HTMLButtonElement | null>(null);
+  const zoneAFallbackRef = useRef<HTMLDivElement | null>(null);
+  const [rotationAnnouncement, setRotationAnnouncement] = useState("");
+
+  const handleMarkWatchedTap = (button: HTMLButtonElement) => {
+    lastTappedButtonRef.current = button;
+  };
+
+  // Runs after EVERY commit (no dep array) — the check itself is a cheap
+  // `document.body.contains`, and it only ever does anything (focus a node,
+  // set the announcement) when `lastTappedButtonRef.current` is non-null,
+  // which only happens right after a genuine tap. Refs on the newly-mounted
+  // hero (`heroButtonRef`) are guaranteed populated by the time THIS effect
+  // runs — React attaches every ref in a commit before firing any passive
+  // effect for that commit, so a plain `useEffect` here is sufficient; no
+  // `flushSync` needed (that tool is for forcing synchronous DOM output for
+  // something OUTSIDE React's own effect ordering, e.g. View Transitions —
+  // see `useReprendreRows`'s doc comment above for why that doesn't apply
+  // here).
+  //
+  // Deliberately NOT `[data.hero]` (the eslint auto-fix suggestion) — a
+  // "Reprendre" row can also lose its tapped button when its OWN backlog
+  // clears entirely (no ready episode left at all), which drops it out of
+  // `data.reprendre` WITHOUT `data.hero`'s reference ever changing; a
+  // `[data.hero]` dep would silently miss recovering focus for that case.
+  // No infinite-loop risk either: `lastTappedButtonRef.current` is
+  // consumed (set back to `null`) on the very same run that acts on it, so
+  // the guard clause makes every subsequent run with a stale/absent ref a
+  // no-op regardless of how often this effect re-fires.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const tappedButton = lastTappedButtonRef.current;
+    if (!tappedButton) return;
+    if (document.body.contains(tappedButton)) return; // no rotation — still there, nothing to recover
+    lastTappedButtonRef.current = null; // consume — never re-trigger for this same tap again
+
+    const active = document.activeElement;
+    if (active && active !== document.body) return; // something else already handled focus — don't steal it
+
+    const target = heroButtonRef.current ?? zoneAFallbackRef.current;
+    target?.focus();
+
+    if (data.hero) {
+      setRotationAnnouncement(`${data.hero.show.title} passé en haut de votre programme.`);
+    }
+  });
+
+  // (§1 fallback, see `useReprendreRows` above) Called unconditionally on
+  // every render regardless of `state` — Rules of Hooks — `data.reprendre`
+  // is always `[]` in states that never render it (no_shows/upcoming_only/
+  // all_caught_up), so this is a harmless no-op there.
+  const reprendreRows = useReprendreRows(
+    data.reprendre.slice(0, REPRENDRE_VISIBLE_COUNT),
+    prefersReducedMotion,
+  );
 
   if (state === "no_shows") {
     return <NoShowsPanel />;
@@ -530,8 +706,25 @@ function HomeContent({ data }: { data: HomeData }) {
   // "ready_only" or "normal": Zone A renders the hero ticket + compact lists.
   return (
     <>
-      {/* Zone A — À voir maintenant */}
-      <div className="mx-5">
+      {/* (§5 a11y fix) Visually hidden live region — announces a hero
+          promotion right after a tap causes one (see the effect above).
+          Empty on mount and on any unrelated render; only a genuine,
+          tap-triggered rotation ever sets it, and only ONCE per rotation
+          (the effect clears `lastTappedButtonRef` right after consuming
+          it), so it never re-announces on the later server-confirmed
+          refetch of the same rotation. */}
+      <div aria-live="polite" className="sr-only">
+        {rotationAnnouncement}
+      </div>
+
+      {/* Zone A — À voir maintenant. `tabIndex={-1}` + the ref: fallback
+          focus target for the §5 recovery effect above, only ever used if
+          `heroButtonRef` itself somehow isn't populated (defensive — in
+          practice the hero button is always present right after a
+          promotion, since a promotion by definition means there IS a new
+          hero). Not part of the natural Tab order (-1), purely a
+          programmatic anchor. */}
+      <div ref={zoneAFallbackRef} tabIndex={-1} className="mx-5">
         {data.hero && (
           // `key` on show id + season number: forces a fresh mount (so
           // HeroTicket's local bump/tween state resets instantly) not only
@@ -547,6 +740,8 @@ function HomeContent({ data }: { data: HomeData }) {
             key={`${data.hero.show.id}-${data.hero.nextEpisode.season_number}`}
             item={data.hero}
             progress={data.heroProgress ?? undefined}
+            onTap={handleMarkWatchedTap}
+            markButtonRef={heroButtonRef}
           />
         )}
 
@@ -579,12 +774,26 @@ function HomeContent({ data }: { data: HomeData }) {
               )}
             </div>
             <div className="space-y-2">
-              {data.reprendre.slice(0, REPRENDRE_VISIBLE_COUNT).map((item) => (
-                <ReadyListItem
+              {/* (§1 fallback — see `useReprendreRows` above) Each row is
+                  wrapped in a persistent div (present, same key, whether
+                  `leaving` or not) so a departing row's opacity genuinely
+                  TRANSITIONS on an existing DOM node rather than mounting
+                  already-faded — a fresh mount can't visibly animate FROM a
+                  style it never had. */}
+              {reprendreRows.map(({ item, leaving }) => (
+                <div
                   key={item.show.id}
-                  item={item}
-                  progress={data.reprendreProgressByShowId.get(item.show.id)}
-                />
+                  aria-hidden={leaving ? true : undefined}
+                  className={`transition-opacity duration-200 ease-out motion-reduce:transition-none ${
+                    leaving ? "pointer-events-none opacity-0" : "opacity-100"
+                  }`}
+                >
+                  <ReadyListItem
+                    item={item}
+                    progress={data.reprendreProgressByShowId.get(item.show.id)}
+                    onTap={handleMarkWatchedTap}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -724,6 +933,8 @@ function HeroTicket({
   badge,
   interactive = true,
   progress,
+  onTap,
+  markButtonRef,
 }: {
   item: ReadyItem;
   /** Overrides the default `formatReadyLabel` eyebrow — used by the anonymous demo hero's "Exemple" badge. */
@@ -741,6 +952,22 @@ function HeroTicket({
    * `progress` is supplied.
    */
   progress?: { watched: number; total: number };
+  /**
+   * (§5 a11y fix — design review) See `ReadyListItem`'s own `onTap` doc
+   * comment — same mechanism, reported from the hero's OWN "Marquer comme
+   * vu" button. Undefined for the anonymous demo hero (`interactive=false`,
+   * no button rendered at all).
+   */
+  onTap?: (button: HTMLButtonElement) => void;
+  /**
+   * (§5 a11y fix) Ref attached to the button so `HomeContent`'s post-commit
+   * effect can `.focus()` it once a NEW hero (after a rotation) has
+   * mounted. Refs attach during React's commit phase, before any
+   * `useEffect` runs — a plain effect in the parent is enough, no
+   * `flushSync` needed (verified: this is the "ref + effect" pattern the
+   * design review itself suggested as the safe option).
+   */
+  markButtonRef?: React.Ref<HTMLButtonElement>;
 }) {
   const { show, nextEpisode } = item;
   const backdropUrl = nextEpisode.still_path ?? show.backdrop_path ?? show.poster_path;
@@ -849,10 +1076,11 @@ function HeroTicket({
   const displayTotal = progress?.total ?? 0;
   const pct = displayTotal > 0 ? Math.min(100, (display / displayTotal) * 100) : 0;
 
-  const handleMark = (e: React.MouseEvent) => {
+  const handleMark = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (markWatched.isPending) return;
+    onTap?.(e.currentTarget);
     markWatched.mutate({ episodeId: nextEpisode.id, showId: show.id });
   };
 
@@ -964,6 +1192,7 @@ function HeroTicket({
           </div>
           {interactive && (
             <button
+              ref={markButtonRef}
               type="button"
               onClick={handleMark}
               disabled={markWatched.isPending}
