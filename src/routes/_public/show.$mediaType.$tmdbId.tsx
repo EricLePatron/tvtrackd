@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { SimilarRail } from "@/components/show/similar-rail";
 import { CastRail } from "@/components/show/cast-rail";
 import { StarRating } from "@/components/show/star-rating";
+import { ShareWatchDialog } from "@/components/share-watch-dialog";
 import { SITE_URL } from "@/lib/app-config";
 import {
   fetchShowDetails,
