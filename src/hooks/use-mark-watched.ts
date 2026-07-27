@@ -2,7 +2,13 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { deriveHomeView, type HomeData, type HomeRawInputs, type ReadyItem } from "@/lib/schedule";
+import {
+  deriveHomeView,
+  seasonCountKey,
+  type HomeData,
+  type HomeRawInputs,
+  type ReadyItem,
+} from "@/lib/schedule";
 
 function homeScheduleKey(userId: string) {
   return ["home-schedule", userId] as const;
@@ -110,7 +116,20 @@ function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeDa
   // `heroSeasonEpisodeCount` a été fetché pour le show/saison du hero de
   // `base` LUI-MÊME (non modifié) — réutilisé seulement si le hero recalculé
   // avec l'ensemble complet des ids en vol résout encore vers ce même show +
-  // cette même saison, jamais transporté à travers une rotation.
+  // cette même saison, jamais transporté aveuglément à travers une rotation.
+  //
+  // Direction A (promotion-au-tap, voir "ASSUMED CONSEQUENCE" dans
+  // schedule.ts) fait de cette rotation le CHEMIN NOMINAL — cocher une ligne
+  // "Reprendre" visible promeut systématiquement cette série en hero. Sans
+  // fallback, ça effaçait le compteur VHS/heroProgress à chaque promotion
+  // jusqu'au prochain refetch serveur (§3 revue design), alors que la donnée
+  // est déjà en cache : le show promu depuis une ligne "Reprendre" VISIBLE a
+  // déjà son `episode_count` officiel dans `base.reprendreSeasonEpisodeCounts`
+  // (alimenté pour les lignes rendues, voir `HomeRawInputs.reprendreSeasonEpisodeCounts`
+  // et `REPRENDRE_VISIBLE_COUNT` dans index.tsx) — on le réutilise directement,
+  // zéro coût réseau, avant de retomber sur `null` si absent (résiduel : hero
+  // promu depuis un show hors des lignes visibles, ou rotation naturelle
+  // côté serveur — corrigé au prochain refetch, comme avant).
   //
   // Limites connues et acceptées (flashs transitoires, auto-corrigés au
   // prochain refetch — `onSettled` invalide toujours `home-schedule`) :
@@ -126,10 +145,19 @@ function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeDa
   //   aller-retour réseau, jamais permanent.
   // Scénarios rares (mutations concurrentes sur la même série, ou fenêtre de
   // course entre deux refetch), dans la même catégorie que le `heroProgress`
-  // masqué le temps d'une rotation.
+  // résiduel masqué le temps d'une rotation vers un show hors "Reprendre".
   const baseHero = deriveHomeView(base, prevHome.today).hero;
-  const heroSeasonEpisodeCount =
-    heroKeyOf(view.hero) === heroKeyOf(baseHero) ? base.heroSeasonEpisodeCount : null;
+  let heroSeasonEpisodeCount: number | null;
+  if (heroKeyOf(view.hero) === heroKeyOf(baseHero)) {
+    heroSeasonEpisodeCount = base.heroSeasonEpisodeCount;
+  } else if (view.hero) {
+    heroSeasonEpisodeCount =
+      base.reprendreSeasonEpisodeCounts.get(
+        seasonCountKey(view.hero.show.id, view.hero.nextEpisode.season_number),
+      ) ?? null;
+  } else {
+    heroSeasonEpisodeCount = null;
+  }
 
   const finalView =
     heroSeasonEpisodeCount == null

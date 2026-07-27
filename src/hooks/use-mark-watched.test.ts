@@ -304,7 +304,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
   // Étage 2.2 (progression saison sur "Reprendre") — exerce
   // `reprendreProgressByShowId` à travers le même chemin optimiste que
   // `heroProgress` ci-dessus, sur le modèle du test de rotation du hero.
-  it("[Direction A] tapping a 'Reprendre' row's episode promotes it to hero by recency, demoting the previous hero — season-count reliability resets exactly like any other hero rotation", () => {
+  it("[Direction A] tapping a 'Reprendre' row's episode promotes it to hero by recency, demoting the previous hero — heroProgress carries over from reprendreSeasonEpisodeCounts, no VHS-counter gap (design review §3)", () => {
     const qc = new QueryClient();
     const heroShow = show(1, "Hero Show"); // most recently watched — legitimately hero before the tap
     const reprendreShow = show(2, "Reprendre Show"); // fresh, but watched less recently — starts in reprendre
@@ -364,11 +364,15 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     // see selectHero's "ASSUMED CONSEQUENCE" doc comment in schedule.ts.
     expect(cur.hero?.show.id).toBe(2);
     expect(cur.hero?.nextEpisode.id).toBe(207); // advanced past the just-watched 206
-    // heroSeasonEpisodeCount was fetched for the OLD hero's season (show 1)
-    // — reset to null on rotation exactly like any other hero rotation, so
-    // heroProgress is unknown until the next server refetch, never a stale
-    // or wrong fraction.
-    expect(cur.heroProgress).toBeNull();
+    // (design review §3 fix) The promoted show was a VISIBLE "Reprendre" row
+    // — its own season's official episode_count was already cached in
+    // `reprendreSeasonEpisodeCounts` (fetched for REPRENDRE_VISIBLE_COUNT
+    // rows), so `recomputeFromBatch` reuses it immediately for the new hero
+    // instead of resetting to null: the VHS counter/heroProgress never
+    // blanks out on promotion, zero network cost. Same season (1) as before
+    // the tap, so the SAME official count (10) still applies — just the
+    // watched tally advanced (5 -> 6) along with the tap itself.
+    expect(cur.heroProgress).toEqual({ watched: 6, total: 10 });
     // The previous hero demotes into "reprendre" rather than vanishing.
     expect(cur.reprendre.map((i) => i.show.id)).toEqual([1]);
     expect(cur.reprendre[0]?.nextEpisode.id).toBe(101);
@@ -391,7 +395,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.reprendre[0]?.nextEpisode.id).toBe(206);
   });
 
-  it("[Reprendre progress + Direction A] the fraction disappears cleanly (never a wrong one) once the newly-promoted hero's nextEpisode rolls into a season with no official count yet", () => {
+  it("[Reprendre progress + Direction A] residual case — the fraction disappears cleanly (never a wrong one) when the newly-promoted hero's nextEpisode rolls into a season NOT covered by reprendreSeasonEpisodeCounts", () => {
     const qc = new QueryClient();
     const heroShow = show(1, "Hero Show");
     const reprendreShow = show(2, "Reprendre Show");
@@ -449,11 +453,14 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     // is now the HERO's own next episode, not a "Reprendre" row's.
     expect(cur.hero?.show.id).toBe(2);
     expect(cur.hero?.nextEpisode.id).toBe(301); // rolled over to season 2
-    // Season 2's official episode count was never fetched (only season 1
-    // was) — no fraction shown, never a falsely-reassuring wrong one. Same
-    // "unreliable tally omitted" guarantee as before, just surfacing via
-    // `heroProgress` now that the row got promoted, instead of via
-    // `reprendreProgressByShowId`.
+    // (design review §3 fix, residual branch) `recomputeFromBatch` DOES look
+    // up `reprendreSeasonEpisodeCounts` for the promoted show's new
+    // (show, season) pair — but `seasonCountKey(2, 2)` was never fetched
+    // (only `seasonCountKey(2, 1)` was, matching what the initial render
+    // actually needed for the visible Reprendre row's THEN-current season)
+    // — so the lookup misses and it correctly falls back to `null`, same
+    // "unreliable tally omitted" guarantee as before: never a stale/wrong
+    // fraction, just cleanly absent until the next server refetch.
     expect(cur.heroProgress).toBeNull();
     // The previous hero (show 1) demotes into "reprendre" — its own season
     // was never fetched either, so it also shows no fraction.
