@@ -950,6 +950,7 @@ function ShowDetail() {
                               ) : null
                             }
                           />
+                        );
                       })}
                     </ul>
                   </AccordionContent>
