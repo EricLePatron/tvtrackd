@@ -1556,6 +1556,11 @@ function EpisodeRow({
             {episode.air_date ?? "date inconnue"}
           </p>
         </div>
+        {share && (
+          <div className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {share}
+          </div>
+        )}
         {hasOverview && (
           <ChevronDown
             className={cn(
