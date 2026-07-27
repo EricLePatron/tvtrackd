@@ -888,6 +888,22 @@ function ShowDetail() {
                       onMark={markSeasonWatched}
                       onUnmark={unmarkSeasonWatched}
                     />
+                    {/* Partage social : proposé uniquement quand la saison est
+                        effectivement vue en entier — sinon il n'y a rien à
+                        annoncer. */}
+                    {seasonState === true && (
+                      <ShareWatchDialog
+                        triggerVariant="button"
+                        triggerLabel="Partager cette saison"
+                        title={show.title}
+                        counter={`Saison ${pad(s.season_number)}`}
+                        subtitle={`${watchedCount} épisode${watchedCount > 1 ? "s" : ""} vu${watchedCount > 1 ? "s" : ""}`}
+                        posterUrl={show.poster_path}
+                        badge="Saison terminée"
+                        shareUrl={`${SITE_URL}/show/${mediaType}/${tmdbId}`}
+                        caption={`J'ai terminé la saison ${s.season_number} de ${show.title} 📺`}
+                      />
+                    )}
                     <ul className="mt-3.5 flex flex-col">
                       {eps.map((e) => {
                         const count = watched?.[e.id]?.count ?? 0;
