@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { SimilarRail } from "@/components/show/similar-rail";
 import { CastRail } from "@/components/show/cast-rail";
 import { StarRating } from "@/components/show/star-rating";
+import { ShareWatchDialog } from "@/components/share-watch-dialog";
 import { SITE_URL } from "@/lib/app-config";
 import {
   fetchShowDetails,
@@ -887,6 +888,22 @@ function ShowDetail() {
                       onMark={markSeasonWatched}
                       onUnmark={unmarkSeasonWatched}
                     />
+                    {/* Partage social : proposé uniquement quand la saison est
+                        effectivement vue en entier — sinon il n'y a rien à
+                        annoncer. */}
+                    {seasonState === true && (
+                      <ShareWatchDialog
+                        triggerVariant="button"
+                        triggerLabel="Partager cette saison"
+                        title={show.title}
+                        counter={`Saison ${pad(s.season_number)}`}
+                        subtitle={`${watchedCount} épisode${watchedCount > 1 ? "s" : ""} vu${watchedCount > 1 ? "s" : ""}`}
+                        posterUrl={show.poster_path}
+                        badge="Saison terminée"
+                        shareUrl={`${SITE_URL}/show/${mediaType}/${tmdbId}`}
+                        caption={`J'ai terminé la saison ${s.season_number} de ${show.title} 📺`}
+                      />
+                    )}
                     <ul className="mt-3.5 flex flex-col">
                       {eps.map((e) => {
                         const count = watched?.[e.id]?.count ?? 0;
@@ -919,6 +936,19 @@ function ShowDetail() {
                               )
                             }
                             isTogglePending={isLocked}
+                            share={
+                              isWatched ? (
+                                <ShareWatchDialog
+                                  title={show.title}
+                                  counter={`S${pad(e.season_number)}E${pad(e.episode_number)}`}
+                                  subtitle={e.title}
+                                  posterUrl={show.poster_path}
+                                  badge="Épisode vu"
+                                  shareUrl={`${SITE_URL}/show/${mediaType}/${tmdbId}`}
+                                  caption={`Je viens de voir ${show.title} S${pad(e.season_number)}E${pad(e.episode_number)} 📺`}
+                                />
+                              ) : null
+                            }
                           />
                         );
                       })}
@@ -1452,11 +1482,14 @@ function EpisodeRow({
   count,
   onToggleWatched,
   isTogglePending,
+  share,
 }: {
   episode: EpisodeRow;
   count: number;
   onToggleWatched: () => void;
   isTogglePending: boolean;
+  /** Déclencheur de partage, rendu seulement pour un épisode déjà vu. */
+  share?: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isWatched = count > 0;
@@ -1523,6 +1556,11 @@ function EpisodeRow({
             {episode.air_date ?? "date inconnue"}
           </p>
         </div>
+        {share && (
+          <div className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {share}
+          </div>
+        )}
         {hasOverview && (
           <ChevronDown
             className={cn(
