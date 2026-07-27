@@ -606,6 +606,118 @@ describe("selectHero", () => {
     expect(reprendre.map((i) => i.show.id)).toEqual([2]);
     expect(reprendreDormant).toEqual([]);
   });
+
+  it("ranks the hero by watch recency, not backlog age (repro: Buffy's ancient backlog loses to Newport Beach watched yesterday)", () => {
+    const buffy = show(1, "Buffy"); // oldest ready backlog (2001) but not touched in a while
+    const newportBeach = show(2, "Newport Beach"); // newer backlog (2006), watched yesterday
+    const items = readyItems([
+      { showRef: buffy, status: "en_cours", episodes: [ep(buffy, 101, 6, 1, "2001-01-01")] },
+      {
+        showRef: newportBeach,
+        status: "en_cours",
+        episodes: [ep(newportBeach, 201, 1, 1, "2006-01-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-05-20T00:00:00.000Z"], // ~49j before TODAY — fresh, but the older watch of the two
+      [2, "2026-07-07T00:00:00.000Z"], // 1j before TODAY — most recently watched
+    ]);
+
+    const { hero, reprendre } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2); // Newport Beach wins despite Buffy's much older backlog
+    expect(reprendre.map((i) => i.show.id)).toEqual([1]); // Buffy is bumped down, not excluded
+  });
+
+  it("prefers a fresh en_cours show WITH watch history over one with no history at all, even if the latter's backlog is older", () => {
+    const neverWatched = show(1, "Never Watched"); // older backlog, but zero watch_status rows
+    const watchedOnce = show(2, "Watched Once"); // newer backlog, but a real (if not-recent) watch
+    const items = readyItems([
+      {
+        showRef: neverWatched,
+        status: "en_cours",
+        episodes: [ep(neverWatched, 101, 1, 1, "2020-01-01")],
+      },
+      {
+        showRef: watchedOnce,
+        status: "en_cours",
+        episodes: [ep(watchedOnce, 201, 1, 1, "2026-06-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [2, "2026-05-15T00:00:00.000Z"], // ~54j before TODAY — old-ish, but still under HERO_STALE_DAYS (fresh)
+    ]);
+
+    const { hero } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(2); // real (even old-ish) history outranks no history at all
+  });
+
+  it("falls back to backlog age (byEarliestAirDate) when two fresh en_cours shows both have no watch history at all", () => {
+    const older = show(1, "Older Backlog"); // no watch_status row
+    const newer = show(2, "Newer Backlog"); // no watch_status row either
+    const items = readyItems([
+      { showRef: older, status: "en_cours", episodes: [ep(older, 101, 1, 1, "2026-01-01")] },
+      { showRef: newer, status: "en_cours", episodes: [ep(newer, 201, 1, 1, "2026-02-01")] },
+    ]);
+
+    const { hero } = selectHero(items, TODAY, new Map());
+
+    expect(hero?.show.id).toBe(1); // same result as the old backlog-based rule — no regression
+  });
+
+  it("falls back to backlog age (byEarliestAirDate) as a deterministic tie-break when two fresh en_cours shows share the exact same lastWatchedAt instant", () => {
+    // Mirrors a burst of concurrent optimistic mark-watched taps stamping
+    // several shows with the identical `now()` — see `recomputeFromBatch` in
+    // use-mark-watched.ts.
+    const older = show(1, "Older Backlog");
+    const newer = show(2, "Newer Backlog");
+    const items = readyItems([
+      { showRef: older, status: "en_cours", episodes: [ep(older, 101, 1, 1, "2026-01-01")] },
+      { showRef: newer, status: "en_cours", episodes: [ep(newer, 201, 1, 1, "2026-02-01")] },
+    ]);
+    const sameInstant = "2026-07-07T12:00:00.000Z";
+    const lastWatchedAtByShowId = new Map([
+      [1, sameInstant],
+      [2, sameInstant],
+    ]);
+
+    const { hero } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(1); // tie-break falls back to the older backlog
+  });
+
+  it("[Option A] orders 'reprendre' by watch recency (most recent first), disagreeing with backlog-age order — locks in the new rule, not a coincidence", () => {
+    const heroShow = show(1, "Hero");
+    const olderBacklog = show(2, "Older Backlog"); // oldest backlog among non-hero shows...
+    const newerBacklog = show(3, "Newer Backlog"); // ...but watched more recently than show 2
+    const items = readyItems([
+      { showRef: heroShow, status: "en_cours", episodes: [ep(heroShow, 101, 1, 1, "2026-06-01")] },
+      {
+        showRef: olderBacklog,
+        status: "en_cours",
+        episodes: [ep(olderBacklog, 201, 1, 1, "2025-01-01")], // oldest backlog -> would rank #1 under the old rule
+      },
+      {
+        showRef: newerBacklog,
+        status: "en_cours",
+        episodes: [ep(newerBacklog, 301, 1, 1, "2026-05-01")],
+      },
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-08T00:00:00.000Z"], // today — wins hero
+      [2, "2026-06-01T00:00:00.000Z"], // ~37j — watched LEAST recently of the two non-hero shows
+      [3, "2026-07-05T00:00:00.000Z"], // ~3j — watched MOST recently, despite the newer (less "late") backlog
+    ]);
+
+    const { hero, reprendre } = selectHero(items, TODAY, lastWatchedAtByShowId);
+
+    expect(hero?.show.id).toBe(1);
+    // Old rule (byEarliestAirDate) would order this [2, 3] (show 2's backlog
+    // is older). New rule (watch recency) orders it [3, 2] instead — this is
+    // the assertion that actually distinguishes the two rules.
+    expect(reprendre.map((i) => i.show.id)).toEqual([3, 2]);
+  });
 });
 
 describe("splitEnCoursByFreshness", () => {
@@ -870,6 +982,92 @@ describe("deriveHomeView", () => {
     );
 
     expect(after.reprendre.map((i) => i.show.id)).toEqual([2]); // no longer dormant
+  });
+
+  it("keeps the hero on the same show across a mark-watched tap on its OWN episode, even with a competing en_cours show whose backlog is much older", () => {
+    // Mirrors `recomputeFromBatch` in use-mark-watched.ts, which bumps the
+    // tapped show's `lastWatchedAtByShowId` entry to "now" as part of the
+    // same optimistic update — simulated here by supplying an already-bumped
+    // map for the "after" call, exactly like that function would produce.
+    const heroShow = show(1, "Hero Show"); // two ready episodes — backlog remains after one tap
+    const competitor = show(2, "Ancient Backlog Competitor"); // much older backlog, but watched less recently
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2026-01-01"),
+      ep(heroShow, 102, 1, 2, "2026-01-08"),
+      ep(competitor, 201, 1, 1, "2020-01-01"),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+
+    const before = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        lastWatchedAtByShowId: new Map([
+          [1, "2026-07-05T00:00:00.000Z"], // ~3j — most recently watched, wins hero
+          [2, "2026-06-01T00:00:00.000Z"], // ~37j — fresh, but watched less recently
+        ]),
+      }),
+      TODAY,
+    );
+    expect(before.hero?.show.id).toBe(1);
+
+    const after = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        watchedEpisodeIds: new Set([101]),
+        lastWatchedAtByShowId: new Map([
+          [1, "2026-07-08T00:00:00.000Z"], // bumped to "now" by the tap
+          [2, "2026-06-01T00:00:00.000Z"], // unchanged
+        ]),
+      }),
+      TODAY,
+    );
+
+    expect(after.hero?.show.id).toBe(1); // still the same show — never paradoxically rotated away
+    expect(after.hero?.nextEpisode.id).toBe(102); // advanced in place, same show/season
+  });
+
+  it("rotates the hero to the MOST RECENTLY WATCHED remaining en_cours candidate once the current hero's backlog is fully cleared, not the one with the oldest backlog", () => {
+    const heroShow = show(1, "Hero Show"); // single ready episode — its whole backlog
+    const olderBacklogLessRecent = show(2, "Older Backlog, Less Recently Watched");
+    const newerBacklogMoreRecent = show(3, "Newer Backlog, Watched Most Recently");
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2026-01-01"),
+      ep(olderBacklogLessRecent, 201, 1, 1, "2020-01-01"), // oldest backlog -> would win under the old rule
+      ep(newerBacklogMoreRecent, 301, 1, 1, "2026-03-01"),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+      [3, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // ~1j — wins hero before the tap
+      [2, "2026-06-01T00:00:00.000Z"], // ~37j — fresh, but watched least recently of the two candidates
+      [3, "2026-07-01T00:00:00.000Z"], // ~7j — watched most recently of the two candidates
+    ]);
+
+    const before = deriveHomeView(
+      raw({ episodes, showStatusByShowId, lastWatchedAtByShowId }),
+      TODAY,
+    );
+    expect(before.hero?.show.id).toBe(1);
+
+    const after = deriveHomeView(
+      raw({
+        episodes,
+        showStatusByShowId,
+        watchedEpisodeIds: new Set([101]), // clears show 1's entire ready backlog
+        lastWatchedAtByShowId,
+      }),
+      TODAY,
+    );
+
+    expect(after.hero?.show.id).toBe(3); // most recently watched remaining candidate, not the oldest backlog (show 2)
   });
 
   it("is idempotent when the same episode id is already present in watchedEpisodeIds (protects against an accidental double-dispatch)", () => {

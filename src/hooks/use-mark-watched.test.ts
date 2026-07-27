@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { markWatchedOnMutate, markWatchedOnSettled } from "./use-mark-watched";
 import {
+  deriveHomeView,
   seasonCountKey,
   type ActiveStatus,
   type HomeData,
@@ -89,7 +90,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(qc.getQueryData(homeKey)).toBeUndefined();
   });
 
-  it("[scenario A/B + point 10] rolling back A's failed mutation never erases B's still in-flight optimism, and tapping an a_voir show reclassifies it en_cours", () => {
+  it("[scenario A/B + point 10 + Direction A] rolling back A's failed mutation never erases B's still in-flight optimism (B takes over the hero slot by recency while still in flight), and tapping an a_voir show reclassifies it en_cours", () => {
     const qc = new QueryClient();
     const a = show(1, "Hero Show"); // en_cours from the start
     const b = show(2, "Nouveau Show"); // a_voir from the start — point 10 target
@@ -169,15 +170,26 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     markWatchedOnSettled(qc, USER_ID, 101, "error");
 
     cur = qc.getQueryData<HomeData>(homeKey)!;
-    // A reverts fully (back to pointing at 101, original heroProgress).
-    expect(cur.hero?.show.id).toBe(1);
-    expect(cur.hero?.nextEpisode.id).toBe(101);
-    expect(cur.heroProgress).toEqual({ watched: 0, total: 2 });
+    // [Direction A] A's own optimism reverts fully (whole backlog ready
+    // again), but B is STILL in flight and keeps getting bumped to a real
+    // `now()` timestamp on every recompute (recomputeFromBatch) — under the
+    // recency-based selectHero rule, that now() outranks A's real (but
+    // non-"now") watched_at, so B takes over the hero slot and A is demoted
+    // into "reprendre". This is intentional (see selectHero's "ASSUMED
+    // CONSEQUENCE" doc comment in schedule.ts), not a bug: as far as the
+    // optimistic UI can tell at this instant, B was watched more recently
+    // than A.
+    expect(cur.hero?.show.id).toBe(2);
+    expect(cur.hero?.nextEpisode.id).toBe(202);
+    // heroSeasonEpisodeCount was fetched for A's season — reset to null now
+    // that the hero rotated to a different show/season.
+    expect(cur.heroProgress).toBeNull();
+    // A demotes into "reprendre" (whole backlog ready again) rather than vanishing.
+    expect(cur.reprendre.map((i) => i.show.id)).toEqual([1]);
+    expect(cur.reprendre[0]?.nextEpisode.id).toBe(101);
     // *** The critical assertion: B's in-flight optimism SURVIVES A's rollback. ***
     expect(cur.raw.showStatusByShowId.get(2)).toBe("en_cours");
     expect(cur.nouveau).toEqual([]);
-    expect(cur.reprendre.map((i) => i.show.id)).toEqual([2]);
-    expect(cur.reprendre[0]?.nextEpisode.id).toBe(202);
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
@@ -188,8 +200,9 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     // No cache rewrite on success — still showing B's optimistic state,
     // untouched by the success bookkeeping itself.
     cur = qc.getQueryData<HomeData>(homeKey)!;
-    expect(cur.reprendre.map((i) => i.show.id)).toEqual([2]);
-    expect(cur.hero?.nextEpisode.id).toBe(101);
+    expect(cur.hero?.show.id).toBe(2);
+    expect(cur.hero?.nextEpisode.id).toBe(202);
+    expect(cur.reprendre.map((i) => i.show.id)).toEqual([1]);
   });
 
   it("resets heroSeasonEpisodeCount to null once the hero rotates to a different show/season", () => {
@@ -234,13 +247,67 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.raw.heroSeasonEpisodeCount).toBeNull();
   });
 
+  it("[Direction A] tapping the CURRENT hero's own episode keeps it as hero, even with a fresher-backlog en_cours competitor present", () => {
+    const qc = new QueryClient();
+    const heroShow = show(1, "Hero Show"); // two ready episodes — backlog remains after one tap
+    const competitor = show(2, "Ancient Backlog Competitor"); // much older backlog, watched less recently
+
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2026-01-01"),
+      ep(heroShow, 102, 1, 2, "2026-01-08"),
+      ep(competitor, 201, 1, 1, "2020-01-01"),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-05T00:00:00.000Z"], // ~3j — most recently watched, wins hero
+      [2, "2026-06-01T00:00:00.000Z"], // fresh, but watched less recently
+    ]);
+
+    const raw = {
+      episodes,
+      showStatusByShowId,
+      lastWatchedAtByShowId,
+      watchedEpisodeIds: new Set<number>(),
+      heroSeasonEpisodeCount: 2,
+      reprendreSeasonEpisodeCounts: new Map<string, number>(),
+    };
+    // Seeded via the real `deriveHomeView` pipeline (not hand-typed
+    // hero/reprendre placeholders) so the "before" sanity check below
+    // exercises the actual selectHero ranking, not an assumption of it.
+    const initial: HomeData = {
+      today: TODAY,
+      followedActiveCount: 2,
+      ...deriveHomeView(raw, TODAY),
+      ...ZONE_B,
+      raw,
+    };
+    seedHomeData(qc, USER_ID, initial);
+
+    let cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.hero?.show.id).toBe(1);
+
+    // --- Tap the hero's OWN next episode (101) ---
+    markWatchedOnMutate(qc, USER_ID, { episodeId: 101, showId: 1 });
+
+    cur = qc.getQueryData<HomeData>(homeKey)!;
+    // The tap bumps show 1's own lastWatchedAt to "now" too — it stays the
+    // most recently watched show, so it never paradoxically rotates away to
+    // the competitor, even though the competitor is ALSO en_cours and fresh.
+    expect(cur.hero?.show.id).toBe(1);
+    expect(cur.hero?.nextEpisode.id).toBe(102); // advanced in place, same show/season
+    expect(cur.heroProgress).toEqual({ watched: 1, total: 2 }); // heroSeasonEpisodeCount reused — same show/season as before
+  });
+
   // Étage 2.2 (progression saison sur "Reprendre") — exerce
   // `reprendreProgressByShowId` à travers le même chemin optimiste que
   // `heroProgress` ci-dessus, sur le modèle du test de rotation du hero.
-  it("[Reprendre progress] advances a Reprendre row's OWN season fraction optimistically, without touching the hero, and rolls back to the exact prior fraction on error", () => {
+  it("[Direction A] tapping a 'Reprendre' row's episode promotes it to hero by recency, demoting the previous hero — season-count reliability resets exactly like any other hero rotation", () => {
     const qc = new QueryClient();
-    const heroShow = show(1, "Hero Show"); // older backlog — wins the hero slot
-    const reprendreShow = show(2, "Reprendre Show");
+    const heroShow = show(1, "Hero Show"); // most recently watched — legitimately hero before the tap
+    const reprendreShow = show(2, "Reprendre Show"); // fresh, but watched less recently — starts in reprendre
 
     // Reprendre show: season 1 has 10 episodes, 5 already watched — nextEpisode
     // is #6 (id 206). `reprendreSeasonEpisodeCounts` has the matching official
@@ -255,35 +322,31 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       [2, "en_cours"],
     ]);
     const lastWatchedAtByShowId = new Map([
-      [1, "2026-07-05T00:00:00.000Z"], // both fresh — neither hero-stale nor list-stale
-      [2, "2026-07-06T00:00:00.000Z"],
+      [1, "2026-07-07T00:00:00.000Z"], // ~1j — most recently watched, wins hero before any tap
+      [2, "2026-07-01T00:00:00.000Z"], // ~7j — fresh, but watched less recently than show 1
     ]);
     const watchedEpisodeIds = new Set([201, 202, 203, 204, 205]); // 5/10 — nextEpisode = 206
 
+    const raw = {
+      episodes,
+      showStatusByShowId,
+      lastWatchedAtByShowId,
+      watchedEpisodeIds,
+      heroSeasonEpisodeCount: 1,
+      reprendreSeasonEpisodeCounts: new Map([[seasonCountKey(2, 1), 10]]),
+    };
     const initial: HomeData = {
       today: TODAY,
       followedActiveCount: 2,
-      hero: null,
-      heroProgress: null,
-      reprendre: [],
-      reprendreProgressByShowId: new Map(),
-      nouveau: [],
-      readyCount: 0,
+      ...deriveHomeView(raw, TODAY),
       ...ZONE_B,
-      raw: {
-        episodes,
-        showStatusByShowId,
-        lastWatchedAtByShowId,
-        watchedEpisodeIds,
-        heroSeasonEpisodeCount: 1,
-        reprendreSeasonEpisodeCounts: new Map([[seasonCountKey(2, 1), 10]]),
-      },
+      raw,
     };
     seedHomeData(qc, USER_ID, initial);
 
     // --- Sanity check on the seeded state (before any tap) ---
     let cur = qc.getQueryData<HomeData>(homeKey)!;
-    expect(cur.hero?.show.id).toBe(1); // Hero Show's older backlog wins
+    expect(cur.hero?.show.id).toBe(1); // Hero Show: watched most recently
     expect(cur.reprendre.map((i) => i.show.id)).toEqual([2]);
     expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 5, total: 10 });
 
@@ -292,23 +355,43 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(patched).toBe(true);
 
     cur = qc.getQueryData<HomeData>(homeKey)!;
-    expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 6, total: 10 }); // advanced
-    expect(cur.reprendre[0]?.nextEpisode.id).toBe(207); // advanced in place, same season
-    // A DIFFERENT show's tap must never touch the hero or its own progress.
-    expect(cur.hero?.show.id).toBe(1);
-    expect(cur.hero?.nextEpisode.id).toBe(101);
-    expect(cur.heroProgress).toEqual({ watched: 0, total: 1 });
+    // [Direction A] tapping ANY en_cours show's episode bumps its
+    // lastWatchedAt to "now" (recomputeFromBatch) — under the recency-based
+    // selectHero rule, this makes Reprendre Show the most recently watched
+    // en_cours show, so it is promoted to hero IMMEDIATELY, even though its
+    // own episode tap has nothing to do with the previous hero. This is the
+    // intended behavior ("hero = what I'm watching right now"), not a bug —
+    // see selectHero's "ASSUMED CONSEQUENCE" doc comment in schedule.ts.
+    expect(cur.hero?.show.id).toBe(2);
+    expect(cur.hero?.nextEpisode.id).toBe(207); // advanced past the just-watched 206
+    // heroSeasonEpisodeCount was fetched for the OLD hero's season (show 1)
+    // — reset to null on rotation exactly like any other hero rotation, so
+    // heroProgress is unknown until the next server refetch, never a stale
+    // or wrong fraction.
+    expect(cur.heroProgress).toBeNull();
+    // The previous hero demotes into "reprendre" rather than vanishing.
+    expect(cur.reprendre.map((i) => i.show.id)).toEqual([1]);
+    expect(cur.reprendre[0]?.nextEpisode.id).toBe(101);
+    // Show 1's season was never in `reprendreSeasonEpisodeCounts` (only
+    // show 2's season 1 was ever fetched, matching what the initial render
+    // actually needed) — no fraction shown for it either, same fail-safe
+    // behavior as before.
+    expect(cur.reprendreProgressByShowId.has(1)).toBe(false);
 
     // --- Rollback: the mutation fails ---
     markWatchedOnSettled(qc, USER_ID, 206, "error");
 
     cur = qc.getQueryData<HomeData>(homeKey)!;
+    // Episode 206 reverts to unwatched, and show 2's lastWatchedAt is no
+    // longer bumped (206 drained from inFlight) — back to its original,
+    // less-recent timestamp, so Hero Show (show 1) reclaims the hero slot.
+    expect(cur.hero?.show.id).toBe(1);
+    expect(cur.reprendre.map((i) => i.show.id)).toEqual([2]);
     expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 5, total: 10 }); // reverted exactly
     expect(cur.reprendre[0]?.nextEpisode.id).toBe(206);
-    expect(cur.hero?.show.id).toBe(1); // still untouched throughout
   });
 
-  it("[Reprendre progress] the fraction disappears cleanly (never a wrong one) once a row's nextEpisode rolls into a season with no official count yet", () => {
+  it("[Reprendre progress + Direction A] the fraction disappears cleanly (never a wrong one) once the newly-promoted hero's nextEpisode rolls into a season with no official count yet", () => {
     const qc = new QueryClient();
     const heroShow = show(1, "Hero Show");
     const reprendreShow = show(2, "Reprendre Show");
@@ -329,34 +412,31 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       [2, "en_cours"],
     ]);
     const lastWatchedAtByShowId = new Map([
-      [1, "2026-07-05T00:00:00.000Z"],
-      [2, "2026-07-06T00:00:00.000Z"],
+      [1, "2026-07-07T00:00:00.000Z"], // most recently watched — hero before the tap
+      [2, "2026-07-01T00:00:00.000Z"], // fresh, but watched less recently — starts in reprendre
     ]);
     const watchedEpisodeIds = new Set([201]); // season 1: 1/2 watched — nextEpisode = 202 (finale)
 
+    const raw = {
+      episodes,
+      showStatusByShowId,
+      lastWatchedAtByShowId,
+      watchedEpisodeIds,
+      heroSeasonEpisodeCount: 1,
+      reprendreSeasonEpisodeCounts: new Map([[seasonCountKey(2, 1), 2]]), // season 1 only
+    };
     const initial: HomeData = {
       today: TODAY,
       followedActiveCount: 2,
-      hero: null,
-      heroProgress: null,
-      reprendre: [],
-      reprendreProgressByShowId: new Map(),
-      nouveau: [],
-      readyCount: 0,
+      ...deriveHomeView(raw, TODAY),
       ...ZONE_B,
-      raw: {
-        episodes,
-        showStatusByShowId,
-        lastWatchedAtByShowId,
-        watchedEpisodeIds,
-        heroSeasonEpisodeCount: 1,
-        reprendreSeasonEpisodeCounts: new Map([[seasonCountKey(2, 1), 2]]), // season 1 only
-      },
+      raw,
     };
     seedHomeData(qc, USER_ID, initial);
 
     // --- Sanity check: reliable fraction on season 1 before the tap ---
     let cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.hero?.show.id).toBe(1);
     expect(cur.reprendre[0]?.nextEpisode.id).toBe(202);
     expect(cur.reprendreProgressByShowId.get(2)).toEqual({ watched: 1, total: 2 });
 
@@ -364,10 +444,22 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     markWatchedOnMutate(qc, USER_ID, { episodeId: 202, showId: 2 });
 
     cur = qc.getQueryData<HomeData>(homeKey)!;
-    expect(cur.reprendre[0]?.nextEpisode.id).toBe(301); // rolled over to season 2
-    // No entry at all for show 2 — never a stale/wrong season-1 fraction, and
-    // never a falsely-reassuring "0/1" for the not-yet-fetched season 2.
-    expect(cur.reprendreProgressByShowId.has(2)).toBe(false);
+    // [Direction A]: the tap promotes Reprendre Show to hero (same
+    // mechanism as the test above) — its rolled-over episode (301, season 2)
+    // is now the HERO's own next episode, not a "Reprendre" row's.
+    expect(cur.hero?.show.id).toBe(2);
+    expect(cur.hero?.nextEpisode.id).toBe(301); // rolled over to season 2
+    // Season 2's official episode count was never fetched (only season 1
+    // was) — no fraction shown, never a falsely-reassuring wrong one. Same
+    // "unreliable tally omitted" guarantee as before, just surfacing via
+    // `heroProgress` now that the row got promoted, instead of via
+    // `reprendreProgressByShowId`.
+    expect(cur.heroProgress).toBeNull();
+    // The previous hero (show 1) demotes into "reprendre" — its own season
+    // was never fetched either, so it also shows no fraction.
+    expect(cur.reprendre.map((i) => i.show.id)).toEqual([1]);
+    expect(cur.reprendreProgressByShowId.has(1)).toBe(false);
+    expect(cur.reprendreProgressByShowId.has(2)).toBe(false); // show 2 is hero now, not in reprendre at all
   });
 
   // TODO: la régression réelle corrigée dans ce lot (relecture RÉACTIVE de
