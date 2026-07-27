@@ -3,7 +3,6 @@ import { Check } from "lucide-react";
 import type { ReadyItem } from "@/lib/schedule";
 import { formatReadyLabel } from "@/lib/schedule";
 import { useMarkWatched } from "@/hooks/use-mark-watched";
-import { VhsCounter } from "@/components/vhs-counter";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -19,18 +18,30 @@ function pad(n: number) {
  * the show's OWN current-season watched/total tally, computed by
  * `computeReprendreProgress` (schedule.ts) and passed down by `HomeContent`
  * (index.tsx) — `undefined` when not (yet) reliable (see
- * `isSeasonTallyReliable`), in which case this row falls back to the plain
- * `SxxExx` text label it always showed before this lot, exactly like the
- * hero ticket falls back to its bare S/E label when `heroProgress` is
- * `null`. Reuses `VhsCounter`'s "grid" variant (previously library.tsx
- * only) rather than a new component — same compact chip, WITH
- * `showFraction` (design review correction): CLAUDE.md reserves the
- * fraction-less "S02·E06 + bar only" shape to the library grid vignette
- * specifically ("à ne pas généraliser aux autres surfaces") — this row is a
- * different surface, and the validated product intent here is showing the
- * current season's NUMERIC progress ("S02·E06 · 6/13"), not just its
- * proportion. Still kept discreet/muted (`tone="muted"`, no glow) —
- * subordinate to the hero, never a second big counter.
+ * `isSeasonTallyReliable`), in which case this row simply omits the
+ * fraction/bar line entirely, exactly like the hero ticket omits its own
+ * counter when `heroProgress` is `null`.
+ *
+ * Deliberately NOT `VhsCounter`'s "grid" variant (design review correction
+ * — an earlier revision of this row did reuse it): that chip is a boxed,
+ * self-contained module (`bg-surface-elevated`, rounded, padded) meant for
+ * the library's dense tile grid, where every card needs the same compact
+ * footprint. The validated maquette for THIS row shows the fraction + bar
+ * laid directly on the card, with no box/border around them — closer to
+ * `HeroTicket`'s own bare counter than to the library chip. So this row
+ * hand-rolls its own minimal fraction + bar markup below rather than
+ * stretching `VhsCounter`'s grid variant into a shape it was never designed
+ * for. `library.tsx`'s own "grid" usage is untouched — it keeps its boxed
+ * chip unchanged, per the CLAUDE.md exception that's scoped to it
+ * specifically.
+ *
+ * S/E + episode title share one muted line ("SxxExx · titre épisode") right
+ * under the show title — mirrors `HeroTicket`'s header pairing (S/E first,
+ * episode title after), just without the hero's phosphore prominence: this
+ * row is a compact secondary surface, so both stay muted here. The fraction
+ * (cyan, discreet — never the hero's glowed/animated digit, that signature
+ * treatment stays reserved for the hero, per CLAUDE.md) + a thin cyan bar
+ * come right below when `progress` is available.
  *
  * No `extraCount` ("+N") badge (design review correction — removed, was
  * never part of the validated maquette): the section header's own "+N
@@ -48,6 +59,8 @@ export function ReadyListItem({
   const { show, nextEpisode } = item;
   const markWatched = useMarkWatched();
   const label = formatReadyLabel(item);
+  const pct =
+    progress && progress.total ? Math.min(100, (progress.watched / progress.total) * 100) : 0;
 
   const handleMark = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -79,35 +92,28 @@ export function ReadyListItem({
           <p className="font-counter text-[10px] uppercase tracking-widest text-primary">{label}</p>
         )}
         <h4 className="mt-0.5 truncate text-sm text-foreground">{show.title}</h4>
-        {progress ? (
-          <div className="mt-1">
-            <VhsCounter
-              variant="grid"
-              seasonNumber={nextEpisode.season_number}
-              nextEpisodeNumber={nextEpisode.episode_number}
-              watched={progress.watched}
-              total={progress.total}
-              // "muted", pas le "amber" par défaut : l'eyebrow formatReadyLabel
-              // juste au-dessus ("Prêt · Nj") est déjà ambre — deux étiquettes
-              // ambre consécutives recréerait exactement l'effet "deux
-              // labels qui se répètent" corrigé au Lot 4 sur le hero (voir
-              // HeroTicket, index.tsx). Le bump reste cyan quoi qu'il arrive
-              // (VhsCounter le gère indépendamment du tone).
-              tone="muted"
-              // Fraction chiffrée EN PLUS de la barre, jamais à sa place —
-              // les deux coexistent (revue design) : "S02·E06 · 6/13" +
-              // la barre fine juste en-dessous, toutes deux rendues par
-              // VhsCounter (voir vhs-counter.tsx). Cf. doc du composant pour
-              // pourquoi ce n'est PAS le comportement par défaut du variant
-              // "grid" (réservé, sans fraction, à la vignette de la grille
-              // bibliothèque — CLAUDE.md).
-              showFraction
-            />
+        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+          <span className="font-counter">
+            S{pad(nextEpisode.season_number)}E{pad(nextEpisode.episode_number)}
+          </span>
+          {nextEpisode.title ? ` · ${nextEpisode.title}` : ""}
+        </p>
+        {progress && (
+          <div className="mt-1.5">
+            <p className="font-counter text-xs tabular-nums text-cyan-accent">
+              {progress.watched}/{progress.total}
+            </p>
+            {/* Barre fine (2px), cyan, posée directement sur la carte — pas
+                de conteneur encadré (revue design). Même langage visuel que
+                la barre du HeroTicket (index.tsx), à une échelle plus
+                discrète. */}
+            <div className="mt-1 h-[2px] w-full overflow-hidden rounded-full bg-muted-foreground/15">
+              <div
+                className="h-full rounded-full bg-cyan-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
           </div>
-        ) : (
-          <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
-            S{pad(nextEpisode.season_number)} E{pad(nextEpisode.episode_number)}
-          </p>
         )}
       </div>
       {/* 44px tap target (WCAG 2.5.5) — the visible icon stays small (~16px),

@@ -31,7 +31,6 @@ import {
 import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
-import { NextReleaseCard } from "@/components/home/next-release-card";
 import { NextReleaseHeroCard } from "@/components/home/next-release-hero-card";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
@@ -295,18 +294,10 @@ function HomeScreen() {
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
-      // `limit` varies by state: `normal` caps the "Bientôt" teaser at 2 (1
-      // big + 1 compact) alongside the hero/backlog, while `upcoming_only`
-      // (no ready backlog at all — see `resolveHomeState`) makes this block
-      // the PRIMARY content of the screen, so it gets a higher cap (~5: 1
-      // big + up to 4 compact). Overflow beyond either cap stays covered by
-      // the "Programme à venir" rail below, unaffected by this cap.
-      const homeState = resolveHomeState({
-        followedActiveCount: showIds.length,
-        readyCount,
-        upcomingCount,
-      });
-      const nextReleasesLimit = homeState === "upcoming_only" ? 5 : 2;
+      // Un seul item "Bientôt" (grand format), quel que soit l'état (design
+      // review — plus de liste compacte de secours en dessous) : le reste
+      // des sorties à venir reste couvert par le rail "Programme à venir"
+      // plus bas, aucune donnée perdue, juste un teaser réduit à 1 carte.
       // Excludes the hero's own show — it already dominates that show's
       // slot as "à voir maintenant"; repeating it here as "Nj" would read as
       // redundant rather than as a genuinely different upcoming release.
@@ -314,7 +305,7 @@ function HomeScreen() {
       // naturally becomes `undefined` there — no special-casing needed. See
       // `selectNextReleases`'s doc comment.
       const nextReleases = selectNextReleases(dayGroups, today, {
-        limit: nextReleasesLimit,
+        limit: 1,
         excludeShowIds: hero ? new Set([hero.show.id]) : undefined,
       });
 
@@ -521,12 +512,12 @@ function HomeContent({ data }: { data: HomeData }) {
 
   if (state === "upcoming_only") {
     // No hero/backlog at all in this state — the "Bientôt" block (same
-    // shared gabarit as in `normal`, just a higher `limit` set server-side
-    // in the queryFn) IS the primary content at the top of the screen.
+    // shared gabarit as in `normal`, same single-item limit) IS the
+    // primary content at the top of the screen.
     return (
       <>
         <div className="mx-5">
-          <NextReleasesBlock items={data.nextReleases} today={data.today} />
+          <NextReleasesBlock items={data.nextReleases} />
         </div>
         <div className="mt-8 space-y-6 px-5">
           <UpcomingSectionHeader />
@@ -599,25 +590,18 @@ function HomeContent({ data }: { data: HomeData }) {
           </div>
         )}
 
-        {data.nouveau.length > 0 && (
-          <div className="mt-5">
-            <p className="mb-2 font-display text-xl font-bold text-foreground">À commencer</p>
-            <StartRail items={data.nouveau} />
-          </div>
-        )}
-
         {/* Bloc "Bientôt" — UNIQUEMENT en état `normal` (backlog ET sortie
             future connues, cf. resolveHomeState) : `upcoming_only` rend son
             propre bloc "Bientôt" plus haut dans ce fichier (même gabarit
-            partagé, `limit` plus élevé) et `ready_only` n'a par construction
-            aucune entrée à afficher ici (upcomingCount === 0 => dayGroups
-            vide => nextReleases vide). Placé APRÈS "Reprendre"/"À
-            commencer", juste avant la Zone B : l'ordre validé en état
-            `normal` est Hero → Reprendre → À commencer → Bientôt →
-            Programme à venir. */}
+            partagé) et `ready_only` n'a par construction aucune entrée à
+            afficher ici (upcomingCount === 0 => dayGroups vide =>
+            nextReleases vide). Placé juste après "Reprendre" (ordre validé
+            en état `normal` : Hero → Reprendre → Bientôt → Programme à
+            venir → À commencer, cf. plus bas — "À commencer" n'est plus
+            dans cette Zone A, voir la note sur son nouvel emplacement). */}
         {state === "normal" && data.nextReleases.length > 0 && (
           <div className="mt-5">
-            <NextReleasesBlock items={data.nextReleases} today={data.today} />
+            <NextReleasesBlock items={data.nextReleases} />
           </div>
         )}
       </div>
@@ -631,37 +615,50 @@ function HomeContent({ data }: { data: HomeData }) {
           <UpcomingRails buckets={buckets} today={data.today} />
         )}
       </div>
+
+      {/* "À commencer" — déplacé hors de la Zone A ("à voir maintenant"),
+          en premier rail de la zone recommandations, juste après "Programme
+          à venir" et avant l'eyebrow "À découvrir"/`DiscoverySection` rendu
+          par le parent (`HomeScreen`, juste après `HomeContent` dans le
+          DOM — cf. son propre commentaire). Ordre validé (design review) :
+          Hero → Reprendre → Bientôt → Programme à venir → À commencer → À
+          découvrir. Garde sa condition d'affichage d'origine (uniquement
+          si `data.nouveau` a des items). S'applique aux DEUX états qui
+          partagent ce retour (`normal` ET `ready_only`) : `ready_only` n'a
+          ni Bientôt ni de sorties programmées (Zone B y affiche
+          `NothingScheduledNotice`), donc "À commencer" y atterrit
+          directement après le contenu principal (Hero + Reprendre) et la
+          notice "rien de prévu" — toujours en tête de la zone recos, jamais
+          mélangé à la Zone A, cohérent avec le nouvel ordre. */}
+      {data.nouveau.length > 0 && (
+        <div className="mt-8 px-5">
+          <p className="mb-2 font-display text-xl font-bold text-foreground">À commencer</p>
+          <StartRail items={data.nouveau} />
+        </div>
+      )}
     </>
   );
 }
 
 /**
- * Shared "Bientôt" block — rang #1 en grand format (`NextReleaseHeroCard`),
- * rangs #2+ en format compact (`NextReleaseCard`), sous un en-tête de
- * section "Bientôt" (Archivo) TOUJOURS visible dès qu'il y a au moins un
- * item (correctif design : une carte seule, sans étiquette, sous
- * "Reprendre"/"À commencer" qui en ont une, lisait comme un oubli — la
- * carte ne "se suffit" jamais à elle-même vis-à-vis des sections
- * voisines). Même règle dans `HomeContent`'s `normal` et `upcoming_only`
- * branches — plus de distinction entre les deux call sites. `limit` (le
- * nombre d'`items` reçus) est décidé en amont, dans le queryFn de
- * `HomeScreen` — ce composant se contente d'afficher ce qu'on lui donne.
+ * "Bientôt" block — UN SEUL item, toujours en grand format
+ * (`NextReleaseHeroCard`), sous un en-tête de section "Bientôt" (Archivo).
+ * Design review : plus de liste compacte en dessous (l'ancien rang #2+ en
+ * format `NextReleaseCard`) — `selectNextReleases` est appelé avec
+ * `limit: 1` (voir `HomeScreen`'s queryFn), donc `items` ne contient jamais
+ * plus d'un élément ; le reste des sorties à venir reste couvert par le
+ * rail "Programme à venir" plus bas. Même rendu dans `HomeContent`'s
+ * `normal` et `upcoming_only` branches — pas de distinction entre les deux
+ * call sites.
  */
-function NextReleasesBlock({ items, today }: { items: NextReleaseItem[]; today: string }) {
-  if (!items.length) return null;
+function NextReleasesBlock({ items }: { items: NextReleaseItem[] }) {
+  const item = items[0];
+  if (!item) return null;
 
   return (
     <div>
       <p className="mb-2 font-display text-xl font-bold text-foreground">Bientôt</p>
-      <div className="space-y-2">
-        {items.map((item, index) =>
-          index === 0 ? (
-            <NextReleaseHeroCard key={item.show.id} item={item} />
-          ) : (
-            <NextReleaseCard key={item.show.id} item={item} today={today} />
-          ),
-        )}
-      </div>
+      <NextReleaseHeroCard item={item} />
     </div>
   );
 }
@@ -698,21 +695,19 @@ function UpcomingRails({
 function UpcomingSectionHeader() {
   return (
     <div className="flex items-baseline justify-between">
-      {/* `font-display font-semibold`, sans uppercase/tracking-widest —
-          révision design alignant les en-têtes de section ("Reprendre"/
-          "Bientôt"/"À commencer"/"Programme à venir") sur Archivo pleine
-          opacité plutôt que sur la famille eyebrow mono (font-counter),
-          désormais réservée aux libellés secondaires (badges, "Voir tout ›",
-          compteurs). `font-semibold` explicite (retour QA) : un `<p>` sans
-          poids explicite hérite du 400 (regular), contrairement à un `<h2>`
-          qui hérite du 700 par défaut — laisser l'inférence de balise
-          décider du poids aurait rendu "Reprendre"/"Bientôt"/"À commencer"
-          plus légers que "Programme à venir" alors que les 4 doivent former
-          un palier visuel homogène. Taille déjà `text-sm`/`text-foreground`
-          avant ce lot — seule la famille de police, le poids et le tracking
-          changent ici. Les <h3> "Demain"/"Cette semaine"/"Plus tard"
-          (upcoming-section.tsx) restent inchangés (hors périmètre de cette
-          révision, qui liste explicitement les 4 en-têtes concernés). */}
+      {/* `font-display text-xl font-bold`, sans uppercase/tracking-widest —
+          style "Netflix" (Lovable) désormais partagé par tous les en-têtes
+          de section de la home ("Reprendre"/"Bientôt"/"À commencer"/
+          "Programme à venir"/l'eyebrow "À découvrir") pour un palier visuel
+          homogène — Archivo pleine opacité plutôt que la famille eyebrow
+          mono (font-counter), désormais réservée aux libellés secondaires
+          (badges, "Voir tout ›", compteurs). `font-bold` explicite sur
+          chacun (pas seulement hérité de la balise `<h2>`) : les en-têtes
+          en `<p>` ("Reprendre"/"Bientôt"/"À commencer") doivent afficher
+          exactement le même poids que celui-ci pour rester au même palier.
+          Les <h3> "Demain"/"Cette semaine"/"Plus tard" (upcoming-section.tsx)
+          restent inchangés (hors périmètre de cette révision, qui liste
+          explicitement les en-têtes de section concernés). */}
       <h2 className="font-display text-xl font-bold text-foreground">Programme à venir</h2>
       <Link
         to="/calendar"

@@ -323,9 +323,9 @@ describe("formatReadyLabel", () => {
 
 describe("formatCountdownLabel", () => {
   // Vocabulaire du pill compact "prochaine sortie" de la Home
-  // (`NextReleaseCard`/`NextReleaseHeroCard`) — PAS partagé avec la fiche
-  // série : `UpcomingSchedule` (show.$mediaType.$tmdbId.tsx) a sa propre
-  // fonction locale `formatCountdown`, indépendante, qui affiche toujours
+  // (`NextReleaseHeroCard`) — PAS partagé avec la fiche série :
+  // `UpcomingSchedule` (show.$mediaType.$tmdbId.tsx) a sa propre fonction
+  // locale `formatCountdown`, indépendante, qui affiche toujours
   // "Dans Nj"/"Demain"/"Aujourd'hui" (phrasing volontairement différent,
   // plus complet, pour cette carte-là).
   it('returns "aujourd\'hui" for 0 days', () => {

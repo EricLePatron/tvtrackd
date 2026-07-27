@@ -7,11 +7,13 @@ function pad(n: number) {
 }
 
 /**
- * Grand format "prochaine sortie" — rang #1 du bloc "Bientôt" partagé entre
- * l'état `normal` (sous le hero/backlog, cf. `HomeContent` index.tsx) et
- * l'état `upcoming_only` (où ce bloc devient le contenu principal de
- * l'écran, il n'y a pas de hero/backlog du tout dans cet état). Rangs #2+
- * du même bloc utilisent le format compact `NextReleaseCard`.
+ * Grand format "prochaine sortie" — SEUL format du bloc "Bientôt" (design
+ * review : limité à 1 item, plus de rangs compacts en dessous depuis que
+ * `selectNextReleases` est appelé avec `limit: 1`, voir `HomeScreen`'s
+ * queryFn — l'ancien format compact `NextReleaseCard` a été retiré). Partagé
+ * entre l'état `normal` (sous le hero/backlog, cf. `HomeContent` index.tsx)
+ * et l'état `upcoming_only` (où ce bloc devient le contenu principal de
+ * l'écran, il n'y a pas de hero/backlog du tout dans cet état).
  *
  * Remplace l'ancien `AwaitedHeroCard` (Lovable, `upcoming_only` uniquement,
  * `aspect-[16/10]` identique au `HeroTicket`) — différenciation de forme

@@ -660,8 +660,9 @@ export function selectNextReleases(
 
 /**
  * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown
- * partagé par les cartes "prochaine sortie" de la Home (`NextReleaseCard`,
- * `NextReleaseHeroCard`), pensé pour un pill compact plutôt qu'une phrase :
+ * utilisé par le pill de la carte "prochaine sortie" de la Home
+ * (`NextReleaseHeroCard`, seul gabarit du bloc "Bientôt" depuis le passage à
+ * `limit: 1`), pensé pour un pill compact plutôt qu'une phrase :
  * "2 j" / "demain" / "aujourd'hui", volontairement sans "dans" (retiré —
  * wording validé en revue design) et avec "j" abrégé, jamais "jours".
  *
