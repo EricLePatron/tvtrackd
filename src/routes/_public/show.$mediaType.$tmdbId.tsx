@@ -1482,11 +1482,14 @@ function EpisodeRow({
   count,
   onToggleWatched,
   isTogglePending,
+  share,
 }: {
   episode: EpisodeRow;
   count: number;
   onToggleWatched: () => void;
   isTogglePending: boolean;
+  /** Déclencheur de partage, rendu seulement pour un épisode déjà vu. */
+  share?: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isWatched = count > 0;
