@@ -86,6 +86,15 @@ export function NextReleaseHeroCard({
       )}
 
       <div className="relative flex h-full flex-col justify-end p-4">
+        {/* (Design review, minor/cheap) `variant="today"`'s filled
+            "Aujourd'hui" badge is visually wider than `variant="soon"`'s
+            compact "N j" pill (longer word, `tracking-[0.18em]`) — sharing
+            this same `justify-between` row, `min-w-0 flex-1` on the title
+            column means the SERIES title gets a bit more aggressive
+            `line-clamp-1` truncation on narrow mobile widths under
+            `variant="today"` than under `variant="soon"`. Assumed trade-off
+            (badge width wins over title length here), not a bug — flagging
+            for whoever next touches this row's sizing. */}
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1">
             <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">

@@ -65,7 +65,13 @@ function getBatchMap(qc: QueryClient): Map<string, MarkWatchedBatch> {
  * is always carried over unchanged from `prevHome` (via `...prevHome`) —
  * `groupUpcomingByDay`/`selectNextReleases` take no watched-set input at
  * all, so marking a past/today episode watched cannot structurally affect
- * them.
+ * them. `todayRelease` (the "Sort aujourd'hui" spotlight) is carried over
+ * the same way, for the same reason it isn't itself recomputed here — but
+ * `reprendre`/`nouveau` ARE rebuilt from scratch below via `deriveHomeView`
+ * (which has no notion of `todayRelease` at all, see `selectHero`), so its
+ * exclusion from those two lists (mirroring the hero's own exclusion,
+ * index.tsx's queryFn) has to be reapplied explicitly on every recompute —
+ * see the filter right before the `return` below.
  */
 function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeData {
   const { base } = batch;
@@ -164,13 +170,35 @@ function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeDa
       ? view
       : deriveHomeView({ ...rawWithoutHeroCount, heroSeasonEpisodeCount }, prevHome.today);
 
+  // Mutual exclusion with "Sort aujourd'hui" (index.tsx's queryFn) must be
+  // reapplied HERE too, not just server-side: `deriveHomeView` (both `view`
+  // and `finalView` above) recomputes `reprendre`/`nouveau` from scratch via
+  // `selectHero`, which has no notion of `todayRelease` at all — left as-is,
+  // the spotlighted show would reappear as a fully-interactive duplicate row
+  // (its own "vu" button, tappable) in Reprendre/À commencer for the whole
+  // optimistic window, until the next `onSettled` refetch overwrites it.
+  // `todayRelease` itself is intentionally NOT recomputed here (carried over
+  // unchanged via `...prevHome` below) — same accepted "transient,
+  // self-correcting" residual as the rest of this file's Zone A/B split
+  // (see the doc comment above): only the DOWNSTREAM filter needs to move in
+  // lockstep with it, not the spotlight pick itself.
+  const todayReleaseShowId = prevHome.todayRelease?.show.id;
+  const reprendreExcludingToday =
+    todayReleaseShowId === undefined
+      ? finalView.reprendre
+      : finalView.reprendre.filter((item) => item.show.id !== todayReleaseShowId);
+  const nouveauExcludingToday =
+    todayReleaseShowId === undefined
+      ? finalView.nouveau
+      : finalView.nouveau.filter((item) => item.show.id !== todayReleaseShowId);
+
   return {
     ...prevHome,
     hero: finalView.hero,
     heroProgress: finalView.heroProgress,
-    reprendre: finalView.reprendre,
+    reprendre: reprendreExcludingToday,
     reprendreProgressByShowId: finalView.reprendreProgressByShowId,
-    nouveau: finalView.nouveau,
+    nouveau: nouveauExcludingToday,
     readyCount: finalView.readyCount,
     raw: { ...rawWithoutHeroCount, heroSeasonEpisodeCount },
   };
