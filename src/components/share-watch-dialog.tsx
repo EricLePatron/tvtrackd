@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Download, Instagram, Link2, Loader2, Share2 } from "lucide-react";
+import { Check, Download, Instagram, Link2, Loader2, Share2, Twitter } from "lucide-react";
+
 import { toast } from "sonner";
 
 import {
@@ -130,10 +131,23 @@ export function ShareWatchDialog({
     );
   };
 
+  const shareTwitter = async () => {
+    // X n'accepte pas de fichier via une URL d'intention : on télécharge
+    // l'image pour que l'utilisateur l'attache au tweet pré-rempli.
+    if (blobRef.current) downloadBlob(blobRef.current, filename);
+    window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(shareUrl)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    toast.success("Image téléchargée — attachez-la à votre tweet");
+  };
+
   const copyLink = async () => {
     if (await copyCaption()) toast.success("Lien et légende copiés");
     else toast.error("Copie impossible");
   };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -181,15 +195,26 @@ export function ShareWatchDialog({
           )}
         </div>
 
-        <button
-          type="button"
-          disabled={!preview || pending}
-          onClick={shareInstagram}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-md border border-primary/40 bg-primary/10 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-        >
-          <Instagram className="h-4 w-4" />
-          Story Instagram
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={!preview || pending}
+            onClick={shareInstagram}
+            className="flex h-12 items-center justify-center gap-2 rounded-md border border-primary/40 bg-primary/10 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+          >
+            <Instagram className="h-4 w-4" />
+            Story
+          </button>
+          <button
+            type="button"
+            disabled={!preview || pending}
+            onClick={shareTwitter}
+            className="flex h-12 items-center justify-center gap-2 rounded-md border border-cyan-accent/40 bg-cyan-accent/10 text-sm font-medium text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
+          >
+            <Twitter className="h-4 w-4" />
+            Poster sur X
+          </button>
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -212,8 +237,10 @@ export function ShareWatchDialog({
         </div>
 
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-          La légende est copiée automatiquement : il ne reste qu'à la coller dans votre story.
+          Instagram : uniquement en story, la légende est copiée automatiquement. X : l'image est
+          téléchargée, à attacher au tweet pré-rempli.
         </p>
+
       </DialogContent>
     </Dialog>
   );
