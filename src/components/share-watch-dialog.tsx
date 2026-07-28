@@ -131,10 +131,23 @@ export function ShareWatchDialog({
     );
   };
 
+  const shareTwitter = async () => {
+    // X n'accepte pas de fichier via une URL d'intention : on télécharge
+    // l'image pour que l'utilisateur l'attache au tweet pré-rempli.
+    if (blobRef.current) downloadBlob(blobRef.current, filename);
+    window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(shareUrl)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    toast.success("Image téléchargée — attachez-la à votre tweet");
+  };
+
   const copyLink = async () => {
     if (await copyCaption()) toast.success("Lien et légende copiés");
     else toast.error("Copie impossible");
   };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
