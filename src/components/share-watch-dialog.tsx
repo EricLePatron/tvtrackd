@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Download, Instagram, Link2, Loader2, Share2, Twitter } from "lucide-react";
+import { Check, Download, Instagram, Link2, Loader2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -10,13 +10,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { buildShareCard, type ShareCardInput, type ShareFormat } from "@/lib/share-card";
+import { buildShareCard, type ShareCardInput } from "@/lib/share-card";
 import { cn } from "@/lib/utils";
 
 export type ShareWatchProps = Omit<ShareCardInput, "format"> & {
   /** Lien canonique de la fiche (partagé en texte). */
   shareUrl: string;
-  /** Légende pré-remplie (Twitter / presse-papier Instagram). */
+  /** Légende pré-remplie (copiée pour Instagram). */
   caption: string;
   /** Habillage du déclencheur. */
   triggerVariant?: "icon" | "button";
@@ -36,15 +36,12 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 /**
- * Partage social d'un épisode vu / d'une saison vue.
- *
- * Instagram n'expose aucune URL d'intention web : le seul chemin fiable est
- * le partage natif de fichier (`navigator.share` avec `files`, disponible
- * sur iOS/Android) et, à défaut (desktop), le téléchargement de l'image +
- * copie de la légende. On propose donc les deux formats attendus par
- * Instagram (post 4:5 et story 9:16) plutôt qu'un seul. Twitter/X, lui,
- * accepte une intention web mais n'attache pas d'image : on y envoie la
- * légende + le lien de la fiche.
+ * Partage social d'un épisode vu / d'une saison vue — flow simplifié :
+ * un seul format (story 9:16) et un seul geste principal (« Story
+ * Instagram »). Instagram n'expose aucune URL d'intention web : le partage
+ * natif de fichier (`navigator.share` avec `files`) est le seul chemin
+ * fiable sur mobile ; sur desktop on retombe sur le téléchargement de
+ * l'image + copie de la légende.
  */
 export function ShareWatchDialog({
   shareUrl,
@@ -55,7 +52,6 @@ export function ShareWatchDialog({
   ...card
 }: ShareWatchProps) {
   const [open, setOpen] = useState(false);
-  const [format, setFormat] = useState<ShareFormat>("post");
   const [preview, setPreview] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -69,7 +65,7 @@ export function ShareWatchDialog({
     let cancelled = false;
     setPending(true);
     blobRef.current = null;
-    buildShareCard({ ...(JSON.parse(cardKey) as ShareCardInput), format })
+    buildShareCard({ ...(JSON.parse(cardKey) as ShareCardInput), format: "story" })
       .then((blob) => {
         if (cancelled) return;
         blobRef.current = blob;
@@ -86,7 +82,7 @@ export function ShareWatchDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, format, cardKey]);
+  }, [open, cardKey]);
 
   useEffect(() => {
     return () => {
@@ -95,7 +91,7 @@ export function ShareWatchDialog({
   }, []);
 
   const slug = card.counter.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const filename = `tvtrackd-${slug}-${format}.png`;
+  const filename = `tvtrackd-${slug}-story.png`;
   const text = `${caption}\n${shareUrl}`;
 
   const copyCaption = useCallback(async () => {
@@ -119,7 +115,7 @@ export function ShareWatchDialog({
       await copyCaption();
       try {
         await navigator.share({ files: [file] });
-        toast.success("Légende copiée — collez-la dans Instagram");
+        toast.success("Légende copiée — collez-la dans votre story");
         return;
       } catch (err) {
         if ((err as Error)?.name === "AbortError") return;
@@ -129,16 +125,9 @@ export function ShareWatchDialog({
     const ok = await copyCaption();
     toast.success(
       ok
-        ? "Image téléchargée et légende copiée — à publier dans Instagram"
-        : "Image téléchargée — à publier dans Instagram",
+        ? "Image téléchargée et légende copiée — à publier en story"
+        : "Image téléchargée — à publier en story",
     );
-  };
-
-  const shareTwitter = () => {
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-      caption,
-    )}&url=${encodeURIComponent(shareUrl)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const copyLink = async () => {
@@ -176,80 +165,38 @@ export function ShareWatchDialog({
       </DialogTrigger>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Partager</DialogTitle>
+          <DialogTitle>Partager en story</DialogTitle>
           <DialogDescription>{caption}</DialogDescription>
         </DialogHeader>
 
-        {/* Choix du format attendu par Instagram */}
-        <div
-          role="tablist"
-          aria-label="Format de l'image"
-          className="grid grid-cols-2 gap-1 rounded-md border border-white/[0.07] bg-white/[0.02] p-1"
-        >
-          {(
-            [
-              { id: "post", label: "Post 4:5" },
-              { id: "story", label: "Story 9:16" },
-            ] as const
-          ).map((f) => (
-            <button
-              key={f.id}
-              role="tab"
-              type="button"
-              aria-selected={format === f.id}
-              onClick={() => setFormat(f.id)}
-              className={cn(
-                "h-8 rounded-sm font-mono text-[11px] uppercase tracking-wider transition-colors",
-                format === f.id
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        <div
-          className={cn(
-            "grid w-full place-items-center overflow-hidden rounded-md bg-surface-elevated",
-            format === "story" ? "aspect-[9/16] max-h-[46vh]" : "aspect-[4/5] max-h-[46vh]",
-          )}
-        >
+        <div className="grid aspect-[9/16] max-h-[48vh] w-full place-items-center overflow-hidden rounded-md bg-surface-elevated">
           {pending || !preview ? (
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           ) : (
             <img
               src={preview}
-              alt="Aperçu de la carte de partage"
+              alt="Aperçu de la story"
               className="h-full w-full object-contain"
             />
           )}
         </div>
 
-        <div className="mt-1 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={!preview || pending}
-            onClick={shareInstagram}
-            className="flex h-11 items-center justify-center gap-2 rounded-md border border-primary/40 bg-primary/10 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-          >
-            <Instagram className="h-4 w-4" />
-            Instagram
-          </button>
-          <button
-            type="button"
-            onClick={shareTwitter}
-            className="flex h-11 items-center justify-center gap-2 rounded-md border border-cyan-accent/40 bg-cyan-accent/10 text-xs font-medium text-cyan-accent transition-colors hover:bg-cyan-accent/20"
-          >
-            <Twitter className="h-4 w-4" />
-            Twitter / X
-          </button>
+        <button
+          type="button"
+          disabled={!preview || pending}
+          onClick={shareInstagram}
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-md border border-primary/40 bg-primary/10 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+        >
+          <Instagram className="h-4 w-4" />
+          Story Instagram
+        </button>
+
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             disabled={!preview || pending}
             onClick={() => blobRef.current && downloadBlob(blobRef.current, filename)}
-            className="flex h-11 items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            className="flex h-10 items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
             Image
@@ -257,7 +204,7 @@ export function ShareWatchDialog({
           <button
             type="button"
             onClick={copyLink}
-            className="flex h-11 items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="flex h-10 items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             {copied ? <Check className="h-4 w-4 text-cyan-accent" /> : <Link2 className="h-4 w-4" />}
             {copied ? "Copié" : "Copier"}
@@ -265,8 +212,7 @@ export function ShareWatchDialog({
         </div>
 
         <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-          Instagram n'accepte pas de légende automatique : on la copie pour vous, il ne reste qu'à
-          la coller.
+          La légende est copiée automatiquement : il ne reste qu'à la coller dans votre story.
         </p>
       </DialogContent>
     </Dialog>

@@ -942,7 +942,7 @@ function ShowDetail() {
                                   title={show.title}
                                   counter={`S${pad(e.season_number)}E${pad(e.episode_number)}`}
                                   subtitle={e.title}
-                                  posterUrl={show.poster_path}
+                                  posterUrl={e.still_path ?? show.poster_path}
                                   badge="Épisode vu"
                                   shareUrl={`${SITE_URL}/show/${mediaType}/${tmdbId}`}
                                   caption={`Je viens de voir ${show.title} S${pad(e.season_number)}E${pad(e.episode_number)} 📺`}

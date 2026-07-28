@@ -40,6 +40,7 @@ export type EpisodeRow = {
   title: string | null;
   air_date: string | null;
   overview: string | null;
+  still_path?: string | null;
 };
 
 export type ShowDetails = {
