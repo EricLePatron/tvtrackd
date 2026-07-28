@@ -1,17 +1,16 @@
 /**
- * Génération client-side de la "carte de partage" (1080×1350, format
- * portrait Instagram) pour un épisode vu ou une saison vue.
+ * Génération client-side de la "carte de partage" pour un épisode vu ou une
+ * saison vue, en deux formats : `post` (1080×1350, feed Instagram) et
+ * `story` (1080×1920, story Instagram / Reels).
  *
  * Rendu 100 % canvas — pas de dépendance html2canvas : la carte est simple
  * (fond `--bg-void`, affiche TMDb, compteur Plex Mono) et le canvas évite
- * tout risque de rendu approximatif des polices/filtres CSS. Les images
- * TMDb sont servies avec `access-control-allow-origin: *`, donc le canvas
- * n'est pas "tainted" et `toBlob` fonctionne ; en cas d'échec de chargement
- * on retombe sur une carte sans affiche plutôt que d'échouer.
+ * tout risque de rendu approximatif des polices/filtres CSS. L'affiche est
+ * récupérée via `fetch` + blob plutôt qu'en posant `crossOrigin` sur une
+ * balise Image : ça évite l'échec silencieux quand le navigateur a déjà
+ * l'image en cache sans en-tête CORS (c'est ce qui produisait une carte
+ * vide). En cas d'échec on retombe sur une carte sans affiche.
  */
-
-const W = 1080;
-const H = 1350;
 
 const BG = "#0B0E14";
 const SURFACE = "#1E2530";
@@ -19,6 +18,8 @@ const AMBER = "#FF8A3D";
 const CYAN = "#4DD9C4";
 const TEXT = "#F2EDE4";
 const MUTED = "#8B92A3";
+
+export type ShareFormat = "post" | "story";
 
 export type ShareCardInput = {
   /** Titre de la série / du film. */
@@ -31,10 +32,31 @@ export type ShareCardInput = {
   posterUrl?: string | null;
   /** Libellé d'état, ex. "ÉPISODE VU" / "SAISON TERMINÉE". */
   badge: string;
+  /** Format de sortie (défaut : post 4:5). */
+  format?: ShareFormat;
 };
 
-function loadImage(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
+async function loadImage(url: string): Promise<HTMLImageElement | null> {
+  // 1) chemin privilégié : fetch CORS -> blob -> object URL (jamais "tainted")
+  try {
+    const res = await fetch(url, { mode: "cors", cache: "reload" });
+    if (res.ok) {
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const img = await new Promise<HTMLImageElement | null>((resolve) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => resolve(null);
+        el.src = objectUrl;
+      });
+      URL.revokeObjectURL(objectUrl);
+      if (img) return img;
+    }
+  } catch {
+    /* on tente le fallback ci-dessous */
+  }
+  // 2) fallback : balise Image en CORS anonyme
+  return await new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
@@ -54,7 +76,12 @@ function drawCover(
   const ratio = Math.max(w / img.width, h / img.height);
   const dw = img.width * ratio;
   const dh = img.height * ratio;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  ctx.restore();
 }
 
 function roundRect(
@@ -74,14 +101,28 @@ function roundRect(
   ctx.closePath();
 }
 
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size: number) {
+function fitFont(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  size: number,
+  min: number,
+) {
   let s = size;
-  while (s > 28) {
+  while (s > min) {
     ctx.font = `700 ${s}px Archivo, Inter, system-ui, sans-serif`;
     if (ctx.measureText(text).width <= maxWidth) break;
-    s -= 4;
+    s -= 3;
   }
+  ctx.font = `700 ${s}px Archivo, Inter, system-ui, sans-serif`;
   return s;
+}
+
+function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 2 && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
+  return `${t.trimEnd()}…`;
 }
 
 export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
@@ -95,6 +136,14 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
     }
   }
 
+  const format: ShareFormat = input.format ?? "post";
+  const W = 1080;
+  const H = format === "story" ? 1920 : 1350;
+  // Marge basse réservée au bloc texte (badge + compteur + titre + signature)
+  const TEXT_BLOCK = 430;
+  const PAD = 88;
+  const imageH = H - TEXT_BLOCK;
+
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -104,75 +153,68 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
 
-  // Affiche (bloc haut, coins arrondis)
-  const px = 120;
-  const py = 96;
-  const pw = W - px * 2;
-  const ph = 1260;
+  // Affiche : plein cadre en haut, fondue vers le fond
   const poster = input.posterUrl ? await loadImage(input.posterUrl) : null;
-
-  ctx.save();
-  roundRect(ctx, px, py, pw, Math.round(pw * 1.5), 28);
-  ctx.clip();
   ctx.fillStyle = SURFACE;
-  ctx.fillRect(px, py, pw, Math.round(pw * 1.5));
-  if (poster) drawCover(ctx, poster, px, py, pw, Math.round(pw * 1.5));
-  ctx.restore();
-  void ph;
+  ctx.fillRect(0, 0, W, imageH);
+  if (poster) drawCover(ctx, poster, 0, 0, W, imageH);
 
-  // Dégradé de fond bas pour poser le texte
-  const gradTop = py + Math.round(pw * 1.5) - 240;
-  const grad = ctx.createLinearGradient(0, gradTop, 0, H);
+  const gradTop = Math.max(0, imageH - 420);
+  const grad = ctx.createLinearGradient(0, gradTop, 0, imageH);
   grad.addColorStop(0, "rgba(11,14,20,0)");
-  grad.addColorStop(0.55, "rgba(11,14,20,0.92)");
+  grad.addColorStop(0.7, "rgba(11,14,20,0.88)");
   grad.addColorStop(1, BG);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, gradTop, W, H - gradTop);
+  ctx.fillRect(0, gradTop, W, imageH - gradTop);
+
+  // ── Bloc texte, empilé sans chevauchement possible ────────────────────
+  let y = imageH + 26;
 
   // Badge état
+  ctx.textBaseline = "middle";
   ctx.font = "600 26px 'IBM Plex Mono', ui-monospace, monospace";
   const badge = input.badge.toUpperCase();
+  const badgeH = 56;
   const badgeW = ctx.measureText(badge).width + 44;
-  const badgeY = H - 330;
   ctx.fillStyle = "rgba(77,217,196,0.14)";
-  roundRect(ctx, px, badgeY, badgeW, 56, 12);
+  roundRect(ctx, PAD, y, badgeW, badgeH, 12);
   ctx.fill();
   ctx.fillStyle = CYAN;
-  ctx.textBaseline = "middle";
-  ctx.fillText(badge, px + 22, badgeY + 30);
+  ctx.fillText(badge, PAD + 22, y + badgeH / 2 + 1);
+  y += badgeH + 22;
 
   // Compteur (module VHS)
   const counter = input.counter.toUpperCase();
-  ctx.font = "700 44px 'IBM Plex Mono', ui-monospace, monospace";
-  const counterW = ctx.measureText(counter).width + 48;
-  const counterY = badgeY + 76;
+  ctx.font = "700 46px 'IBM Plex Mono', ui-monospace, monospace";
+  const counterH = 84;
+  const counterW = ctx.measureText(counter).width + 52;
   ctx.fillStyle = SURFACE;
-  roundRect(ctx, px, counterY, counterW, 78, 14);
+  roundRect(ctx, PAD, y, counterW, counterH, 14);
   ctx.fill();
   ctx.fillStyle = AMBER;
-  ctx.fillText(counter, px + 24, counterY + 40);
+  ctx.fillText(counter, PAD + 26, y + counterH / 2 + 2);
+  y += counterH + 34;
 
   // Titre
-  ctx.textBaseline = "alphabetic";
-  const titleSize = fitText(ctx, input.title, pw, 68);
-  ctx.font = `700 ${titleSize}px Archivo, Inter, system-ui, sans-serif`;
+  ctx.textBaseline = "top";
+  const maxW = W - PAD * 2;
+  const titleSize = fitFont(ctx, input.title, maxW, 66, 34);
   ctx.fillStyle = TEXT;
-  ctx.fillText(input.title, px, counterY + 78 + 76);
+  ctx.fillText(ellipsize(ctx, input.title, maxW), PAD, y);
+  y += titleSize + 16;
 
   // Sous-titre
   if (input.subtitle) {
     ctx.font = "400 32px Inter, system-ui, sans-serif";
     ctx.fillStyle = MUTED;
-    let sub = input.subtitle;
-    while (ctx.measureText(sub).width > pw && sub.length > 4) sub = sub.slice(0, -2);
-    if (sub !== input.subtitle) sub = `${sub}…`;
-    ctx.fillText(sub, px, counterY + 78 + 128);
+    ctx.fillText(ellipsize(ctx, input.subtitle, maxW), PAD, y);
   }
 
-  // Signature produit
+  // Signature produit, ancrée en bas
+  ctx.textBaseline = "alphabetic";
   ctx.font = "600 26px 'IBM Plex Mono', ui-monospace, monospace";
   ctx.fillStyle = MUTED;
-  ctx.fillText("TVTRACKD.COM", px, H - 70);
+  ctx.fillText("TVTRACKD.COM", PAD, H - 56);
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
