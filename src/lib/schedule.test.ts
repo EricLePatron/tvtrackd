@@ -1472,3 +1472,55 @@ describe("selectTodayRelease", () => {
     expect(result?.show.id).toBe(1);
   });
 });
+
+describe("selectTodayRelease + selectHero — mutual exclusion with Reprendre/À commencer", () => {
+  it("a show spotlighted in `todayRelease` also legitimately appears in `selectHero`'s `reprendre` — filtering `reprendre` by `todayRelease.show.id` (as index.tsx's queryFn does, mirroring the hero's own exclusion) removes the duplicate", () => {
+    const heroShow = show(1, "Hero Show");
+    const todayShow = show(2, "Today Show");
+    const episodes = [
+      // Hero: ready episode not today, most recently watched — wins the hero slot.
+      ep(heroShow, 101, 1, 1, "2026-07-01"),
+      // Today Show: en_cours, only a ready episode airing exactly TODAY — its
+      // last watch is older than the hero's (so it loses the hero race) but
+      // still recent enough (< LIST_STALE_DAYS) to land in the ACTIVE
+      // `reprendre` list rather than `reprendreDormant`.
+      ep(todayShow, 201, 1, 1, TODAY),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // hero: watched yesterday
+      [2, "2026-06-20T00:00:00.000Z"], // today show: 18 days ago — active, not dormant
+    ]);
+    const watchedEpisodeIds = new Set<number>();
+
+    const ready = buildReadyItems(episodes, watchedEpisodeIds, statusByShowId, TODAY);
+    const { hero, reprendre } = selectHero(ready, TODAY, lastWatchedAtByShowId);
+    expect(hero?.show.id).toBe(1);
+
+    // Before the fix: `todayShow` is a genuine en_cours show with a ready
+    // backlog, just not the hero — it legitimately appears in `reprendre`.
+    expect(reprendre.some((item) => item.show.id === 2)).toBe(true);
+
+    const todayRelease = selectTodayRelease(
+      episodes,
+      watchedEpisodeIds,
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+      { excludeShowIds: hero ? new Set([hero.show.id]) : undefined },
+    );
+    expect(todayRelease?.show.id).toBe(2);
+
+    // The fix: filter `reprendre` (and, by the same logic, `nouveau`) by
+    // `todayRelease`'s own show id BEFORE returning `HomeData` — same
+    // pattern already applied to the hero's own show via `selectHero`'s
+    // built-in exclusion.
+    const reprendreAfterToday = todayRelease
+      ? reprendre.filter((item) => item.show.id !== todayRelease.show.id)
+      : reprendre;
+    expect(reprendreAfterToday.some((item) => item.show.id === 2)).toBe(false);
+  });
+});

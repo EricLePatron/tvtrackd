@@ -225,12 +225,48 @@ function HomeScreen() {
         today,
       );
 
+      // Single "Sort aujourd'hui" spotlight pick — see `selectTodayRelease`'s
+      // doc comment (schedule.ts). Computed here (rather than alongside
+      // `nextReleases` further down) so its exclusion can ALSO apply to
+      // `reprendre`/`nouveau` right below, before the "Reprendre" visible
+      // slice/season-count fetch — not just to `nextReleases` later on.
+      // Excludes the hero's own show, same reasoning as `nextReleases`
+      // below: the hero already dominates that show's slot as "à voir
+      // maintenant".
+      const todayRelease = selectTodayRelease(
+        episodes,
+        watchedSet,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        today,
+        { excludeShowIds: hero ? new Set([hero.show.id]) : undefined },
+      );
+
+      // Mutual exclusion, part 2 — a show spotlighted in "Sort aujourd'hui"
+      // is "promoted" out of Reprendre/À commencer, exactly like the hero
+      // already is (see `selectHero`'s doc comment: "the hero is always
+      // excluded from both reprendre and reprendreDormant"). Without this,
+      // the SAME show could visibly appear twice on the same screen: once as
+      // the "Sort aujourd'hui" spotlight, and again as a "Reprendre" row
+      // (en_cours) or an "À commencer" card (a_voir) just above/below it.
+      // Filtered BEFORE the `REPRENDRE_VISIBLE_COUNT` slice/season-count
+      // fetch below — not after — so a show removed from an otherwise-full
+      // top-3 correctly lets the 4th-ranked show take its place (and get its
+      // own season-count fetched, and count towards the "Voir tout · +N
+      // actives" badge) instead of silently leaving only 2 visible rows.
+      const reprendreAfterToday = todayRelease
+        ? reprendre.filter((item) => item.show.id !== todayRelease.show.id)
+        : reprendre;
+      const nouveauAfterToday = todayRelease
+        ? nouveau.filter((item) => item.show.id !== todayRelease.show.id)
+        : nouveau;
+
       // Only the rows actually rendered under "Reprendre" (REPRENDRE_VISIBLE_COUNT,
       // see HomeContent) need a season-count fetch — the rest of `reprendre`
       // is only ever reached through /library, which computes its own
       // progress independently (`buildLibraryProgress`, unbounded episodes
       // fetch, no reliability guard needed there).
-      const reprendreVisible = reprendre.slice(0, REPRENDRE_VISIBLE_COUNT);
+      const reprendreVisible = reprendreAfterToday.slice(0, REPRENDRE_VISIBLE_COUNT);
       const reprendreShowIds = [...new Set(reprendreVisible.map((item) => item.show.id))];
 
       // Both lookups are independent single-purpose reads of the `seasons`
@@ -299,19 +335,6 @@ function HomeScreen() {
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
 
-      // Single "Sort aujourd'hui" spotlight pick — see `selectTodayRelease`'s
-      // doc comment (schedule.ts). Excludes the hero's own show, same
-      // reasoning as `nextReleases` below: the hero already dominates that
-      // show's slot as "à voir maintenant".
-      const todayRelease = selectTodayRelease(
-        episodes,
-        watchedSet,
-        showStatusByShowId,
-        lastWatchedAtByShowId,
-        today,
-        { excludeShowIds: hero ? new Set([hero.show.id]) : undefined },
-      );
-
       // Un seul item "Bientôt" (grand format), quel que soit l'état (design
       // review — plus de liste compacte de secours en dessous) : le reste
       // des sorties à venir reste couvert par le rail "Programme à venir"
@@ -342,9 +365,13 @@ function HomeScreen() {
         followedActiveCount: showIds.length,
         hero,
         heroProgress,
-        reprendre,
+        // Filtered (todayRelease's own show removed, see above) — the
+        // version actually rendered/counted by `HomeContent` ("Voir tout ·
+        // +N actives" reads `data.reprendre.length` directly, so it's
+        // already correct here with no separate recompute needed).
+        reprendre: reprendreAfterToday,
         reprendreProgressByShowId,
-        nouveau,
+        nouveau: nouveauAfterToday,
         readyCount,
         dayGroups,
         upcomingCount,
