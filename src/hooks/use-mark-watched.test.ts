@@ -74,6 +74,11 @@ const ZONE_B = {
   // reasoning as `nextReleases`/`dayGroups` above — so it's grouped here even
   // though it isn't itself derived from `dayGroups`.
   todayRelease: null,
+  // `premiereSoon` (Lot 2, "Nouvelle saison" spotlight, see
+  // `selectPremiereSoon` in schedule.ts) is a strictly-future episode by
+  // construction — same "never touched by recomputeFromBatch" reasoning as
+  // `nextReleases`/`dayGroups` above.
+  premiereSoon: null,
 };
 
 function seedHomeData(qc: QueryClient, userId: string, data: HomeData) {

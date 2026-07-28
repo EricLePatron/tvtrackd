@@ -814,20 +814,53 @@ function countPriorBacklog(
 
 /**
  * Shared ranking comparator behind "Sort aujourd'hui" (`selectTodayRelease`)
- * — and, later, "Première bientôt", not implemented yet: (1)
- * `priorBacklogCount` bucket ascending (see `backlogBucket`) — (2)
- * `daysSinceLastWatch` ascending, with `null` (never watched) sorted LAST — a
- * real recency signal always outranks "no signal at all" — (3) the caller's
- * own `statusRank` (lower ranks first — e.g. `en_cours` before `a_voir` for
- * "Sort aujourd'hui") — (4) show title, for full determinism. Generic over
- * the candidate's status type so a future caller with a wider status set
- * (e.g. `termine` alongside `en_cours`/`a_voir`) can reuse this unchanged.
+ * and "Nouvelle saison" (`selectPremiereSoon`) — always starts with (1)
+ * `priorBacklogCount` bucket ascending (see `backlogBucket`, "à jour" always
+ * wins) and always ends with a final show-title tie-break for full
+ * determinism. The middle two tiers — (a) `daysSinceLastWatch` ascending,
+ * `null` (never watched) sorted LAST, and (b) the caller's own `statusRank`
+ * (lower ranks first) — run in a caller-chosen ORDER, via
+ * `options.statusBeforeRecency`:
+ *
+ * - `false` (default) — recency BEFORE status: "Sort aujourd'hui"'s order
+ *   (bucket -> recency -> status -> title), UNCHANGED from Lot 1. Recency is
+ *   a meaningful signal there because every candidate is `a_voir`/`en_cours`
+ *   and typically HAS a real `lastWatchedAtByShowId` entry.
+ * - `true` — status BEFORE recency: "Nouvelle saison"'s order (bucket ->
+ *   status -> recency -> title), needed because `termine` candidates NEVER
+ *   have a `lastWatchedAtByShowId` entry (see `selectPremiereSoon`'s doc
+ *   comment) — putting recency first would make the confirmed
+ *   `termine > en_cours > a_voir` ranking unreachable in the common case (a
+ *   real recency signal would always outrank `termine`'s structural `null`
+ *   before the status tier is ever consulted). With status promoted ahead,
+ *   recency is demoted to a late tie-break — still useful among candidates
+ *   that share BOTH a backlog bucket AND a status (e.g. two `en_cours`
+ *   candidates), just never able to override the status ranking itself.
+ *
+ * Generic over the candidate's status type so callers with different status
+ * sets (`ActiveStatus` for "Sort aujourd'hui", the wider `PremiereStatus` for
+ * "Nouvelle saison") both reuse this unchanged.
  */
 function compareEventCandidates<S extends string>(
   lastWatchedAtByShowId: ReadonlyMap<number, string>,
   today: string,
   statusRank: (status: S) => number,
+  options: { statusBeforeRecency?: boolean } = {},
 ) {
+  const { statusBeforeRecency = false } = options;
+
+  const compareByRecency = (a: { show: ShowLite }, b: { show: ShowLite }): number => {
+    const aDays = daysSinceLastWatch(a.show.id, today, lastWatchedAtByShowId);
+    const bDays = daysSinceLastWatch(b.show.id, today, lastWatchedAtByShowId);
+    if (aDays === bDays) return 0;
+    if (aDays === null) return 1;
+    if (bDays === null) return -1;
+    return aDays - bDays;
+  };
+
+  const compareByStatus = (a: { status: S }, b: { status: S }): number =>
+    statusRank(a.status) - statusRank(b.status);
+
   return (
     a: { show: ShowLite; status: S; priorBacklogCount: number },
     b: { show: ShowLite; status: S; priorBacklogCount: number },
@@ -835,16 +868,11 @@ function compareEventCandidates<S extends string>(
     const bucketDiff = backlogBucket(a.priorBacklogCount) - backlogBucket(b.priorBacklogCount);
     if (bucketDiff !== 0) return bucketDiff;
 
-    const aDays = daysSinceLastWatch(a.show.id, today, lastWatchedAtByShowId);
-    const bDays = daysSinceLastWatch(b.show.id, today, lastWatchedAtByShowId);
-    if (aDays !== bDays) {
-      if (aDays === null) return 1;
-      if (bDays === null) return -1;
-      return aDays - bDays;
-    }
-
-    const rankDiff = statusRank(a.status) - statusRank(b.status);
-    if (rankDiff !== 0) return rankDiff;
+    const [firstCmp, secondCmp] = statusBeforeRecency
+      ? [compareByStatus(a, b), compareByRecency(a, b)]
+      : [compareByRecency(a, b), compareByStatus(a, b)];
+    if (firstCmp !== 0) return firstCmp;
+    if (secondCmp !== 0) return secondCmp;
 
     return a.show.title.localeCompare(b.show.title);
   };
@@ -921,6 +949,129 @@ export function selectTodayRelease(
 
   const winner = candidates[0];
   return { show: winner.episode.show, episode: winner.episode, date: today, daysUntil: 0 };
+}
+
+/** Status of a "Première bientôt" candidate — wider than `ActiveStatus`: includes `termine` (a finished show whose new season is about to premiere), the canonical case this block exists for. `abandonne`/`archive` are structurally excluded — the caller only ever feeds this from the `a_voir`/`en_cours` fetch plus a dedicated `termine`-only fetch (see index.tsx's queryFn), never the other two statuses. */
+export type PremiereStatus = ActiveStatus | "termine";
+
+/**
+ * Single "spotlight" pick among upcoming SEASON PREMIERES (`episode_number
+ * === 1`, strictly future `air_date`) of shows the user has AT LEAST
+ * started — feeds the Home's "Nouvelle saison" card (`PremiereSoonBlock`,
+ * index.tsx). Two source pools, passed in already pre-filtered by the caller
+ * (this function does no Supabase-shaped filtering itself):
+ *
+ * - `activeEpisodes` — the SAME `a_voir`/`en_cours` episodes fetch already
+ *   used everywhere else on the Home screen (see index.tsx). Eligibility:
+ *   `lastWatchedAtByShowId.has(showId)` — the show has been watched at
+ *   least once. This is what excludes a NEVER-STARTED `a_voir` show (added
+ *   to the library but never actually watched) — its premiere isn't
+ *   "returning", it's just another upcoming release, already covered by
+ *   "Bientôt"/`selectNextReleases`. `priorBacklogCount` (same definition as
+ *   `selectTodayRelease`'s) naturally distinguishes "caught up, ready for
+ *   the new season" from "still behind on the current one".
+ * - `termineEpisodes` — a SEPARATE, minimal fetch (show id + season-1
+ *   episodes only, no accompanying `watch_status` query) for shows marked
+ *   `termine`. Eligibility is unconditional (a `termine` show is by
+ *   definition fully watched) and `priorBacklogCount` is ASSUMED `0` by
+ *   construction, never computed from `activeEpisodes` (which structurally
+ *   can't contain a `termine` show's episodes — that fetch is scoped to
+ *   `a_voir`/`en_cours` — nor from `termineEpisodes`, which was never
+ *   fetched with that intent: no re-verification of `watch_status` for
+ *   `termine` shows, by design, to avoid a third full episodes+watched
+ *   fetch just for this one edge case).
+ *
+ * Ranked by the SAME `compareEventCandidates` machinery as
+ * `selectTodayRelease`, but with `options.statusBeforeRecency: true` — a
+ * DIFFERENT tier order: (1) `priorBacklogCount` bucket ascending, "à jour"
+ * always preferred — (2) `statusRank`, widened here to `termine` (0) >
+ * `en_cours` (1) > `a_voir` (2) — (3) `daysSinceLastWatch` ascending, `null`
+ * sorted last, as a LATE tie-break only — (4) show title.
+ *
+ * Status is deliberately promoted ahead of recency here (unlike
+ * `selectTodayRelease`, which keeps recency ahead of status — see
+ * `compareEventCandidates`'s doc comment for why both orders coexist):
+ * `termine` shows NEVER get a `lastWatchedAtByShowId` entry (index.tsx's
+ * queryFn runs no recency query for them at all), so a `null` recency signal
+ * is a STRUCTURAL property of every `termine` candidate, not a sign of low
+ * engagement — ranking recency ahead of status would have made the
+ * confirmed `termine > en_cours > a_voir` ordering unreachable in the common
+ * case (an eligible `a_voir`/`en_cours` competitor's real recency signal
+ * would always win first). With status promoted, recency still meaningfully
+ * breaks ties WITHIN the same bucket+status (e.g. two `en_cours`
+ * candidates), it just never overrides the status ranking itself.
+ *
+ * `excludeShowIds` mirrors `selectTodayRelease`'s own option — the Home
+ * queryFn passes the hero's own show. Only ONE candidate per show (a show
+ * can't appear in both pools at once — `user_shows.status` is exclusive), no
+ * de-dup pass needed beyond that.
+ */
+export function selectPremiereSoon(
+  activeEpisodes: ScheduleEpisode[],
+  termineEpisodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  showStatusByShowId: ReadonlyMap<number, ActiveStatus>,
+  lastWatchedAtByShowId: ReadonlyMap<number, string>,
+  today: string,
+  options: { excludeShowIds?: ReadonlySet<number> } = {},
+): NextReleaseItem | null {
+  const { excludeShowIds } = options;
+
+  const candidates: {
+    show: ShowLite;
+    episode: ScheduleEpisode;
+    status: PremiereStatus;
+    priorBacklogCount: number;
+  }[] = [];
+
+  for (const episode of activeEpisodes) {
+    if (episode.episode_number !== 1) continue;
+    if (!episode.air_date || episode.air_date <= today) continue;
+    const showId = episode.show.id;
+    if (excludeShowIds?.has(showId)) continue;
+    const status = showStatusByShowId.get(showId);
+    if (!status) continue; // not a followed (a_voir/en_cours) show
+    if (!lastWatchedAtByShowId.has(showId)) continue; // never started — excluded
+    candidates.push({
+      show: episode.show,
+      episode,
+      status,
+      priorBacklogCount: countPriorBacklog(activeEpisodes, watchedEpisodeIds, showId, today),
+    });
+  }
+
+  for (const episode of termineEpisodes) {
+    if (episode.episode_number !== 1) continue;
+    if (!episode.air_date || episode.air_date <= today) continue;
+    const showId = episode.show.id;
+    if (excludeShowIds?.has(showId)) continue;
+    candidates.push({
+      show: episode.show,
+      episode,
+      status: "termine",
+      priorBacklogCount: 0, // assumed by construction — see doc comment above
+    });
+  }
+
+  if (!candidates.length) return null;
+
+  const statusRank: Record<PremiereStatus, number> = { termine: 0, en_cours: 1, a_voir: 2 };
+  candidates.sort(
+    compareEventCandidates<PremiereStatus>(
+      lastWatchedAtByShowId,
+      today,
+      (status) => statusRank[status],
+      { statusBeforeRecency: true },
+    ),
+  );
+
+  const winner = candidates[0];
+  return {
+    show: winner.episode.show,
+    episode: winner.episode,
+    date: winner.episode.air_date!,
+    daysUntil: daysBetween(today, winner.episode.air_date!),
+  };
 }
 
 /**
@@ -1018,6 +1169,19 @@ export type HomeData = {
    * 'Sort aujourd'hui' block", never a placeholder.
    */
   todayRelease: NextReleaseItem | null;
+  /**
+   * Single spotlight pick among upcoming season premieres of shows the user
+   * has at least started — see `selectPremiereSoon`'s doc comment. `null`
+   * whenever there's no eligible premiere scheduled (the common case) — the
+   * caller (`HomeContent`) treats `null` as "render no 'Nouvelle saison'
+   * block", never a placeholder. Unlike `hero`/`todayRelease`, this is NOT
+   * recomputed by `useMarkWatched`'s optimistic patch (`recomputeFromBatch`)
+   * — a season premiere is always a strictly future episode, structurally
+   * unaffected by marking a past/today episode watched, same reasoning as
+   * `nextReleases`/`dayGroups` (Zone B) — carried over unchanged via
+   * `...prevHome`.
+   */
+  premiereSoon: NextReleaseItem | null;
   raw: HomeRawInputs;
 };
 

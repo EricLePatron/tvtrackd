@@ -22,6 +22,7 @@ import {
   formatReadyLabel,
   seasonCountKey,
   selectNextReleases,
+  selectPremiereSoon,
   selectTodayRelease,
   type ActiveStatus,
   type HomeData,
@@ -35,6 +36,7 @@ import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
 import { NextReleaseHeroCard } from "@/components/home/next-release-hero-card";
+import { PremiereSoonCard } from "@/components/home/premiere-soon-card";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
 import {
@@ -136,6 +138,13 @@ function HomeScreen() {
           upcomingCount: 0,
           nextReleases: [],
           todayRelease: null,
+          // No termine-shows fetch in this branch either — `no_shows` means
+          // zero followed a_voir/en_cours shows; "Nouvelle saison" (Lot 2)
+          // stays scoped to the normal/ready_only Zone A path, same known
+          // limitation as documented on `PremiereSoonBlock` below (a
+          // `termine` show's premiere isn't surfaced here even if one
+          // exists — deferred to backlog, not part of this lot's scope).
+          premiereSoon: null,
           raw: {
             episodes: [],
             showStatusByShowId: new Map(),
@@ -155,7 +164,10 @@ function HomeScreen() {
       // only need `showIds`), so they run in parallel rather than as a
       // waterfall. The `watched_status` (readiness) query further down still
       // has to wait on `episodes` (it needs `epIds`), so it stays sequential.
-      const [{ data: eps }, { data: recencyRows }] = await Promise.all([
+      // The `termine`-shows lookup (Lot 2, "Nouvelle saison") joins this same
+      // `Promise.all` too — it needs only `user!.id`, no dependency on
+      // `showIds`/`episodes` either, so it costs nothing extra in latency.
+      const [{ data: eps }, { data: recencyRows }, { data: termineRows }] = await Promise.all([
         supabase
           .from("episodes")
           .select(
@@ -182,18 +194,55 @@ function HomeScreen() {
           .select("watched_at, episode:episodes!inner(show_id)")
           .eq("user_id", user!.id)
           .in("episode.show_id", showIds),
+        // `termine` show ids only — deliberately a SEPARATE query rather than
+        // widening the `["a_voir", "en_cours"]` filter above: `termine` shows
+        // must never enter `showStatusByShowId` (they'd otherwise leak into
+        // `buildReadyItems`/`selectHero` as if actively followed) nor
+        // `showIds` (used everywhere else on this screen as "the user's
+        // active library"). See `selectPremiereSoon`'s doc comment for why
+        // `abandonne`/`archive` are never fetched here either.
+        supabase
+          .from("user_shows")
+          .select("show_id")
+          .eq("user_id", user!.id)
+          .eq("status", "termine"),
       ]);
 
       const episodes = (eps ?? []) as unknown as ScheduleEpisode[];
       const epIds = episodes.map((e) => e.id);
-      const { data: watched } = epIds.length
-        ? await supabase
-            .from("watch_status")
-            .select("episode_id")
-            .eq("user_id", user!.id)
-            .in("episode_id", epIds)
-        : { data: [] };
+      const termineShowIds = (termineRows ?? []).map((r) => r.show_id);
+
+      // `watched` (needs `epIds`, from `eps` above) and the `termine` shows'
+      // season-1-premiere episodes (needs `termineShowIds`, from
+      // `termineRows` above) are independent of EACH OTHER — both only
+      // depend on data already resolved by the first `Promise.all` — so they
+      // run in parallel rather than as a second waterfall step.
+      const [{ data: watched }, { data: termineEps }] = await Promise.all([
+        epIds.length
+          ? supabase
+              .from("watch_status")
+              .select("episode_id")
+              .eq("user_id", user!.id)
+              .in("episode_id", epIds)
+          : Promise.resolve({ data: [] as { episode_id: number }[] }),
+        // Minimal fetch, on purpose: only season premieres (`episode_number
+        // = 1`), only strictly future ones, no accompanying `watch_status`
+        // query — `termine` shows are assumed backlog-0 by construction (see
+        // `selectPremiereSoon`'s doc comment), so there's nothing else this
+        // screen needs to know about them.
+        termineShowIds.length
+          ? supabase
+              .from("episodes")
+              .select(
+                "id, season_number, episode_number, title, air_date, still_path, show:shows!inner(id, tmdb_id, media_type, title, poster_path, backdrop_path)",
+              )
+              .in("show_id", termineShowIds)
+              .eq("episode_number", 1)
+              .gt("air_date", today)
+          : Promise.resolve({ data: [] as unknown[] }),
+      ]);
       const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
+      const termineEpisodes = (termineEps ?? []) as unknown as ScheduleEpisode[];
 
       const lastWatchedAtByShowId = buildLastWatchedAtByShow(
         (
@@ -260,6 +309,23 @@ function HomeScreen() {
       const nouveauAfterToday = todayRelease
         ? nouveau.filter((item) => item.show.id !== todayRelease.show.id)
         : nouveau;
+
+      // Single "Nouvelle saison" spotlight pick (Lot 2) — see
+      // `selectPremiereSoon`'s doc comment (schedule.ts). Excludes the
+      // hero's own show, same reasoning as `todayRelease`/`nextReleases`.
+      // Deliberately NOT excluded from `reprendre`/`nouveau` the way
+      // `todayRelease` is above: a premiere is always a STRICTLY FUTURE
+      // episode, never one of the `air_date <= today` ready episodes those
+      // two lists are built from — there is no possible overlap to dedupe.
+      const premiereSoon = selectPremiereSoon(
+        episodes,
+        termineEpisodes,
+        watchedSet,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        today,
+        { excludeShowIds: hero ? new Set([hero.show.id]) : undefined },
+      );
 
       // Only the rows actually rendered under "Reprendre" (REPRENDRE_VISIBLE_COUNT,
       // see HomeContent) need a season-count fetch — the rest of `reprendre`
@@ -347,14 +413,23 @@ function HomeScreen() {
       // today's own episode (already spotlighted) or, if it has a LATER
       // future episode too, still the same show/story already highlighted
       // above — never repeated here as a second, separate "Bientôt" card.
+      // Also excludes `premiereSoon`'s own show (Lot 2) — mutual exclusion
+      // between "Bientôt" and "Nouvelle saison": if the very next scheduled
+      // episode `selectNextReleases` would otherwise pick IS that show's
+      // season premiere, it's already spotlighted above — never repeated
+      // here as a second, separate "Bientôt" card for the same event.
       // `hero` is always null in `upcoming_only` (readyCount 0), and
       // `todayRelease` is always null there too (an episode airing today is
       // always `readyCount`-eligible, see `selectTodayRelease`'s doc
       // comment) — both naturally become `undefined`/empty there, no
-      // special-casing needed. See `selectNextReleases`'s doc comment.
+      // special-casing needed. `premiereSoon` has no such structural
+      // guarantee (it doesn't depend on `readyCount`) but is simply added to
+      // the same exclusion set regardless of state. See `selectNextReleases`'s
+      // doc comment.
       const nextReleasesExcludeShowIds = new Set<number>();
       if (hero) nextReleasesExcludeShowIds.add(hero.show.id);
       if (todayRelease) nextReleasesExcludeShowIds.add(todayRelease.show.id);
+      if (premiereSoon) nextReleasesExcludeShowIds.add(premiereSoon.show.id);
       const nextReleases = selectNextReleases(dayGroups, today, {
         limit: 1,
         excludeShowIds: nextReleasesExcludeShowIds.size ? nextReleasesExcludeShowIds : undefined,
@@ -377,6 +452,7 @@ function HomeScreen() {
         upcomingCount,
         nextReleases,
         todayRelease,
+        premiereSoon,
         raw,
       };
     },
@@ -884,6 +960,31 @@ function HomeContent({ data }: { data: HomeData }) {
             <NextReleasesBlock items={data.nextReleases} />
           </div>
         )}
+
+        {/* Bloc "Nouvelle saison" (Lot 2) — spotlight (voir
+            `selectPremiereSoon`, schedule.ts). Placé juste après "Bientôt"
+            (ordre validé : Hero → Reprendre → Sort aujourd'hui → Bientôt →
+            Nouvelle saison → Programme à venir → À commencer), dans la même
+            branche partagée `normal`/`ready_only` que "Sort aujourd'hui" —
+            pas de garde sur `state` au-delà de `data.premiereSoon` lui-même,
+            même raisonnement de placement (jamais atteint par les branches
+            `no_shows`/`all_caught_up`/`upcoming_only`, qui renvoient/rendent
+            avant ce point).
+            LIMITE CONNUE (assumée pour ce lot) : contrairement à
+            `todayRelease`, `premiereSoon` n'a AUCUNE garantie structurelle
+            de dépendre de `readyCount`/`followedActiveCount` — une première
+            de série `termine` pourrait légitimement exister même quand
+            l'utilisateur n'a plus aucun show `a_voir`/`en_cours` actif (état
+            `no_shows`) ou est à jour sur tout (état `all_caught_up`/
+            `upcoming_only`). Ce lot ne surface PAS cette première dans ces
+            trois états (la queryFn ne fetch même pas les shows `termine`
+            dans la branche `no_shows`, voir son commentaire dédié) — resté
+            hors scope, à considérer en backlog si jugé prioritaire. */}
+        {data.premiereSoon && (
+          <div className="mt-5">
+            <PremiereSoonBlock item={data.premiereSoon} />
+          </div>
+        )}
       </div>
 
       {/* Zone B — Programme à venir */}
@@ -955,6 +1056,22 @@ function TodayReleaseBlock({ item }: { item: NextReleaseItem }) {
     <div>
       <p className="mb-2 font-display text-xl font-bold text-foreground">Sort aujourd'hui</p>
       <NextReleaseHeroCard item={item} variant="today" />
+    </div>
+  );
+}
+
+/**
+ * "Nouvelle saison" block (Lot 2) — single spotlight card (`PremiereSoonCard`)
+ * under its own "Nouvelle saison" header (same style as
+ * "Reprendre"/"Bientôt"/"Sort aujourd'hui"). See `selectPremiereSoon`
+ * (schedule.ts) for the selection/ranking rule and `HomeContent`'s call site
+ * for the placement/known-limitation notes.
+ */
+function PremiereSoonBlock({ item }: { item: NextReleaseItem }) {
+  return (
+    <div>
+      <p className="mb-2 font-display text-xl font-bold text-foreground">Nouvelle saison</p>
+      <PremiereSoonCard item={item} />
     </div>
   );
 }
