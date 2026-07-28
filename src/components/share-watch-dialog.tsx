@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Download, Instagram, Link2, Loader2, Share2 } from "lucide-react";
+import { Check, Download, Instagram, Link2, Loader2, Share2, Twitter } from "lucide-react";
+
 import { toast } from "sonner";
 
 import {
