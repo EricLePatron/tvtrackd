@@ -15,11 +15,14 @@ import {
   buildLastWatchedAtByShow,
   countUpcomingEntries,
   deriveHomeView,
+  getTodayInTimeZone,
   groupUpcomingByDay,
+  HOME_TIMEZONE,
   resolveHomeState,
   formatReadyLabel,
   seasonCountKey,
   selectNextReleases,
+  selectTodayRelease,
   type ActiveStatus,
   type HomeData,
   type HomeRawInputs,
@@ -105,7 +108,7 @@ function HomeScreen() {
     queryKey: ["home-schedule", user?.id],
     enabled: !!user,
     queryFn: async (): Promise<HomeData> => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getTodayInTimeZone(new Date(), HOME_TIMEZONE);
 
       const { data: us } = await supabase
         .from("user_shows")
@@ -132,6 +135,7 @@ function HomeScreen() {
           dayGroups: [],
           upcomingCount: 0,
           nextReleases: [],
+          todayRelease: null,
           raw: {
             episodes: [],
             showStatusByShowId: new Map(),
@@ -294,6 +298,20 @@ function HomeScreen() {
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
+
+      // Single "Sort aujourd'hui" spotlight pick — see `selectTodayRelease`'s
+      // doc comment (schedule.ts). Excludes the hero's own show, same
+      // reasoning as `nextReleases` below: the hero already dominates that
+      // show's slot as "à voir maintenant".
+      const todayRelease = selectTodayRelease(
+        episodes,
+        watchedSet,
+        showStatusByShowId,
+        lastWatchedAtByShowId,
+        today,
+        { excludeShowIds: hero ? new Set([hero.show.id]) : undefined },
+      );
+
       // Un seul item "Bientôt" (grand format), quel que soit l'état (design
       // review — plus de liste compacte de secours en dessous) : le reste
       // des sorties à venir reste couvert par le rail "Programme à venir"
@@ -301,12 +319,22 @@ function HomeScreen() {
       // Excludes the hero's own show — it already dominates that show's
       // slot as "à voir maintenant"; repeating it here as "Nj" would read as
       // redundant rather than as a genuinely different upcoming release.
-      // `hero` is always null in `upcoming_only` (readyCount 0), so this
-      // naturally becomes `undefined` there — no special-casing needed. See
-      // `selectNextReleases`'s doc comment.
+      // Also excludes `todayRelease`'s own show — mutual exclusion between
+      // "Sort aujourd'hui" and "Bientôt": that show's next release is either
+      // today's own episode (already spotlighted) or, if it has a LATER
+      // future episode too, still the same show/story already highlighted
+      // above — never repeated here as a second, separate "Bientôt" card.
+      // `hero` is always null in `upcoming_only` (readyCount 0), and
+      // `todayRelease` is always null there too (an episode airing today is
+      // always `readyCount`-eligible, see `selectTodayRelease`'s doc
+      // comment) — both naturally become `undefined`/empty there, no
+      // special-casing needed. See `selectNextReleases`'s doc comment.
+      const nextReleasesExcludeShowIds = new Set<number>();
+      if (hero) nextReleasesExcludeShowIds.add(hero.show.id);
+      if (todayRelease) nextReleasesExcludeShowIds.add(todayRelease.show.id);
       const nextReleases = selectNextReleases(dayGroups, today, {
         limit: 1,
-        excludeShowIds: hero ? new Set([hero.show.id]) : undefined,
+        excludeShowIds: nextReleasesExcludeShowIds.size ? nextReleasesExcludeShowIds : undefined,
       });
 
       return {
@@ -321,6 +349,7 @@ function HomeScreen() {
         dayGroups,
         upcomingCount,
         nextReleases,
+        todayRelease,
         raw,
       };
     },
@@ -799,15 +828,30 @@ function HomeContent({ data }: { data: HomeData }) {
           </div>
         )}
 
+        {/* Bloc "Sort aujourd'hui" — spotlight (voir `selectTodayRelease`,
+            schedule.ts). Pas de garde sur `state` : structurellement non-null
+            uniquement en `normal`/`ready_only` (un épisode du jour est
+            toujours `readyCount`-éligible, jamais possible en `upcoming_only`/
+            `all_caught_up`/`no_shows`), donc `data.todayRelease` seul suffit
+            à gater ce bloc. Placé juste après "Reprendre" et avant "Bientôt"
+            (ordre validé : Hero → Reprendre → Sort aujourd'hui → Bientôt →
+            Programme à venir → À commencer). */}
+        {data.todayRelease && (
+          <div className="mt-5">
+            <TodayReleaseBlock item={data.todayRelease} />
+          </div>
+        )}
+
         {/* Bloc "Bientôt" — UNIQUEMENT en état `normal` (backlog ET sortie
             future connues, cf. resolveHomeState) : `upcoming_only` rend son
             propre bloc "Bientôt" plus haut dans ce fichier (même gabarit
             partagé) et `ready_only` n'a par construction aucune entrée à
             afficher ici (upcomingCount === 0 => dayGroups vide =>
-            nextReleases vide). Placé juste après "Reprendre" (ordre validé
-            en état `normal` : Hero → Reprendre → Bientôt → Programme à
-            venir → À commencer, cf. plus bas — "À commencer" n'est plus
-            dans cette Zone A, voir la note sur son nouvel emplacement). */}
+            nextReleases vide). Placé juste après "Reprendre"/"Sort
+            aujourd'hui" (ordre validé en état `normal` : Hero → Reprendre →
+            Sort aujourd'hui → Bientôt → Programme à venir → À commencer,
+            cf. plus bas — "À commencer" n'est plus dans cette Zone A, voir
+            la note sur son nouvel emplacement). */}
         {state === "normal" && data.nextReleases.length > 0 && (
           <div className="mt-5">
             <NextReleasesBlock items={data.nextReleases} />
@@ -868,6 +912,22 @@ function NextReleasesBlock({ items }: { items: NextReleaseItem[] }) {
     <div>
       <p className="mb-2 font-display text-xl font-bold text-foreground">Bientôt</p>
       <NextReleaseHeroCard item={item} />
+    </div>
+  );
+}
+
+/**
+ * "Sort aujourd'hui" block — single spotlight card (`NextReleaseHeroCard`,
+ * `variant="today"`) under its own "Sort aujourd'hui" header (same style as
+ * "Reprendre"/"Bientôt"). See `selectTodayRelease` (schedule.ts) for the
+ * selection/ranking rule and `HomeContent`'s call site for why this needs no
+ * additional `state` guard beyond `data.todayRelease` itself.
+ */
+function TodayReleaseBlock({ item }: { item: NextReleaseItem }) {
+  return (
+    <div>
+      <p className="mb-2 font-display text-xl font-bold text-foreground">Sort aujourd'hui</p>
+      <NextReleaseHeroCard item={item} variant="today" />
     </div>
   );
 }

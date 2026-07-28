@@ -5,6 +5,8 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   addDaysToDateString,
   buildTimelineDayGroups,
+  getTodayInTimeZone,
+  HOME_TIMEZONE,
   type ScheduleEpisode,
   type TimelineDayGroup,
 } from "@/lib/schedule";
@@ -90,7 +92,7 @@ export type CalendarTimeline = {
 export function useCalendarTimeline(): CalendarTimeline {
   const { user } = useAuth();
   // Computed once per mount so the window doesn't drift across a long session.
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => getTodayInTimeZone(new Date(), HOME_TIMEZONE), []);
 
   const followed = useQuery({
     queryKey: ["calendar-timeline-followed", user?.id],

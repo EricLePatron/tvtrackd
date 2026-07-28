@@ -18,6 +18,8 @@ import {
 import {
   buildLastWatchedAtByShow,
   buildLibraryProgress,
+  getTodayInTimeZone,
+  HOME_TIMEZONE,
   splitEnCoursByFreshness,
   type ScheduleEpisode,
 } from "@/lib/schedule";
@@ -96,7 +98,7 @@ function LibraryScreen() {
   const navigate = useNavigate({ from: Route.fullPath });
   const [active, setActive] = useState<StatusKey>(search.status ?? "en_cours");
   const [sort, setSort] = useState<SortKey>(search.sort ?? DEFAULT_SORT);
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => getTodayInTimeZone(new Date(), HOME_TIMEZONE), []);
 
   // Bidirectional sync: the URL can drive the active tab/sort (e.g. Home's
   // "Voir tout · à reprendre" link landing here with `?status=en_cours`), and

@@ -69,6 +69,11 @@ const ZONE_B = {
       daysUntil: 1000,
     },
   ],
+  // `todayRelease` (the "Sort aujourd'hui" spotlight, see `selectTodayRelease`
+  // in schedule.ts) is likewise never touched by `recomputeFromBatch` — same
+  // reasoning as `nextReleases`/`dayGroups` above — so it's grouped here even
+  // though it isn't itself derived from `dayGroups`.
+  todayRelease: null,
 };
 
 function seedHomeData(qc: QueryClient, userId: string, data: HomeData) {
