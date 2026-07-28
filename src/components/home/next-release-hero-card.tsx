@@ -35,9 +35,29 @@ function pad(n: number) {
  *
  * S/E mis en avant (phosphore `text-foreground`, jamais ambre — même
  * traitement que le hero, cf. index.tsx `HeroTicket`), le titre de la série
- * au-dessus reste la ligne dominante (`font-display`).
+ * au-dessus reste la ligne dominante (`font-display`). Sous le S/E, le titre
+ * d'épisode reprend EXACTEMENT le pattern de `HeroTicket` (index.tsx) : même
+ * ligne `items-baseline`, S/E `shrink-0`, titre `min-w-0 flex-1 truncate
+ * text-sm text-muted-foreground` — jamais l'inverse (le S/E ne cède jamais de
+ * place à un titre d'épisode long).
+ *
+ * `variant` ("soon" par défaut) sélectionne le gabarit "Bientôt" existant
+ * (pill cyan contour, `formatCountdownLabel`, filet neutre `border-border`).
+ * `variant="today"` bascule sur le traitement "événement" de "Sort
+ * aujourd'hui" (revue design) : filet plus épais et teinté ambre
+ * (`border-[1.5px] border-primary/45`), badge PLEIN ambre "Aujourd'hui" (sans
+ * dot, sans wording countdown) à la même place que le pill cyan. Le corps de
+ * la carte (backdrop, titre, S/E + titre d'épisode) est strictement partagé
+ * entre les deux variantes — seuls le filet et le badge de fin de ligne
+ * changent.
  */
-export function NextReleaseHeroCard({ item }: { item: NextReleaseItem }) {
+export function NextReleaseHeroCard({
+  item,
+  variant = "soon",
+}: {
+  item: NextReleaseItem;
+  variant?: "soon" | "today";
+}) {
   const { show, episode, daysUntil } = item;
   const backdropUrl = episode.still_path ?? show.backdrop_path ?? show.poster_path;
 
@@ -45,7 +65,9 @@ export function NextReleaseHeroCard({ item }: { item: NextReleaseItem }) {
     <Link
       to="/show/$mediaType/$tmdbId"
       params={{ mediaType: show.media_type, tmdbId: String(show.tmdb_id) }}
-      className="relative block aspect-[16/7] overflow-hidden rounded-2xl border border-border bg-card"
+      className={`relative block aspect-[16/7] overflow-hidden rounded-2xl bg-card ${
+        variant === "today" ? "border-[1.5px] border-primary/45" : "border border-border"
+      }`}
     >
       {backdropUrl && (
         <div aria-hidden className="absolute inset-0">
@@ -64,18 +86,38 @@ export function NextReleaseHeroCard({ item }: { item: NextReleaseItem }) {
       )}
 
       <div className="relative flex h-full flex-col justify-end p-4">
+        {/* (Design review, minor/cheap) `variant="today"`'s filled
+            "Aujourd'hui" badge is visually wider than `variant="soon"`'s
+            compact "N j" pill (longer word, `tracking-[0.18em]`) — sharing
+            this same `justify-between` row, `min-w-0 flex-1` on the title
+            column means the SERIES title gets a bit more aggressive
+            `line-clamp-1` truncation on narrow mobile widths under
+            `variant="today"` than under `variant="soon"`. Assumed trade-off
+            (badge width wins over title length here), not a bug — flagging
+            for whoever next touches this row's sizing. */}
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1">
             <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">
               {show.title}
             </h3>
-            <p className="font-counter text-sm font-semibold tracking-wide text-foreground">
-              S{pad(episode.season_number)} · E{pad(episode.episode_number)}
-            </p>
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="shrink-0 font-counter text-base font-semibold tracking-wide text-foreground">
+                S{pad(episode.season_number)} · E{pad(episode.episode_number)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                {episode.title ?? "—"}
+              </span>
+            </div>
           </div>
-          <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent">
-            {formatCountdownLabel(daysUntil)}
-          </span>
+          {variant === "today" ? (
+            <span className="shrink-0 rounded-md bg-primary px-3 py-1 font-counter text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground">
+              Aujourd'hui
+            </span>
+          ) : (
+            <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent">
+              {formatCountdownLabel(daysUntil)}
+            </span>
+          )}
         </div>
       </div>
     </Link>

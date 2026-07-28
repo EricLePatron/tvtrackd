@@ -69,6 +69,11 @@ const ZONE_B = {
       daysUntil: 1000,
     },
   ],
+  // `todayRelease` (the "Sort aujourd'hui" spotlight, see `selectTodayRelease`
+  // in schedule.ts) is likewise never touched by `recomputeFromBatch` — same
+  // reasoning as `nextReleases`/`dayGroups` above — so it's grouped here even
+  // though it isn't itself derived from `dayGroups`.
+  todayRelease: null,
 };
 
 function seedHomeData(qc: QueryClient, userId: string, data: HomeData) {
@@ -606,5 +611,78 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(() => markWatchedOnSettled(qc, userB, 201, "error")).not.toThrow();
     const curBAfter = qc.getQueryData<HomeData>(["home-schedule", userB]);
     expect(curBAfter).toBe(initialB);
+  });
+
+  // QA follow-up on Lot 1 (mutual exclusion "Sort aujourd'hui" vs.
+  // Reprendre/À commencer, index.tsx's queryFn): `recomputeFromBatch`
+  // rebuilds `reprendre`/`nouveau` from scratch via `deriveHomeView`, which
+  // has no notion of `todayRelease` at all (`selectHero` doesn't take it as
+  // an input) — without re-filtering, a show spotlighted in `todayRelease`
+  // could reappear as a fully-interactive duplicate row in the optimistic
+  // patch, even though the server-side queryFn already excludes it.
+  it("[todayRelease exclusion] a show spotlighted in `todayRelease` never reappears in the optimistically-recomputed `reprendre`/`nouveau`, even when an UNRELATED tap forces a full from-scratch recompute", () => {
+    const qc = new QueryClient();
+    const heroShow = show(1, "Hero Show"); // two ready episodes — backlog remains after one tap
+    const todayShow = show(2, "Today Show"); // en_cours, ready episode airing exactly TODAY
+
+    const episodes = [
+      ep(heroShow, 101, 1, 1, "2025-12-01"),
+      ep(heroShow, 102, 1, 2, "2025-12-08"),
+      ep(todayShow, 201, 1, 1, TODAY),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // most recently watched — hero, and stays hero after the tap (bumped to "now")
+      [2, "2026-06-20T00:00:00.000Z"], // 18j ago — active (< LIST_STALE_DAYS), lands in `reprendre`, not `reprendreDormant`
+    ]);
+
+    const raw = {
+      episodes,
+      showStatusByShowId,
+      lastWatchedAtByShowId,
+      watchedEpisodeIds: new Set<number>(),
+      heroSeasonEpisodeCount: 2,
+      reprendreSeasonEpisodeCounts: new Map<string, number>(),
+    };
+
+    const derived = deriveHomeView(raw, TODAY);
+    // Proves the scenario is real: without any todayRelease filter,
+    // `todayShow` legitimately lands in `reprendre` (fresh en_cours show,
+    // just not the hero).
+    expect(derived.hero?.show.id).toBe(1);
+    expect(derived.reprendre.some((i) => i.show.id === 2)).toBe(true);
+
+    const todayRelease = { show: todayShow, episode: episodes[2], date: TODAY, daysUntil: 0 };
+    const initial: HomeData = {
+      today: TODAY,
+      followedActiveCount: 2,
+      ...derived,
+      // Seeded exactly like a real server response (index.tsx's queryFn,
+      // post Lot-1 QA fix): `reprendre`/`nouveau` already have `todayShow`
+      // filtered out before this HomeData ever reaches the cache.
+      reprendre: derived.reprendre.filter((i) => i.show.id !== todayShow.id),
+      nouveau: derived.nouveau.filter((i) => i.show.id !== todayShow.id),
+      ...ZONE_B,
+      todayRelease,
+      raw,
+    };
+    expect(initial.reprendre.some((i) => i.show.id === 2)).toBe(false); // sanity: seeded state starts clean
+    seedHomeData(qc, USER_ID, initial);
+
+    // --- Tap the HERO's own episode (unrelated to `todayShow`) — forces
+    // `recomputeFromBatch` to rebuild `reprendre`/`nouveau` from scratch. ---
+    markWatchedOnMutate(qc, USER_ID, { episodeId: 101, showId: 1 });
+
+    const cur = qc.getQueryData<HomeData>(homeKey)!;
+    expect(cur.hero?.show.id).toBe(1); // unaffected — heroShow still has backlog (102) and stays most-recently-watched
+    // *** The critical assertion: `todayShow` must NOT reappear as a
+    // duplicate, fully-interactive Reprendre/À commencer row. ***
+    expect(cur.reprendre.some((i) => i.show.id === 2)).toBe(false);
+    expect(cur.nouveau.some((i) => i.show.id === 2)).toBe(false);
+    // `todayRelease` itself is carried over unchanged — never recomputed here.
+    expect(cur.todayRelease).toBe(todayRelease);
   });
 });

@@ -21,6 +21,7 @@ import { useInViewOnce } from "@/hooks/use-in-view-once";
 import { useRollingNumber } from "@/hooks/use-rolling-number";
 import { followShow, unfollowShow } from "@/lib/follow-show";
 import { formatApproxHours } from "@/lib/watch-time";
+import { getTodayInTimeZone, HOME_TIMEZONE } from "@/lib/schedule";
 
 import { APP_NAME } from "@/lib/app-config";
 import { VhsCounter } from "@/components/vhs-counter";
@@ -581,7 +582,7 @@ function ShowDetail() {
     : undefined;
   const isLiveStatus = !!show.status && LIVE_TMDB_STATUSES.has(show.status);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayInTimeZone(new Date(), HOME_TIMEZONE);
   const upcomingEpisodes =
     mediaType === "tv"
       ? episodes

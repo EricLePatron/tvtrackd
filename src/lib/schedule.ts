@@ -92,6 +92,42 @@ function toUtcDate(dateStr: string): Date {
   return new Date(toUtcMs(dateStr));
 }
 
+/**
+ * IANA zone the app treats as "local" for date-only concepts like `today` —
+ * the product is French-market-scoped (see CLAUDE.md), so a fixed zone (not
+ * the visitor's own device/browser zone, and not the server's host zone
+ * either) keeps "aujourd'hui" consistent for every user and on both the
+ * client and any server-side evaluation, regardless of where either happens
+ * to be physically/deployment-wise.
+ */
+export const HOME_TIMEZONE = "Europe/Paris";
+
+/**
+ * Civil date (`YYYY-MM-DD`) of `date` as observed in `timeZone` — the
+ * fuseau-aware replacement for `new Date().toISOString().slice(0, 10)`
+ * (always UTC), which made "today" wrong for 1-2 hours after local midnight
+ * for any zone ahead of UTC — e.g. Europe/Paris, in BOTH its CET (UTC+1,
+ * winter) and CEST (UTC+2, summer) offsets. Built via
+ * `Intl.DateTimeFormat(...).formatToParts` and assembled manually rather than
+ * relying on a specific locale's default string shape (e.g. hoping "en-CA"
+ * always formats as `YYYY-MM-DD`) — explicit part assembly is robust to any
+ * ICU/locale-data differences between environments (browser vs. Node/SSR).
+ * Callers still hand the result to the existing `toUtcMs`/`daysBetween`
+ * family below as a plain `YYYY-MM-DD` string — those stay UTC-parsers of a
+ * date string, unchanged; only the ANCHOR `today` value itself becomes
+ * Europe/Paris-aware.
+ */
+export function getTodayInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 /** Capitalizes the first letter — `Intl.DateTimeFormat("fr-FR", ...)` short weekday/month labels come back lowercase. */
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -741,6 +777,153 @@ export function selectNextReleases(
 }
 
 /**
+ * Coarse backlog-size tier for the "Sort aujourd'hui" ranking — 0 / 1-2 / 3+
+ * — rather than the raw count, so a show with 1 vs. 2 stale unwatched
+ * episodes doesn't out-rank on that alone; the NEXT tie-break
+ * (`daysSinceLastWatch`, see `compareEventCandidates`) decides within the
+ * same tier instead of the raw count doing it too eagerly.
+ */
+function backlogBucket(count: number): number {
+  if (count === 0) return 0;
+  if (count <= 2) return 1;
+  return 2;
+}
+
+/**
+ * Number of already-aired, unwatched episodes of `showId` strictly BEFORE
+ * `today` (the `<` comparison structurally excludes `today`'s own episode) —
+ * the "priorBacklogCount" ranking signal for `selectTodayRelease`: a show the
+ * user is caught up on (0) ranks ahead of one with a growing pile of
+ * unwatched older episodes, even though both have a ready episode today.
+ */
+function countPriorBacklog(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  showId: number,
+  today: string,
+): number {
+  let count = 0;
+  for (const ep of episodes) {
+    if (ep.show.id !== showId) continue;
+    if (!ep.air_date || ep.air_date >= today) continue;
+    if (watchedEpisodeIds.has(ep.id)) continue;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Shared ranking comparator behind "Sort aujourd'hui" (`selectTodayRelease`)
+ * — and, later, "Première bientôt", not implemented yet: (1)
+ * `priorBacklogCount` bucket ascending (see `backlogBucket`) — (2)
+ * `daysSinceLastWatch` ascending, with `null` (never watched) sorted LAST — a
+ * real recency signal always outranks "no signal at all" — (3) the caller's
+ * own `statusRank` (lower ranks first — e.g. `en_cours` before `a_voir` for
+ * "Sort aujourd'hui") — (4) show title, for full determinism. Generic over
+ * the candidate's status type so a future caller with a wider status set
+ * (e.g. `termine` alongside `en_cours`/`a_voir`) can reuse this unchanged.
+ */
+function compareEventCandidates<S extends string>(
+  lastWatchedAtByShowId: ReadonlyMap<number, string>,
+  today: string,
+  statusRank: (status: S) => number,
+) {
+  return (
+    a: { show: ShowLite; status: S; priorBacklogCount: number },
+    b: { show: ShowLite; status: S; priorBacklogCount: number },
+  ): number => {
+    const bucketDiff = backlogBucket(a.priorBacklogCount) - backlogBucket(b.priorBacklogCount);
+    if (bucketDiff !== 0) return bucketDiff;
+
+    const aDays = daysSinceLastWatch(a.show.id, today, lastWatchedAtByShowId);
+    const bDays = daysSinceLastWatch(b.show.id, today, lastWatchedAtByShowId);
+    if (aDays !== bDays) {
+      if (aDays === null) return 1;
+      if (bDays === null) return -1;
+      return aDays - bDays;
+    }
+
+    const rankDiff = statusRank(a.status) - statusRank(b.status);
+    if (rankDiff !== 0) return rankDiff;
+
+    return a.show.title.localeCompare(b.show.title);
+  };
+}
+
+/**
+ * Single "spotlight" pick among TODAY's ready-and-unwatched episodes across
+ * followed (`a_voir`/`en_cours`) shows — feeds the Home's "Sort aujourd'hui"
+ * card (`TodayReleaseBlock`, index.tsx). NOT a new category layered on top of
+ * `buildReadyItems`: an episode airing today is already `air_date <= today`,
+ * so it's already counted in `readyCount` and already surfaces via the
+ * hero/Reprendre/À commencer lists — this is a highlighted DUPLICATE of the
+ * single best "airs today" candidate among those, ranked by
+ * `compareEventCandidates` (`en_cours` before `a_voir` as the status
+ * tie-break). A direct consequence: this can only ever return non-null when
+ * `readyCount > 0` (there is no `air_date === today` case where
+ * `buildReadyItems` wouldn't already have picked it up), i.e. only in the
+ * Home's `normal`/`ready_only` states — never `no_shows`/`all_caught_up`/
+ * `upcoming_only`.
+ *
+ * `excludeShowIds` mirrors `selectNextReleases`'s own option — the Home
+ * queryFn passes the hero's own show, so "Sort aujourd'hui" never repeats
+ * what's already dominating Zone A as the hero.
+ *
+ * Only ever one candidate per show, even if (rare) a show drops 2+ episodes
+ * the same day — episodes are sorted by `byEpisodeOrder` BEFORE dedup, so the
+ * pick is always that show's earliest episode of the day, deterministically
+ * (Postgres/PostgREST give no ordering guarantee among rows sharing the same
+ * `air_date`).
+ */
+export function selectTodayRelease(
+  episodes: ScheduleEpisode[],
+  watchedEpisodeIds: ReadonlySet<number>,
+  showStatusByShowId: ReadonlyMap<number, ActiveStatus>,
+  lastWatchedAtByShowId: ReadonlyMap<number, string>,
+  today: string,
+  options: { excludeShowIds?: ReadonlySet<number> } = {},
+): NextReleaseItem | null {
+  const { excludeShowIds } = options;
+
+  const todaysEpisodes = episodes
+    .filter((ep) => ep.air_date === today && !watchedEpisodeIds.has(ep.id))
+    .sort(byEpisodeOrder);
+
+  const seenShowIds = new Set<number>();
+  const candidates: {
+    show: ShowLite;
+    episode: ScheduleEpisode;
+    status: ActiveStatus;
+    priorBacklogCount: number;
+  }[] = [];
+  for (const episode of todaysEpisodes) {
+    const showId = episode.show.id;
+    if (excludeShowIds?.has(showId)) continue;
+    if (seenShowIds.has(showId)) continue;
+    const status = showStatusByShowId.get(showId);
+    if (!status) continue; // not a followed (a_voir/en_cours) show
+    seenShowIds.add(showId);
+    candidates.push({
+      show: episode.show,
+      episode,
+      status,
+      priorBacklogCount: countPriorBacklog(episodes, watchedEpisodeIds, showId, today),
+    });
+  }
+
+  if (!candidates.length) return null;
+
+  candidates.sort(
+    compareEventCandidates<ActiveStatus>(lastWatchedAtByShowId, today, (status) =>
+      status === "en_cours" ? 0 : 1,
+    ),
+  );
+
+  const winner = candidates[0];
+  return { show: winner.episode.show, episode: winner.episode, date: today, daysUntil: 0 };
+}
+
+/**
  * "aujourd'hui" / "demain" / "Nj" — vocabulaire de référence du countdown
  * utilisé par le pill de la carte "prochaine sortie" de la Home
  * (`NextReleaseHeroCard`, seul gabarit du bloc "Bientôt" depuis le passage à
@@ -827,6 +1010,14 @@ export type HomeData = {
    * (`HomeScreen`'s queryFn) picks `limit` per state.
    */
   nextReleases: NextReleaseItem[];
+  /**
+   * Single spotlight pick among today's ready, unwatched episodes — see
+   * `selectTodayRelease`'s doc comment. `null` whenever there's nothing
+   * airing exactly today among followed shows (the overwhelmingly common
+   * case) — the caller (`HomeContent`) treats `null` as "render no
+   * 'Sort aujourd'hui' block", never a placeholder.
+   */
+  todayRelease: NextReleaseItem | null;
   raw: HomeRawInputs;
 };
 

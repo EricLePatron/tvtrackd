@@ -9,12 +9,14 @@ import {
   formatCountdownLabel,
   formatReadyLabel,
   getDayLabelParts,
+  getTodayInTimeZone,
   groupUpcomingByDay,
   HERO_STALE_DAYS,
   isSeasonTallyReliable,
   seasonCountKey,
   selectHero,
   selectNextReleases,
+  selectTodayRelease,
   splitEnCoursByFreshness,
   type ActiveStatus,
   type HomeRawInputs,
@@ -1320,5 +1322,205 @@ describe("selectNextReleases", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].episode.id).toBe(201);
+  });
+});
+
+describe("getTodayInTimeZone", () => {
+  it("returns the naive UTC calendar date for an instant well within the Paris day (winter, CET/+1)", () => {
+    expect(getTodayInTimeZone(new Date("2026-01-15T10:00:00.000Z"), "Europe/Paris")).toBe(
+      "2026-01-15",
+    );
+  });
+
+  it("rolls over to the next day ~1h before naive UTC would (winter, CET/+1 — the exact bug this fixes)", () => {
+    // 23:30 UTC on Jan 15th is already 00:30 CET on Jan 16th in Paris — a
+    // plain `toISOString().slice(0, 10)` would wrongly still say "15".
+    expect(getTodayInTimeZone(new Date("2026-01-15T23:30:00.000Z"), "Europe/Paris")).toBe(
+      "2026-01-16",
+    );
+  });
+
+  it("returns the naive UTC calendar date for an instant well within the Paris day (summer, CEST/+2)", () => {
+    expect(getTodayInTimeZone(new Date("2026-07-15T10:00:00.000Z"), "Europe/Paris")).toBe(
+      "2026-07-15",
+    );
+  });
+
+  it("rolls over to the next day ~2h before naive UTC would (summer, CEST/+2 — DST offset, not just a fixed +1)", () => {
+    // 22:30 UTC on Jul 15th is already 00:30 CEST on Jul 16th in Paris.
+    expect(getTodayInTimeZone(new Date("2026-07-15T22:30:00.000Z"), "Europe/Paris")).toBe(
+      "2026-07-16",
+    );
+  });
+});
+
+describe("selectTodayRelease", () => {
+  it("returns null when nothing airs exactly today among followed shows", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-07-07"), ep(s, 102, 1, 2, "2026-07-09")];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    expect(result).toBeNull();
+  });
+
+  it("ignores an already-watched episode airing today", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, TODAY)];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const result = selectTodayRelease(episodes, new Set([101]), statusByShowId, new Map(), TODAY);
+
+    expect(result).toBeNull();
+  });
+
+  it("ignores a show with no known status (not followed a_voir/en_cours)", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, TODAY)];
+
+    const result = selectTodayRelease(episodes, new Set(), new Map(), new Map(), TODAY);
+
+    expect(result).toBeNull();
+  });
+
+  it("excludes shows via `excludeShowIds` — e.g. the Home hero's own show", () => {
+    const heroShow = show(1, "Hero Show");
+    const otherShow = show(2, "Other Show");
+    const episodes = [ep(heroShow, 101, 1, 1, TODAY), ep(otherShow, 201, 1, 1, TODAY)];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY, {
+      excludeShowIds: new Set([1]),
+    });
+
+    expect(result?.show.id).toBe(2);
+  });
+
+  it("dedupes a same-day double episode drop, deterministically picking the earliest episode number", () => {
+    const s = show(1);
+    const episodes = [ep(s, 102, 1, 2, TODAY), ep(s, 101, 1, 1, TODAY)];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    expect(result?.episode.id).toBe(101);
+  });
+
+  it("ranks a caught-up en_cours show ahead of an a_voir show with a heavier backlog — X-Men (en_cours, backlog 0) before House of the Dragon (a_voir, S3 never started, backlog 3+)", () => {
+    const xMen = show(1, "X-Men");
+    const houseOfTheDragon = show(2, "House of the Dragon");
+    const episodes = [
+      // X-Men: only today's episode — no prior backlog.
+      ep(xMen, 101, 2, 6, TODAY),
+      // House of the Dragon: a 3-episode backlog before today, plus today's own.
+      ep(houseOfTheDragon, 201, 3, 1, "2026-07-01"),
+      ep(houseOfTheDragon, 202, 3, 2, "2026-07-03"),
+      ep(houseOfTheDragon, 203, 3, 3, "2026-07-05"),
+      ep(houseOfTheDragon, 204, 3, 4, TODAY),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "a_voir"],
+    ]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    expect(result?.show.id).toBe(1);
+    expect(result?.episode.id).toBe(101);
+  });
+
+  it("within the same backlog bucket, ranks the more recently watched show first", () => {
+    const staleShow = show(1, "Stale");
+    const freshShow = show(2, "Fresh");
+    const episodes = [ep(staleShow, 101, 1, 1, TODAY), ep(freshShow, 201, 1, 1, TODAY)];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-06-01T00:00:00.000Z"],
+      [2, "2026-07-07T00:00:00.000Z"], // watched yesterday — more recent
+    ]);
+
+    const result = selectTodayRelease(
+      episodes,
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(2);
+  });
+
+  it("within the same bucket and no recency signal for either, ranks en_cours ahead of a_voir, then by title", () => {
+    const aVoirShow = show(2, "A — À voir show");
+    const enCoursShow = show(1, "B — En cours show");
+    const episodes = [ep(aVoirShow, 201, 1, 1, TODAY), ep(enCoursShow, 101, 1, 1, TODAY)];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "a_voir"],
+    ]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    // en_cours wins despite a title that would otherwise sort it second.
+    expect(result?.show.id).toBe(1);
+  });
+});
+
+describe("selectTodayRelease + selectHero — mutual exclusion with Reprendre/À commencer", () => {
+  it("a show spotlighted in `todayRelease` also legitimately appears in `selectHero`'s `reprendre` — filtering `reprendre` by `todayRelease.show.id` (as index.tsx's queryFn does, mirroring the hero's own exclusion) removes the duplicate", () => {
+    const heroShow = show(1, "Hero Show");
+    const todayShow = show(2, "Today Show");
+    const episodes = [
+      // Hero: ready episode not today, most recently watched — wins the hero slot.
+      ep(heroShow, 101, 1, 1, "2026-07-01"),
+      // Today Show: en_cours, only a ready episode airing exactly TODAY — its
+      // last watch is older than the hero's (so it loses the hero race) but
+      // still recent enough (< LIST_STALE_DAYS) to land in the ACTIVE
+      // `reprendre` list rather than `reprendreDormant`.
+      ep(todayShow, 201, 1, 1, TODAY),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-07T00:00:00.000Z"], // hero: watched yesterday
+      [2, "2026-06-20T00:00:00.000Z"], // today show: 18 days ago — active, not dormant
+    ]);
+    const watchedEpisodeIds = new Set<number>();
+
+    const ready = buildReadyItems(episodes, watchedEpisodeIds, statusByShowId, TODAY);
+    const { hero, reprendre } = selectHero(ready, TODAY, lastWatchedAtByShowId);
+    expect(hero?.show.id).toBe(1);
+
+    // Before the fix: `todayShow` is a genuine en_cours show with a ready
+    // backlog, just not the hero — it legitimately appears in `reprendre`.
+    expect(reprendre.some((item) => item.show.id === 2)).toBe(true);
+
+    const todayRelease = selectTodayRelease(
+      episodes,
+      watchedEpisodeIds,
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+      { excludeShowIds: hero ? new Set([hero.show.id]) : undefined },
+    );
+    expect(todayRelease?.show.id).toBe(2);
+
+    // The fix: filter `reprendre` (and, by the same logic, `nouveau`) by
+    // `todayRelease`'s own show id BEFORE returning `HomeData` — same
+    // pattern already applied to the hero's own show via `selectHero`'s
+    // built-in exclusion.
+    const reprendreAfterToday = todayRelease
+      ? reprendre.filter((item) => item.show.id !== todayRelease.show.id)
+      : reprendre;
+    expect(reprendreAfterToday.some((item) => item.show.id === 2)).toBe(false);
   });
 });
