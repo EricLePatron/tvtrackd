@@ -1,15 +1,14 @@
 /**
  * Génération client-side de la "carte de partage" pour un épisode vu ou une
- * saison vue, en deux formats : `post` (1080×1350, feed Instagram) et
- * `story` (1080×1920, story Instagram / Reels).
+ * saison vue, au format story (1080×1920, Instagram / X).
  *
  * Rendu 100 % canvas — pas de dépendance html2canvas : la carte est simple
- * (fond `--bg-void`, affiche TMDb, compteur Plex Mono) et le canvas évite
- * tout risque de rendu approximatif des polices/filtres CSS. L'affiche est
- * récupérée via `fetch` + blob plutôt qu'en posant `crossOrigin` sur une
- * balise Image : ça évite l'échec silencieux quand le navigateur a déjà
- * l'image en cache sans en-tête CORS (c'est ce qui produisait une carte
- * vide). En cas d'échec on retombe sur une carte sans affiche.
+ * (fond `--bg-void`, visuel de l'épisode, compteur Plex Mono, bloc de marque)
+ * et le canvas évite tout risque de rendu approximatif des polices/filtres
+ * CSS. Le visuel est récupéré via `fetch` + blob plutôt qu'en posant
+ * `crossOrigin` sur une balise Image : ça évite l'échec silencieux quand le
+ * navigateur a déjà l'image en cache sans en-tête CORS. En cas d'échec on
+ * retombe sur une carte sans visuel.
  */
 
 const BG = "#0B0E14";
@@ -19,7 +18,7 @@ const CYAN = "#4DD9C4";
 const TEXT = "#F2EDE4";
 const MUTED = "#8B92A3";
 
-export type ShareFormat = "post" | "story";
+export type ShareFormat = "story";
 
 export type ShareCardInput = {
   /** Titre de la série / du film. */
@@ -28,11 +27,11 @@ export type ShareCardInput = {
   counter: string;
   /** Sous-titre : titre d'épisode, ou "12 épisodes". */
   subtitle?: string | null;
-  /** URL absolue de l'affiche (TMDb). */
+  /** URL absolue du visuel principal (still d'épisode ou affiche TMDb). */
   posterUrl?: string | null;
   /** Libellé d'état, ex. "ÉPISODE VU" / "SAISON TERMINÉE". */
   badge: string;
-  /** Format de sortie (défaut : post 4:5). */
+  /** Format de sortie (story uniquement). */
   format?: ShareFormat;
 };
 
@@ -125,6 +124,27 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
   return `${t.trimEnd()}…`;
 }
 
+function drawTracked(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  spacing: number,
+) {
+  let cx = x;
+  for (const ch of text) {
+    ctx.fillText(ch, cx, y);
+    cx += ctx.measureText(ch).width + spacing;
+  }
+  return cx - spacing - x;
+}
+
+function measureTracked(ctx: CanvasRenderingContext2D, text: string, spacing: number) {
+  let w = 0;
+  for (const ch of text) w += ctx.measureText(ch).width + spacing;
+  return Math.max(0, w - spacing);
+}
+
 export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
   // Les polices web doivent être prêtes avant le rendu canvas, sinon le
   // navigateur retombe silencieusement sur une police système.
@@ -136,13 +156,10 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
     }
   }
 
-  const format: ShareFormat = input.format ?? "post";
   const W = 1080;
-  const H = format === "story" ? 1920 : 1350;
-  // Marge basse réservée au bloc texte (badge + compteur + titre + signature)
-  const TEXT_BLOCK = 430;
+  const H = 1920;
   const PAD = 88;
-  const imageH = H - TEXT_BLOCK;
+  const maxW = W - PAD * 2;
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
@@ -153,22 +170,54 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
 
-  // Affiche : plein cadre en haut, fondue vers le fond
-  const poster = input.posterUrl ? await loadImage(input.posterUrl) : null;
+  const media = input.posterUrl ? await loadImage(input.posterUrl) : null;
+
+  // ── Toile de fond : le visuel flouté, très sombre, occupe tout l'écran ──
+  if (media) {
+    ctx.save();
+    ctx.filter = "blur(60px) saturate(140%)";
+    ctx.globalAlpha = 0.55;
+    drawCover(ctx, media, -80, -80, W + 160, H + 160);
+    ctx.restore();
+    ctx.fillStyle = "rgba(11,14,20,0.72)";
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ── En-tête de marque ──────────────────────────────────────────────────
+  ctx.textBaseline = "middle";
+  ctx.font = "700 34px Archivo, Inter, system-ui, sans-serif";
+  ctx.fillStyle = TEXT;
+  const brandW = measureTracked(ctx, "TVTRACKD", 3);
+  ctx.fillStyle = AMBER;
+  roundRect(ctx, PAD, 118, 12, 40, 4);
+  ctx.fill();
+  ctx.fillStyle = TEXT;
+  drawTracked(ctx, "TVTRACKD", PAD + 30, 140, 3);
+  ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
+  ctx.fillStyle = MUTED;
+  ctx.fillText("SUIVI DE SÉRIES", PAD + 30 + brandW + 26, 141);
+
+  // ── Visuel principal, contenu dans un cadre arrondi (jamais rogné à mort)
+  const frameX = PAD;
+  const frameW = maxW;
+  const frameY = 220;
+  const ratio = media ? media.width / media.height : 16 / 9;
+  const frameH = Math.min(Math.round(frameW / ratio), 1180);
+
+  ctx.save();
+  roundRect(ctx, frameX, frameY, frameW, frameH, 28);
+  ctx.clip();
   ctx.fillStyle = SURFACE;
-  ctx.fillRect(0, 0, W, imageH);
-  if (poster) drawCover(ctx, poster, 0, 0, W, imageH);
+  ctx.fillRect(frameX, frameY, frameW, frameH);
+  if (media) drawCover(ctx, media, frameX, frameY, frameW, frameH);
+  ctx.restore();
+  ctx.strokeStyle = "rgba(242,237,228,0.10)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, frameX, frameY, frameW, frameH, 28);
+  ctx.stroke();
 
-  const gradTop = Math.max(0, imageH - 420);
-  const grad = ctx.createLinearGradient(0, gradTop, 0, imageH);
-  grad.addColorStop(0, "rgba(11,14,20,0)");
-  grad.addColorStop(0.7, "rgba(11,14,20,0.88)");
-  grad.addColorStop(1, BG);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, gradTop, W, imageH - gradTop);
-
-  // ── Bloc texte, empilé sans chevauchement possible ────────────────────
-  let y = imageH + 26;
+  // ── Bloc texte, empilé sous le visuel, sans chevauchement possible ─────
+  let y = frameY + frameH + 52;
 
   // Badge état
   ctx.textBaseline = "middle";
@@ -181,27 +230,24 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
   ctx.fill();
   ctx.fillStyle = CYAN;
   ctx.fillText(badge, PAD + 22, y + badgeH / 2 + 1);
-  y += badgeH + 22;
 
-  // Compteur (module VHS)
+  // Compteur (module VHS), aligné sur la même ligne que le badge
   const counter = input.counter.toUpperCase();
-  ctx.font = "700 46px 'IBM Plex Mono', ui-monospace, monospace";
-  const counterH = 84;
-  const counterW = ctx.measureText(counter).width + 52;
+  ctx.font = "700 40px 'IBM Plex Mono', ui-monospace, monospace";
+  const counterW = ctx.measureText(counter).width + 44;
   ctx.fillStyle = SURFACE;
-  roundRect(ctx, PAD, y, counterW, counterH, 14);
+  roundRect(ctx, PAD + badgeW + 16, y, counterW, badgeH, 12);
   ctx.fill();
   ctx.fillStyle = AMBER;
-  ctx.fillText(counter, PAD + 26, y + counterH / 2 + 2);
-  y += counterH + 34;
+  ctx.fillText(counter, PAD + badgeW + 16 + 22, y + badgeH / 2 + 2);
+  y += badgeH + 34;
 
   // Titre
   ctx.textBaseline = "top";
-  const maxW = W - PAD * 2;
-  const titleSize = fitFont(ctx, input.title, maxW, 66, 34);
+  const titleSize = fitFont(ctx, input.title, maxW, 72, 36);
   ctx.fillStyle = TEXT;
   ctx.fillText(ellipsize(ctx, input.title, maxW), PAD, y);
-  y += titleSize + 16;
+  y += titleSize + 14;
 
   // Sous-titre
   if (input.subtitle) {
@@ -210,11 +256,23 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
     ctx.fillText(ellipsize(ctx, input.subtitle, maxW), PAD, y);
   }
 
-  // Signature produit, ancrée en bas
+  // ── Pied de page produit : la signature de communication ───────────────
+  const footY = H - 178;
+  ctx.fillStyle = "rgba(255,138,61,0.10)";
+  roundRect(ctx, PAD, footY, maxW, 118, 20);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,138,61,0.35)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, PAD, footY, maxW, 118, 20);
+  ctx.stroke();
+
   ctx.textBaseline = "alphabetic";
-  ctx.font = "600 26px 'IBM Plex Mono', ui-monospace, monospace";
+  ctx.font = "700 44px Archivo, Inter, system-ui, sans-serif";
+  ctx.fillStyle = AMBER;
+  drawTracked(ctx, "TVTRACKD.COM", PAD + 36, footY + 62, 2);
+  ctx.font = "400 26px Inter, system-ui, sans-serif";
   ctx.fillStyle = MUTED;
-  ctx.fillText("TVTRACKD.COM", PAD, H - 56);
+  ctx.fillText("Suivez vos séries, sans rien oublier.", PAD + 36, footY + 96);
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
