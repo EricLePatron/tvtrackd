@@ -95,38 +95,39 @@ export function ShareWatchDialog({
   const filename = `tvtrackd-${slug}-story.png`;
   const text = `${caption}\n${shareUrl}`;
 
-  const copyCaption = useCallback(async () => {
+  const copyText = useCallback(async (value: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       return true;
     } catch {
       return false;
     }
-  }, [text]);
+  }, []);
 
   const shareInstagram = async () => {
     const blob = blobRef.current;
     if (!blob) return;
     const file = new File([blob], filename, { type: "image/png" });
     if (navigator.canShare?.({ files: [file] })) {
-      // La légende n'est pas reprise par Instagram lors d'un partage de
-      // fichier : on la copie en amont pour un simple collage.
-      await copyCaption();
+      // Instagram ne rend pas l'image cliquable : le seul moyen de renvoyer
+      // vers la fiche est le sticker « Lien ». On copie donc l'URL de la
+      // série en amont pour un simple collage dans ce sticker.
+      await copyText(shareUrl);
       try {
-        await navigator.share({ files: [file] });
-        toast.success("Légende copiée — collez-la dans votre story");
+        await navigator.share({ files: [file], url: shareUrl });
+        toast.success("Lien de la série copié — collez-le dans le sticker « Lien »");
         return;
       } catch (err) {
         if ((err as Error)?.name === "AbortError") return;
       }
     }
     downloadBlob(blob, filename);
-    const ok = await copyCaption();
+    const ok = await copyText(shareUrl);
     toast.success(
       ok
-        ? "Image téléchargée et légende copiée — à publier en story"
+        ? "Image téléchargée et lien copié — ajoutez un sticker « Lien » à la story"
         : "Image téléchargée — à publier en story",
     );
   };
