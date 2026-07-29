@@ -145,7 +145,7 @@ export function ShareWatchDialog({
   };
 
   const copyLink = async () => {
-    if (await copyCaption()) toast.success("Lien et légende copiés");
+    if (await copyText(text)) toast.success("Lien et légende copiés");
     else toast.error("Copie impossible");
   };
 
