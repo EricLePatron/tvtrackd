@@ -93,6 +93,16 @@ export function ShareWatchDialog({
 
   const slug = card.counter.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const filename = `tvtrackd-${slug}-story.png`;
+
+  // Deep link par canal : même destination (la fiche de la série), mais
+  // taggée pour l'attribution. Le lien reste absolu sur le domaine public,
+  // donc cliquable depuis un sticker Instagram ou un tweet.
+  const linkFor = (source: string) => {
+    const sep = shareUrl.includes("?") ? "&" : "?";
+    return `${shareUrl}${sep}utm_source=${source}&utm_medium=social&utm_campaign=share_watch`;
+  };
+  const instagramUrl = linkFor("instagram");
+  const twitterUrl = linkFor("twitter");
   const text = `${caption}\n${shareUrl}`;
 
   const copyText = useCallback(async (value: string) => {
@@ -114,9 +124,9 @@ export function ShareWatchDialog({
       // Instagram ne rend pas l'image cliquable : le seul moyen de renvoyer
       // vers la fiche est le sticker « Lien ». On copie donc l'URL de la
       // série en amont pour un simple collage dans ce sticker.
-      await copyText(shareUrl);
+      await copyText(instagramUrl);
       try {
-        await navigator.share({ files: [file], url: shareUrl });
+        await navigator.share({ files: [file], url: instagramUrl });
         toast.success("Lien de la série copié — collez-le dans le sticker « Lien »");
         return;
       } catch (err) {
@@ -124,7 +134,7 @@ export function ShareWatchDialog({
       }
     }
     downloadBlob(blob, filename);
-    const ok = await copyText(shareUrl);
+    const ok = await copyText(instagramUrl);
     toast.success(
       ok
         ? "Image téléchargée et lien copié — ajoutez un sticker « Lien » à la story"
@@ -137,7 +147,7 @@ export function ShareWatchDialog({
     // l'image pour que l'utilisateur l'attache au tweet pré-rempli.
     if (blobRef.current) downloadBlob(blobRef.current, filename);
     window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(shareUrl)}`,
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(twitterUrl)}`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -148,6 +158,7 @@ export function ShareWatchDialog({
     if (await copyText(text)) toast.success("Lien et légende copiés");
     else toast.error("Copie impossible");
   };
+
 
 
   return (

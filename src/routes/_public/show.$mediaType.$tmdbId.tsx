@@ -66,7 +66,7 @@ import { SimilarRail } from "@/components/show/similar-rail";
 import { CastRail } from "@/components/show/cast-rail";
 import { StarRating } from "@/components/show/star-rating";
 import { ShareWatchDialog } from "@/components/share-watch-dialog";
-import { SITE_URL } from "@/lib/app-config";
+import { SITE_URL, showShareUrl } from "@/lib/app-config";
 import {
   fetchShowDetails,
   showDetailsQueryKey,
@@ -901,7 +901,7 @@ function ShowDetail() {
                         subtitle={`${watchedCount} épisode${watchedCount > 1 ? "s" : ""} vu${watchedCount > 1 ? "s" : ""}`}
                         posterUrl={show.poster_path}
                         badge="Saison terminée"
-                        shareUrl={`${SITE_URL}/show/${mediaType}/${tmdbId}`}
+                        shareUrl={showShareUrl(mediaType, tmdbId)}
                         caption={`J'ai terminé la saison ${s.season_number} de ${show.title} 📺`}
                       />
                     )}
@@ -945,7 +945,7 @@ function ShowDetail() {
                                   subtitle={e.title}
                                   posterUrl={e.still_path ?? show.poster_path}
                                   badge="Épisode vu"
-                                  shareUrl={`${SITE_URL}/show/${mediaType}/${tmdbId}`}
+                                  shareUrl={showShareUrl(mediaType, tmdbId)}
                                   caption={`Je viens de voir ${show.title} S${pad(e.season_number)}E${pad(e.episode_number)} 📺`}
                                 />
                               ) : null

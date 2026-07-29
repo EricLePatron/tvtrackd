@@ -23,3 +23,22 @@ export const SITE_URL: string = (
   process.env.SITE_URL ||
   "https://tvtrackd.com"
 ).replace(/\/$/, "");
+
+/**
+ * Deep link de partage vers une fiche : URL absolue et canonique
+ * (`/show/:mediaType/:tmdbId`) sur le domaine de production, quel que soit
+ * l'environnement d'où le partage est déclenché (preview inclus). Un lien
+ * collé dans un sticker Instagram doit ouvrir la bonne fiche sur le site
+ * public, jamais une URL de preview inaccessible aux visiteurs.
+ * `source` ajoute un `utm_source` pour l'attribution ; les query params sont
+ * ignorés par le routing et n'altèrent pas la balise canonique de la page.
+ */
+export function showShareUrl(
+  mediaType: string,
+  tmdbId: string | number,
+  source?: string,
+): string {
+  const base = `${SITE_URL}/show/${mediaType}/${tmdbId}`;
+  if (!source) return base;
+  return `${base}?utm_source=${encodeURIComponent(source)}&utm_medium=social&utm_campaign=share_watch`;
+}
