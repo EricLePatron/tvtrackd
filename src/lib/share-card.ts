@@ -158,8 +158,14 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
 
   const W = 1080;
   const H = 1920;
-  const PAD = 88;
+  const PAD = 80;
   const maxW = W - PAD * 2;
+
+  // Zones réservées par l'UI Instagram (avatar/nom en haut, barre
+  // « Dites quelque chose » + actions en bas) : tout le contenu utile de la
+  // carte vit entre ces deux bornes.
+  const SAFE_TOP = 300;
+  const SAFE_BOTTOM = H - 430;
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
@@ -175,104 +181,114 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
   // ── Toile de fond : le visuel flouté, très sombre, occupe tout l'écran ──
   if (media) {
     ctx.save();
-    ctx.filter = "blur(60px) saturate(140%)";
-    ctx.globalAlpha = 0.55;
+    ctx.filter = "blur(70px) saturate(150%)";
+    ctx.globalAlpha = 0.6;
     drawCover(ctx, media, -80, -80, W + 160, H + 160);
     ctx.restore();
-    ctx.fillStyle = "rgba(11,14,20,0.72)";
+    ctx.fillStyle = "rgba(11,14,20,0.78)";
     ctx.fillRect(0, 0, W, H);
   }
 
+  // ── Carte centrale ─────────────────────────────────────────────────────
+  const frameW = maxW;
+  const frameX = PAD;
+  const ratio = media ? media.width / media.height : 16 / 9;
+  const frameH = Math.round(Math.min(Math.max(frameW / ratio, 520), 900));
+
+  // Hauteur du bloc texte pour centrer l'ensemble dans la zone sûre.
+  const badgeH = 60;
+  const titleBlockH = 200;
+  const ctaH = 132;
+  const cardH = 118 /* header marque */ + frameH + 46 + badgeH + 30 + titleBlockH + ctaH;
+  let y = Math.max(SAFE_TOP, Math.round((SAFE_TOP + SAFE_BOTTOM - cardH) / 2));
+
   // ── En-tête de marque ──────────────────────────────────────────────────
   ctx.textBaseline = "middle";
-  ctx.font = "700 34px Archivo, Inter, system-ui, sans-serif";
-  ctx.fillStyle = TEXT;
-  const brandW = measureTracked(ctx, "TVTRACKD", 3);
   ctx.fillStyle = AMBER;
-  roundRect(ctx, PAD, 118, 12, 40, 4);
+  roundRect(ctx, PAD, y, 14, 46, 5);
   ctx.fill();
+  ctx.font = "700 44px Archivo, Inter, system-ui, sans-serif";
   ctx.fillStyle = TEXT;
-  drawTracked(ctx, "TVTRACKD", PAD + 30, 140, 3);
+  const brandW = drawTracked(ctx, "TVTRACKD", PAD + 34, y + 24, 3);
   ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
   ctx.fillStyle = MUTED;
-  ctx.fillText("SUIVI DE SÉRIES", PAD + 30 + brandW + 26, 141);
+  ctx.fillText("SUIVI DE SÉRIES", PAD + 34 + brandW + 24, y + 26);
+  y += 118;
 
-  // ── Visuel principal, contenu dans un cadre arrondi (jamais rogné à mort)
-  const frameX = PAD;
-  const frameW = maxW;
-  const frameY = 220;
-  const ratio = media ? media.width / media.height : 16 / 9;
-  const frameH = Math.min(Math.round(frameW / ratio), 1180);
-
+  // ── Visuel principal ───────────────────────────────────────────────────
   ctx.save();
-  roundRect(ctx, frameX, frameY, frameW, frameH, 28);
+  roundRect(ctx, frameX, y, frameW, frameH, 30);
   ctx.clip();
   ctx.fillStyle = SURFACE;
-  ctx.fillRect(frameX, frameY, frameW, frameH);
-  if (media) drawCover(ctx, media, frameX, frameY, frameW, frameH);
+  ctx.fillRect(frameX, y, frameW, frameH);
+  if (media) drawCover(ctx, media, frameX, y, frameW, frameH);
+  // Dégradé bas pour asseoir le visuel sur le bloc texte
+  const grad = ctx.createLinearGradient(0, y + frameH - 220, 0, y + frameH);
+  grad.addColorStop(0, "rgba(11,14,20,0)");
+  grad.addColorStop(1, "rgba(11,14,20,0.85)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(frameX, y + frameH - 220, frameW, 220);
   ctx.restore();
-  ctx.strokeStyle = "rgba(242,237,228,0.10)";
+  ctx.strokeStyle = "rgba(242,237,228,0.12)";
   ctx.lineWidth = 2;
-  roundRect(ctx, frameX, frameY, frameW, frameH, 28);
+  roundRect(ctx, frameX, y, frameW, frameH, 30);
   ctx.stroke();
+  y += frameH + 46;
 
-  // ── Bloc texte, empilé sous le visuel, sans chevauchement possible ─────
-  let y = frameY + frameH + 52;
-
-  // Badge état
+  // ── Badge état + compteur ──────────────────────────────────────────────
   ctx.textBaseline = "middle";
-  ctx.font = "600 26px 'IBM Plex Mono', ui-monospace, monospace";
+  ctx.font = "600 28px 'IBM Plex Mono', ui-monospace, monospace";
   const badge = input.badge.toUpperCase();
-  const badgeH = 56;
-  const badgeW = ctx.measureText(badge).width + 44;
-  ctx.fillStyle = "rgba(77,217,196,0.14)";
+  const badgeW = ctx.measureText(badge).width + 46;
+  ctx.fillStyle = "rgba(77,217,196,0.16)";
   roundRect(ctx, PAD, y, badgeW, badgeH, 12);
   ctx.fill();
   ctx.fillStyle = CYAN;
-  ctx.fillText(badge, PAD + 22, y + badgeH / 2 + 1);
+  ctx.fillText(badge, PAD + 23, y + badgeH / 2 + 1);
 
-  // Compteur (module VHS), aligné sur la même ligne que le badge
   const counter = input.counter.toUpperCase();
-  ctx.font = "700 40px 'IBM Plex Mono', ui-monospace, monospace";
-  const counterW = ctx.measureText(counter).width + 44;
+  ctx.font = "700 42px 'IBM Plex Mono', ui-monospace, monospace";
+  const counterW = ctx.measureText(counter).width + 46;
   ctx.fillStyle = SURFACE;
   roundRect(ctx, PAD + badgeW + 16, y, counterW, badgeH, 12);
   ctx.fill();
   ctx.fillStyle = AMBER;
-  ctx.fillText(counter, PAD + badgeW + 16 + 22, y + badgeH / 2 + 2);
-  y += badgeH + 34;
+  ctx.fillText(counter, PAD + badgeW + 16 + 23, y + badgeH / 2 + 2);
+  y += badgeH + 30;
 
-  // Titre
+  // ── Titre + sous-titre ─────────────────────────────────────────────────
   ctx.textBaseline = "top";
-  const titleSize = fitFont(ctx, input.title, maxW, 72, 36);
+  const titleSize = fitFont(ctx, input.title, maxW, 78, 40);
   ctx.fillStyle = TEXT;
   ctx.fillText(ellipsize(ctx, input.title, maxW), PAD, y);
-  y += titleSize + 14;
+  y += titleSize + 16;
 
-  // Sous-titre
   if (input.subtitle) {
-    ctx.font = "400 32px Inter, system-ui, sans-serif";
+    ctx.font = "400 34px Inter, system-ui, sans-serif";
     ctx.fillStyle = MUTED;
     ctx.fillText(ellipsize(ctx, input.subtitle, maxW), PAD, y);
+    y += 46;
   }
 
-  // ── Pied de page produit : la signature de communication ───────────────
-  const footY = H - 178;
-  ctx.fillStyle = "rgba(255,138,61,0.10)";
-  roundRect(ctx, PAD, footY, maxW, 118, 20);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,138,61,0.35)";
-  ctx.lineWidth = 2;
-  roundRect(ctx, PAD, footY, maxW, 118, 20);
-  ctx.stroke();
-
-  ctx.textBaseline = "alphabetic";
-  ctx.font = "700 44px Archivo, Inter, system-ui, sans-serif";
+  // ── CTA : la promesse produit, en bas de la carte (dans la zone sûre) ──
+  const ctaY = Math.min(y + 34, SAFE_BOTTOM - 118);
   ctx.fillStyle = AMBER;
-  drawTracked(ctx, "TVTRACKD.COM", PAD + 36, footY + 62, 2);
-  ctx.font = "400 26px Inter, system-ui, sans-serif";
-  ctx.fillStyle = MUTED;
-  ctx.fillText("Suivez vos séries, sans rien oublier.", PAD + 36, footY + 96);
+  roundRect(ctx, PAD, ctaY, maxW, 118, 22);
+  ctx.fill();
+
+  ctx.textBaseline = "middle";
+  ctx.font = "700 46px Archivo, Inter, system-ui, sans-serif";
+  ctx.fillStyle = BG;
+  const ctaBrandW = measureTracked(ctx, "TVTRACKD.COM", 2);
+  ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
+  const ctaSubW = ctx.measureText("SUIVEZ VOS SÉRIES, SANS RIEN OUBLIER").width;
+  const ctaX = PAD + Math.max(36, (maxW - Math.max(ctaBrandW, ctaSubW)) / 2);
+
+  ctx.font = "700 46px Archivo, Inter, system-ui, sans-serif";
+  drawTracked(ctx, "TVTRACKD.COM", ctaX, ctaY + 44, 2);
+  ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
+  ctx.fillStyle = "rgba(11,14,20,0.75)";
+  ctx.fillText("SUIVEZ VOS SÉRIES, SANS RIEN OUBLIER", ctaX, ctaY + 84);
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -281,3 +297,4 @@ export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
     );
   });
 }
+
