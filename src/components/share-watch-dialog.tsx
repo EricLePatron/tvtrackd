@@ -195,28 +195,25 @@ export function ShareWatchDialog({
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={!preview || pending}
-            onClick={shareInstagram}
-            className="flex h-12 items-center justify-center gap-2 rounded-md border border-primary/40 bg-primary/10 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-          >
-            <Instagram className="h-4 w-4" />
-            Story
-          </button>
+        <button
+          type="button"
+          disabled={!preview || pending}
+          onClick={shareInstagram}
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          <Instagram className="h-5 w-5" />
+          Partager en story
+        </button>
+
+        <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
             disabled={!preview || pending}
             onClick={shareTwitter}
-            className="flex h-12 items-center justify-center gap-2 rounded-md border border-cyan-accent/40 bg-cyan-accent/10 text-sm font-medium text-cyan-accent transition-colors hover:bg-cyan-accent/20 disabled:opacity-50"
+            className="flex h-10 items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
           >
-            <Twitter className="h-4 w-4" />
-            Poster sur X
+            <Twitter className="h-4 w-4" />X
           </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             disabled={!preview || pending}
@@ -232,14 +229,10 @@ export function ShareWatchDialog({
             className="flex h-10 items-center justify-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             {copied ? <Check className="h-4 w-4 text-cyan-accent" /> : <Link2 className="h-4 w-4" />}
-            {copied ? "Copié" : "Copier"}
+            {copied ? "Copié" : "Lien"}
           </button>
         </div>
 
-        <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-          Instagram : uniquement en story, la légende est copiée automatiquement. X : l'image est
-          téléchargée, à attacher au tweet pré-rempli.
-        </p>
 
       </DialogContent>
     </Dialog>
