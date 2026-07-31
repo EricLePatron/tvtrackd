@@ -746,15 +746,16 @@ export type NextReleaseItem = {
 /**
  * A same-day BATCH DROP of a season — 2+ episodes of the same show+season
  * sharing one `air_date` (Netflix/Amazon "toute la saison d'un coup", e.g.
- * Batman: Caped Crusader). `count` = how many dropped that day;
- * `firstEpisode`/`lastEpisode` = the batch's episode-number span (for a
- * `S02·E01–E10` range label); `wholeSeason` = true ONLY when the batch is
- * confirmed to be the entire season against TMDb's official per-season count.
+ * Batman: Caped Crusader). `count` = how many dropped that day (surfaced as
+ * "N épisodes" only for a PARTIAL drop); `wholeSeason` = true ONLY when the
+ * batch is confirmed to be the entire season against TMDb's official
+ * per-season count. Deliberately carries NO episode-number range: a drop is
+ * shown as its season + a "Saison complète"/"N épisodes" tag, never a
+ * `S02·E01–E10` span (design: the range is redundant with the tag and reads
+ * as clutter next to it).
  */
 export type SeasonDrop = {
   count: number;
-  firstEpisode: number;
-  lastEpisode: number;
   wholeSeason: boolean;
 };
 
@@ -783,18 +784,12 @@ export function computeSeasonDrop(
   date: string,
 ): SeasonDrop | undefined {
   let count = 0;
-  let firstEpisode = Infinity;
-  let lastEpisode = 0;
   for (const ep of episodes) {
     if (ep.show.id !== showId || ep.season_number !== seasonNumber) continue;
-    if (ep.air_date === date) {
-      count++;
-      if (ep.episode_number < firstEpisode) firstEpisode = ep.episode_number;
-      if (ep.episode_number > lastEpisode) lastEpisode = ep.episode_number;
-    }
+    if (ep.air_date === date) count++;
   }
   if (count < 2) return undefined;
-  return { count, firstEpisode, lastEpisode, wholeSeason: false };
+  return { count, wholeSeason: false };
 }
 
 /**
@@ -860,20 +855,12 @@ export function selectNextReleases(
         daysUntil: daysBetween(today, group.date),
         // Batch info comes straight from the day-group's own "drop" entry
         // (2+ same-day episodes of one show+season — `groupUpcomingByDay`'s
-        // `>= 2` threshold, identical to this card's). `episodes` is already
-        // sorted by `byEpisodeOrder`, so `[0]`/`[last]` give the range bounds.
-        // `wholeSeason` stays a provisional `false` here — the reliable check
-        // needs TMDb's official per-season count, applied by the caller via
-        // `resolveNextReleaseDrop` once that count is fetched (see HomeScreen's
-        // queryFn). Left `undefined` for an ordinary single-episode release.
-        drop: isDrop
-          ? {
-              count: entry.count,
-              firstEpisode: entry.episodes[0].episode_number,
-              lastEpisode: entry.episodes[entry.episodes.length - 1].episode_number,
-              wholeSeason: false,
-            }
-          : undefined,
+        // `>= 2` threshold, identical to this card's). `wholeSeason` stays a
+        // provisional `false` here — the reliable check needs TMDb's official
+        // per-season count, applied by the caller via `resolveNextReleaseDrop`
+        // once that count is fetched (see HomeScreen's queryFn). Left
+        // `undefined` for an ordinary single-episode release.
+        drop: isDrop ? { count: entry.count, wholeSeason: false } : undefined,
       });
     }
   }
@@ -1227,18 +1214,6 @@ export function formatCountdownLabel(daysUntil: number): string {
   if (daysUntil === 0) return "aujourd'hui";
   if (daysUntil === 1) return "demain";
   return `${daysUntil} j`;
-}
-
-/**
- * Libellé S/E d'un `SeasonDrop` sous forme de PLAGE compacte `S02·E01–E10`
- * (Plex Mono), au lieu du seul épisode "suivant" — trompeur quand toute la
- * fournée est dispo. Format identique au compteur compact `S{pad}·E{pad}` du
- * `VhsCounter variant="grid"`, avec un tiret demi-cadratin (U+2013) entre les
- * deux bornes. Utilisé par `NextReleaseHeroCard` ("Sort aujourd'hui"/"Bientôt").
- */
-export function formatDropRange(seasonNumber: number, drop: SeasonDrop): string {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `S${pad(seasonNumber)}·E${pad(drop.firstEpisode)}–E${pad(drop.lastEpisode)}`;
 }
 
 /**

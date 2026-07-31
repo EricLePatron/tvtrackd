@@ -1368,8 +1368,6 @@ describe("selectNextReleases", () => {
 
     expect(result[0].drop).toEqual({
       count: 3,
-      firstEpisode: 1,
-      lastEpisode: 3,
       wholeSeason: false, // provisional — resolved against the official count by the caller
     });
   });
@@ -1393,28 +1391,19 @@ describe("resolveNextReleaseDrop", () => {
   };
 
   it("confirms wholeSeason when the official count matches the batch size", () => {
-    const item = {
-      ...baseItem,
-      drop: { count: 8, firstEpisode: 1, lastEpisode: 8, wholeSeason: false },
-    };
+    const item = { ...baseItem, drop: { count: 8, wholeSeason: false } };
 
     expect(resolveNextReleaseDrop(item, 8).drop?.wholeSeason).toBe(true);
   });
 
   it("keeps wholeSeason false when the official count exceeds the batch (multi-wave season)", () => {
-    const item = {
-      ...baseItem,
-      drop: { count: 4, firstEpisode: 1, lastEpisode: 4, wholeSeason: false },
-    };
+    const item = { ...baseItem, drop: { count: 4, wholeSeason: false } };
 
     expect(resolveNextReleaseDrop(item, 8).drop?.wholeSeason).toBe(false);
   });
 
   it("fails safe to wholeSeason false when the official count is unknown", () => {
-    const item = {
-      ...baseItem,
-      drop: { count: 4, firstEpisode: 1, lastEpisode: 4, wholeSeason: false },
-    };
+    const item = { ...baseItem, drop: { count: 4, wholeSeason: false } };
 
     expect(resolveNextReleaseDrop(item, null).drop?.wholeSeason).toBe(false);
   });
@@ -1461,31 +1450,16 @@ describe("computeSeasonDrop", () => {
     expect(computeSeasonDrop(episodes, 1, 2, TODAY)).toBeUndefined();
   });
 
-  it("reports count + non-degenerate first/last range for a same-day batch (wholeSeason provisional false)", () => {
+  it("reports the batch count for a same-day drop (wholeSeason provisional false)", () => {
     const s = show(1);
     const episodes = [ep(s, 201, 2, 1, TODAY), ep(s, 202, 2, 2, TODAY), ep(s, 203, 2, 3, TODAY)];
 
     expect(computeSeasonDrop(episodes, 1, 2, TODAY)).toEqual({
       count: 3,
-      firstEpisode: 1,
-      lastEpisode: 3,
       // Provisional — the reliable "whole season" check is the caller's job
       // (`resolveNextReleaseDrop`, against the official season count).
       wholeSeason: false,
     });
-  });
-
-  it("never degenerates to `E02–E02`: range spans the batch, not the next-unwatched episode", () => {
-    // Batch of E01+E02 today; even if a caller later marks E01 watched and
-    // spotlights E02, the drop's own range is still E01..E02 (both aired
-    // today), so the UI renders a real span rather than `E02–E02`.
-    const s = show(1);
-    const episodes = [ep(s, 201, 2, 1, TODAY), ep(s, 202, 2, 2, TODAY)];
-
-    const drop = computeSeasonDrop(episodes, 1, 2, TODAY);
-    expect(drop?.firstEpisode).toBe(1);
-    expect(drop?.lastEpisode).toBe(2);
-    expect(drop?.firstEpisode).not.toBe(drop?.lastEpisode);
   });
 });
 
@@ -1559,19 +1533,13 @@ describe("selectTodayRelease", () => {
     const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
 
     expect(result?.episode.episode_number).toBe(1); // still the earliest of the batch
-    // `selectTodayRelease` has no TMDb official count to verify against, so a
-    // today-drop is always a plain "N épisodes" (`wholeSeason: false`) — the
-    // reliable "Saison complète" claim only ever comes from the hero path
-    // (`deriveHomeView`, checked against `heroSeasonEpisodeCount`).
-    expect(result?.drop).toEqual({
-      count: 4,
-      firstEpisode: 1,
-      lastEpisode: 4,
-      wholeSeason: false,
-    });
+    // `selectTodayRelease` emits a PROVISIONAL drop (`wholeSeason: false`); the
+    // reliable "Saison complète" claim is applied by the caller via
+    // `resolveNextReleaseDrop`, against TMDb's official season count.
+    expect(result?.drop).toEqual({ count: 4, wholeSeason: false });
   });
 
-  it("computes the batch range only over episodes airing today, ignoring earlier-aired ones", () => {
+  it("counts only episodes airing today for the drop, ignoring earlier-aired ones", () => {
     const s = show(1);
     const episodes = [
       ep(s, 201, 2, 1, "2026-07-01"), // aired earlier, outside today's batch
@@ -1582,12 +1550,7 @@ describe("selectTodayRelease", () => {
 
     const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
 
-    expect(result?.drop).toEqual({
-      count: 2,
-      firstEpisode: 2,
-      lastEpisode: 3,
-      wholeSeason: false,
-    });
+    expect(result?.drop).toEqual({ count: 2, wholeSeason: false });
   });
 
   it("leaves `drop` undefined for an ordinary single-episode release", () => {
