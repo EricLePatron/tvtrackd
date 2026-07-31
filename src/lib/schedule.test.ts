@@ -12,6 +12,7 @@ import {
   getTodayInTimeZone,
   groupUpcomingByDay,
   HERO_STALE_DAYS,
+  isGenericEpisodeTitle,
   isSeasonTallyReliable,
   seasonCountKey,
   selectHero,
@@ -342,6 +343,33 @@ describe("formatCountdownLabel", () => {
   it('returns "Nj" (abbreviated "j", never "jours", no leading "dans") for 2+ days', () => {
     expect(formatCountdownLabel(2)).toBe("2 j");
     expect(formatCountdownLabel(10)).toBe("10 j");
+  });
+});
+
+describe("isGenericEpisodeTitle", () => {
+  it("returns true for null", () => {
+    expect(isGenericEpisodeTitle(null, 1)).toBe(true);
+  });
+
+  it("returns true for an empty/blank title", () => {
+    expect(isGenericEpisodeTitle("", 1)).toBe(true);
+    expect(isGenericEpisodeTitle("   ", 1)).toBe(true);
+  });
+
+  it('returns true for "Épisode 1" when episodeNumber is 1', () => {
+    expect(isGenericEpisodeTitle("Épisode 1", 1)).toBe(true);
+  });
+
+  it('returns true for "Episode 1" (no accent) when episodeNumber is 1', () => {
+    expect(isGenericEpisodeTitle("Episode 1", 1)).toBe(true);
+  });
+
+  it("returns false for a real episode title", () => {
+    expect(isGenericEpisodeTitle("Cold Harbor", 1)).toBe(false);
+  });
+
+  it('returns false for "Épisode 1" when episodeNumber is 2 (exact-number match only)', () => {
+    expect(isGenericEpisodeTitle("Épisode 1", 2)).toBe(false);
   });
 });
 
