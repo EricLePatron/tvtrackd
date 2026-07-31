@@ -196,7 +196,6 @@ function recomputeFromBatch(prevHome: HomeData, batch: MarkWatchedBatch): HomeDa
     ...prevHome,
     hero: finalView.hero,
     heroProgress: finalView.heroProgress,
-    heroDrop: finalView.heroDrop,
     reprendre: reprendreExcludingToday,
     reprendreProgressByShowId: finalView.reprendreProgressByShowId,
     nouveau: nouveauExcludingToday,

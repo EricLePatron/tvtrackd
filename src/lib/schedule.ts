@@ -762,29 +762,25 @@ export type SeasonDrop = {
  * Describes whether `showId`'s `seasonNumber` had a same-day BATCH DROP on
  * `date` — 2+ of its episodes sharing that exact `air_date` (mirrors
  * `groupUpcomingByDay`'s own `>= 2` "drop" threshold). Returns `undefined`
- * for a lone episode (the common weekly-release case).
+ * for a lone episode (the common weekly-release case). Feeds
+ * `selectTodayRelease`'s "Sort aujourd'hui" drop, the counterpart of the
+ * batch info `selectNextReleases` reads straight from `groupUpcomingByDay`.
  *
- * `wholeSeason` is asserted ONLY against `officialEpisodeCount` (TMDb's own
- * per-season count, the `seasons.episode_count` cache column) via the exact
- * same `isSeasonTallyReliable` guard used for the hero's progress fraction —
- * NEVER against the count of episodes present in `episodes` alone. That list
- * is bounded by the Home fetch (air_date non-null, ≤ today+90), so a season
- * released in several waves (a "Part 1 / Part 2" whose second wave has no
- * announced date yet) has its later episodes MISSING from `episodes`
- * entirely: comparing the batch to "episodes we happen to have cached" would
- * read a half-season drop as `wholeSeason: true` and label it "Saison
- * complète" — the precise false-positive this guard exists to prevent. When
- * `officialEpisodeCount` is null/unknown (not fetched, or the hero rotated to
- * a different season than the count was fetched for), `wholeSeason` fails
- * safe to `false` — the caller then shows a plain "N épisodes" count, which
- * is always accurate, rather than an unverifiable "Saison complète" claim.
+ * `wholeSeason` is returned as a PROVISIONAL `false` here on purpose: whether
+ * the batch is the WHOLE season can only be told against TMDb's official
+ * per-season count (`seasons.episode_count`), NEVER against the episodes
+ * present in `episodes` — that list is bounded by the Home fetch (air_date
+ * non-null, ≤ today+90), so a season released in several waves (a "Part 1 /
+ * Part 2" whose second wave has no announced date yet) has its later episodes
+ * missing entirely, and a naive "batch === cached episodes" check would read
+ * a half-season drop as a full one. The caller confirms `wholeSeason` against
+ * that official count via `resolveNextReleaseDrop`.
  */
 export function computeSeasonDrop(
   episodes: ScheduleEpisode[],
   showId: number,
   seasonNumber: number,
   date: string,
-  officialEpisodeCount?: number | null,
 ): SeasonDrop | undefined {
   let count = 0;
   let firstEpisode = Infinity;
@@ -798,12 +794,7 @@ export function computeSeasonDrop(
     }
   }
   if (count < 2) return undefined;
-  return {
-    count,
-    firstEpisode,
-    lastEpisode,
-    wholeSeason: isSeasonTallyReliable({ total: count }, officialEpisodeCount),
-  };
+  return { count, firstEpisode, lastEpisode, wholeSeason: false };
 }
 
 /**
@@ -896,10 +887,10 @@ export function selectNextReleases(
  * official count on hand) against `officialEpisodeCount` — TMDb's
  * `seasons.episode_count`, fetched by the caller for exactly the shows that
  * have a drop. Uses the SAME `isSeasonTallyReliable` guard as the hero's
- * `heroDrop` (`deriveHomeView`) so "Saison complète" means the same
- * verified-against-official-count thing on all three surfaces (hero, "Sort
- * aujourd'hui", "Bientôt"). A no-op (returns the item unchanged) when it has
- * no drop; fails safe to `wholeSeason: false` when the count is unknown.
+ * progress fraction (`heroProgress`, `deriveHomeView`) so "Saison complète"
+ * is verified against the official count on BOTH drop surfaces ("Sort
+ * aujourd'hui" and "Bientôt"). A no-op (returns the item unchanged) when it
+ * has no drop; fails safe to `wholeSeason: false` when the count is unknown.
  */
 export function resolveNextReleaseDrop(
   item: NextReleaseItem,
@@ -1243,7 +1234,7 @@ export function formatCountdownLabel(daysUntil: number): string {
  * (Plex Mono), au lieu du seul épisode "suivant" — trompeur quand toute la
  * fournée est dispo. Format identique au compteur compact `S{pad}·E{pad}` du
  * `VhsCounter variant="grid"`, avec un tiret demi-cadratin (U+2013) entre les
- * deux bornes. Partagé par le hero (`HeroTicket`) et `NextReleaseHeroCard`.
+ * deux bornes. Utilisé par `NextReleaseHeroCard` ("Sort aujourd'hui"/"Bientôt").
  */
 export function formatDropRange(seasonNumber: number, drop: SeasonDrop): string {
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -1297,17 +1288,6 @@ export type HomeData = {
   hero: ReadyItem | null;
   /** Hero's current-season watched/total, when computable — see `HeroTicket`'s `progress` prop. */
   heroProgress: { watched: number; total: number } | null;
-  /**
-   * Set when the hero's current season had a same-day BATCH DROP on `today`
-   * (`computeSeasonDrop`, reliability-checked against `heroSeasonEpisodeCount`
-   * — see `deriveHomeView`). Feeds `HeroTicket`'s "Saison complète"/"N
-   * épisodes" tag. `null` for the overwhelmingly common weekly-release hero.
-   * This is where the motivating case actually surfaces: a followed show
-   * whose new season drops in full today is typically promoted to hero by
-   * watch-recency (see `selectHero`), NOT routed to "Sort aujourd'hui"
-   * (`selectTodayRelease` excludes the hero's own show).
-   */
-  heroDrop: SeasonDrop | null;
   reprendre: ReadyItem[];
   /** Season watched/total tally per visible "Reprendre" row, when reliable — see `computeReprendreProgress`. Feeds `ReadyListItem`'s `VhsCounter` "grid" chip. */
   reprendreProgressByShowId: ReadonlyMap<number, { watched: number; total: number }>;
@@ -1370,19 +1350,12 @@ export function deriveHomeView(
   today: string,
 ): Pick<
   HomeData,
-  | "hero"
-  | "heroProgress"
-  | "heroDrop"
-  | "reprendre"
-  | "reprendreProgressByShowId"
-  | "nouveau"
-  | "readyCount"
+  "hero" | "heroProgress" | "reprendre" | "reprendreProgressByShowId" | "nouveau" | "readyCount"
 > {
   const ready = buildReadyItems(raw.episodes, raw.watchedEpisodeIds, raw.showStatusByShowId, today);
   const { hero, reprendre, nouveau } = selectHero(ready, today, raw.lastWatchedAtByShowId);
 
   let heroProgress: { watched: number; total: number } | null = null;
-  let heroDrop: SeasonDrop | null = null;
   if (hero) {
     const tally = computeSeasonTally(
       raw.episodes,
@@ -1391,17 +1364,6 @@ export function deriveHomeView(
       hero.nextEpisode.season_number,
     );
     heroProgress = isSeasonTallyReliable(tally, raw.heroSeasonEpisodeCount) ? tally : null;
-    // Same (show, season) and same official count as `heroProgress` above —
-    // the hero's current season. `null` (no same-day batch) is the common
-    // case; `wholeSeason` is reliability-guarded inside `computeSeasonDrop`.
-    heroDrop =
-      computeSeasonDrop(
-        raw.episodes,
-        hero.show.id,
-        hero.nextEpisode.season_number,
-        today,
-        raw.heroSeasonEpisodeCount,
-      ) ?? null;
   }
 
   const reprendreProgressByShowId = computeReprendreProgress(
@@ -1414,7 +1376,6 @@ export function deriveHomeView(
   return {
     hero,
     heroProgress,
-    heroDrop,
     reprendre,
     reprendreProgressByShowId,
     nouveau,

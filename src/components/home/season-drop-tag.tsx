@@ -1,10 +1,12 @@
 import type { SeasonDrop } from "@/lib/schedule";
 
 /**
- * Étiquette "drop de saison" partagée par le hero (`HeroTicket`, index.tsx) et
- * la carte "Sort aujourd'hui"/"Bientôt" (`NextReleaseHeroCard`) — un show dont
- * plusieurs épisodes d'une même saison sortent le même jour
- * (`computeSeasonDrop`, schedule.ts). Deux formulations :
+ * Étiquette "drop de saison" de la carte "Sort aujourd'hui"/"Bientôt"
+ * (`NextReleaseHeroCard`) — un show dont plusieurs épisodes d'une même saison
+ * sortent le même jour (`computeSeasonDrop`/`selectNextReleases`, schedule.ts).
+ * PAS sur le hero : celui-ci garde son compteur signature watched/total (le
+ * décompte d'épisodes), l'indication de fournée reste propre aux deux cartes
+ * de sorties. Deux formulations :
  * - `wholeSeason` (confirmé contre le compte officiel TMDb) → "Saison complète"
  * - sinon → "N épisodes" (toujours exact : N épisodes ont bien droppé)
  *
