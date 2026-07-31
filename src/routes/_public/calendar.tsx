@@ -99,7 +99,7 @@ function CalendarScreen() {
                 aria-pressed={mode === value}
                 aria-label={label}
                 title={label}
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
                   mode === value
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground"
