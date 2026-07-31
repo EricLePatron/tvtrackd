@@ -39,11 +39,19 @@ function pad(n: number) {
  * abandonnée ici pour laisser chaque ligne respirer sur toute la largeur) :
  * 1. Titre de la série (`font-display`), ligne dominante, pleine largeur.
  * 2. S/E seul (phosphore `text-foreground`, jamais ambre — même traitement
- *    que le hero, cf. index.tsx `HeroTicket`), sur sa propre ligne.
- * 3. Titre d'épisode (`text-sm text-muted-foreground`), UNIQUEMENT quand
- *    `!isGenericEpisodeTitle(...)` — un titre placeholder TMDb ("Épisode N")
- *    ou `null` n'affiche aucune ligne de remplissage plutôt qu'un "—" vide de
- *    sens.
+ *    que le hero, cf. index.tsx `HeroTicket`), sur sa propre ligne, au format
+ *    compact `S02·E01` (sans `tracking-wide` ni espaces autour du `·` — revue
+ *    design "trop espacé", aligné sur le `VhsCounter variant="grid"`). Sur un
+ *    `item.drop` (fournée de toute la saison le même jour, cf.
+ *    `computeSeasonDrop`), la ligne devient une PLAGE `S02·E01–10`.
+ * 3. Selon le cas :
+ *    - drop → un chip cyan "Saison complète" (drop entier) ou "N épisodes"
+ *      (drop partiel), pour dire explicitement que toute la fournée est dispo
+ *      plutôt qu'un seul épisode ;
+ *    - sinon → titre d'épisode (`text-sm text-muted-foreground`), UNIQUEMENT
+ *      quand `!isGenericEpisodeTitle(...)` — un titre placeholder TMDb
+ *      ("Épisode N") ou `null` n'affiche aucune ligne de remplissage plutôt
+ *      qu'un "—" vide de sens.
  *
  * `variant` ("soon" par défaut) sélectionne le gabarit "Bientôt" existant
  * (pill cyan contour, `formatCountdownLabel`, filet neutre `border-border`).
@@ -62,9 +70,9 @@ export function NextReleaseHeroCard({
   item: NextReleaseItem;
   variant?: "soon" | "today";
 }) {
-  const { show, episode, daysUntil } = item;
+  const { show, episode, daysUntil, drop } = item;
   const backdropUrl = episode.still_path ?? show.backdrop_path ?? show.poster_path;
-  const showEpisodeTitle = !isGenericEpisodeTitle(episode.title, episode.episode_number);
+  const showEpisodeTitle = !drop && !isGenericEpisodeTitle(episode.title, episode.episode_number);
 
   return (
     <Link
@@ -95,11 +103,25 @@ export function NextReleaseHeroCard({
           <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">
             {show.title}
           </h3>
-          <div className="font-counter text-base font-semibold tracking-wide text-foreground tabular-nums">
-            S{pad(episode.season_number)} · E{pad(episode.episode_number)}
+          {/* Compteur S/E resserré (revue design) — plus de `tracking-wide` ni
+              d'espaces autour du `·`, format compact `S02·E01` aligné sur le
+              `VhsCounter variant="grid"` (`S02·E06`, cf. CLAUDE.md). Sur un
+              drop de saison (Netflix/Amazon), l'épisode seul induirait en
+              erreur : on affiche la PLAGE `S02·E01–10` pour signaler d'un coup
+              d'œil que toute la fournée est dispo. */}
+          <div className="font-counter text-base font-semibold text-foreground tabular-nums">
+            S{pad(episode.season_number)}·E{pad(episode.episode_number)}
+            {drop && `–${pad(drop.lastEpisode)}`}
           </div>
-          {showEpisodeTitle && (
-            <div className="truncate text-sm text-muted-foreground">{episode.title}</div>
+          {drop ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-accent/40 bg-cyan-accent/10 px-2.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
+              {drop.wholeSeason ? "Saison complète" : `${drop.count} épisodes`}
+            </span>
+          ) : (
+            showEpisodeTitle && (
+              <div className="truncate text-sm text-muted-foreground">{episode.title}</div>
+            )
           )}
         </div>
       </div>

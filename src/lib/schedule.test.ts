@@ -1439,6 +1439,47 @@ describe("selectTodayRelease", () => {
     expect(result?.episode.id).toBe(101);
   });
 
+  it("flags a whole-season same-day drop (Batman: Caped Crusader) with the full range and wholeSeason", () => {
+    const s = show(1, "Batman: Caped Crusader");
+    // Entire season 2 dropped today — every episode shares TODAY.
+    const episodes = [
+      ep(s, 201, 2, 1, TODAY),
+      ep(s, 202, 2, 2, TODAY),
+      ep(s, 203, 2, 3, TODAY),
+      ep(s, 204, 2, 4, TODAY),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    expect(result?.episode.episode_number).toBe(1); // still the earliest of the batch
+    expect(result?.drop).toEqual({ count: 4, lastEpisode: 4, wholeSeason: true });
+  });
+
+  it("flags a partial same-day batch (2+ today, but the season has earlier episodes) as not wholeSeason", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 201, 2, 1, "2026-07-01"), // aired earlier, outside today's batch
+      ep(s, 202, 2, 2, TODAY),
+      ep(s, 203, 2, 3, TODAY),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    expect(result?.drop).toEqual({ count: 2, lastEpisode: 3, wholeSeason: false });
+  });
+
+  it("leaves `drop` undefined for an ordinary single-episode release", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, TODAY)];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
+
+    expect(result?.drop).toBeUndefined();
+  });
+
   it("ranks a caught-up en_cours show ahead of an a_voir show with a heavier backlog — X-Men (en_cours, backlog 0) before House of the Dragon (a_voir, S3 never started, backlog 3+)", () => {
     const xMen = show(1, "X-Men");
     const houseOfTheDragon = show(2, "House of the Dragon");

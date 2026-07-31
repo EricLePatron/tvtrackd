@@ -731,7 +731,55 @@ export type NextReleaseItem = {
   /** Raw YYYY-MM-DD air_date of `episode` — feeds `formatUpcomingDayLabel` for the card's secondary line. */
   date: string;
   daysUntil: number;
+  /**
+   * Set when the spotlighted episode is part of a same-day BATCH DROP of its
+   * season — 2+ episodes of the same show+season sharing this air_date (a
+   * Netflix/Amazon-style "toute la saison d'un coup", e.g. Batman: Caped
+   * Crusader). `count` is how many episodes dropped that day; `lastEpisode`
+   * is the highest episode number of the batch (`episode` itself is always
+   * the earliest, so the batch spans `episode.episode_number..lastEpisode`);
+   * `wholeSeason` is true when that batch IS the whole cached season (no
+   * earlier/later episode of the season sits outside the drop). Left
+   * `undefined` for an ordinary single-episode release. Only ever populated
+   * by `selectTodayRelease` (the "Sort aujourd'hui" spotlight) — the one card
+   * that renders a drop indicator; `selectNextReleases`/`selectPremiereSoon`
+   * never set it.
+   */
+  drop?: { count: number; lastEpisode: number; wholeSeason: boolean };
 };
+
+/**
+ * Describes whether `showId`'s `seasonNumber` had a same-day BATCH DROP on
+ * `date` — 2+ of its episodes sharing that exact `air_date` (mirrors
+ * `groupUpcomingByDay`'s own `>= 2` "drop" threshold). Returns `undefined`
+ * for a lone episode (the common weekly-release case). `wholeSeason` compares
+ * the batch size to the total episodes of that season present in `episodes`;
+ * for a genuine "toute la saison d'un coup" drop every episode shares `date`,
+ * so the two are equal. Same caveat as `computeSeasonTally`: `episodes` is the
+ * caller's already-fetched, air_date-scoped list — a season with episodes
+ * announced beyond the Home fetch window wouldn't be fully counted, which can
+ * only ever make `wholeSeason` fail safe (read `false`), never falsely `true`.
+ */
+export function computeSeasonDrop(
+  episodes: ScheduleEpisode[],
+  showId: number,
+  seasonNumber: number,
+  date: string,
+): { count: number; lastEpisode: number; wholeSeason: boolean } | undefined {
+  let count = 0;
+  let seasonTotal = 0;
+  let lastEpisode = 0;
+  for (const ep of episodes) {
+    if (ep.show.id !== showId || ep.season_number !== seasonNumber) continue;
+    seasonTotal++;
+    if (ep.air_date === date) {
+      count++;
+      if (ep.episode_number > lastEpisode) lastEpisode = ep.episode_number;
+    }
+  }
+  if (count < 2) return undefined;
+  return { count, lastEpisode, wholeSeason: count === seasonTotal };
+}
 
 /**
  * Up to `limit` distinct-by-show upcoming releases (soonest first) — feeds
@@ -972,7 +1020,8 @@ export function selectTodayRelease(
   );
 
   const winner = candidates[0];
-  return { show: winner.episode.show, episode: winner.episode, date: today, daysUntil: 0 };
+  const drop = computeSeasonDrop(episodes, winner.show.id, winner.episode.season_number, today);
+  return { show: winner.episode.show, episode: winner.episode, date: today, daysUntil: 0, drop };
 }
 
 /** Status of a "Première bientôt" candidate — wider than `ActiveStatus`: includes `termine` (a finished show whose new season is about to premiere), the canonical case this block exists for. `abandonne`/`archive` are structurally excluded — the caller only ever feeds this from the `a_voir`/`en_cours` fetch plus a dedicated `termine`-only fetch (see index.tsx's queryFn), never the other two statuses. */
