@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { NextReleaseItem } from "@/lib/schedule";
-import { formatCountdownLabel, formatDropRange, isGenericEpisodeTitle } from "@/lib/schedule";
+import { formatCountdownLabel, isGenericEpisodeTitle } from "@/lib/schedule";
 import { SeasonDropTag } from "@/components/home/season-drop-tag";
 
 function pad(n: number) {
@@ -108,13 +108,13 @@ export function NextReleaseHeroCard({
           {/* Compteur S/E resserré (revue design) — plus de `tracking-wide` ni
               d'espaces autour du `·`, format compact `S02·E01` aligné sur le
               `VhsCounter variant="grid"` (`S02·E06`, cf. CLAUDE.md). Sur un
-              drop de saison (Netflix/Amazon), l'épisode seul induirait en
-              erreur : on affiche la PLAGE `S02·E01–E10` (bornes réelles du
-              batch, jamais dégénérée en `E02–E02`, cf. `computeSeasonDrop`)
-              pour signaler d'un coup d'œil que toute la fournée est dispo. */}
+              drop de saison, on n'affiche QUE la saison (`S02`, sans numéro
+              d'épisode) : la pastille en dessous porte seule l'info de fournée
+              ("Saison complète"/"N épisodes") — la plage d'épisodes ferait
+              doublon et surchargerait la carte (revue utilisateur). */}
           <div className="font-counter text-base font-semibold text-foreground tabular-nums">
             {drop
-              ? formatDropRange(episode.season_number, drop)
+              ? `S${pad(episode.season_number)}`
               : `S${pad(episode.season_number)}·E${pad(episode.episode_number)}`}
           </div>
           {drop ? (
