@@ -40,12 +40,14 @@ export function PremiereSoonCard({ item }: { item: NextReleaseItem }) {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <StatusPill label="PREMIÈRE" tone="cyan" />
+        <div className="self-start">
+          <StatusPill label="PREMIÈRE" tone="cyan" />
+        </div>
         <h3 className="mt-2 font-display text-base leading-tight text-foreground line-clamp-2">
           {show.title}
         </h3>
         <p className="mt-1 font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          Saison {episode.season_number} · Première
+          Saison {episode.season_number}
         </p>
 
         <div className="mt-2 flex items-end justify-between gap-3">
