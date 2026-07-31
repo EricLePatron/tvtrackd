@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Columns3, List } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { ProfileLink } from "@/components/screen-header";
 import { useAuth } from "@/hooks/use-auth";
@@ -63,6 +64,7 @@ function CalendarScreen() {
   const timeline = useCalendarTimeline();
   const loaderData = Route.useLoaderData();
   const [mode, setMode] = useState<"timeline" | "week">("timeline");
+  const showModeToggle = !!user && !timeline.isLoading && timeline.hasFollowedShows;
 
   return (
     <>
@@ -73,10 +75,42 @@ function CalendarScreen() {
           <p className="font-counter text-[10px] uppercase tracking-widest text-muted-foreground">
             Calendrier
           </p>
-          <h1 className="font-display text-lg text-foreground">
+          <h1 className="truncate font-display text-lg text-foreground">
             {user ? "Programme à venir" : "Programme de la semaine"}
           </h1>
         </div>
+
+        {showModeToggle && (
+          <div
+            role="group"
+            aria-label="Format d'affichage du calendrier"
+            className="flex shrink-0 gap-0.5 rounded-full border border-white/[0.08] bg-white/[0.03] p-0.5"
+          >
+            {(
+              [
+                ["timeline", List, "Vue continue"],
+                ["week", Columns3, "Vue par semaine"],
+              ] as const
+            ).map(([value, Icon, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                aria-label={label}
+                title={label}
+                className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+                  mode === value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </div>
+        )}
+
         {user && <ProfileLink />}
       </div>
 
@@ -102,38 +136,10 @@ function CalendarScreen() {
           </>
         ) : !timeline.isLoading && !timeline.hasFollowedShows ? (
           <NoShowsPanel />
+        ) : mode === "timeline" ? (
+          <CalendarTimelineList timeline={timeline} />
         ) : (
-          <>
-            {/* Bascule vue continue (timeline) / vue semaine par semaine —
-                mêmes données, deux modes de lecture. */}
-            <div className="mb-6 flex gap-1 rounded-full border border-border bg-surface p-1 mx-5 w-fit">
-              {(
-                [
-                  ["timeline", "Continu"],
-                  ["week", "Semaine"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMode(value)}
-                  aria-pressed={mode === value}
-                  className={`rounded-full px-4 py-1.5 font-counter text-[11px] uppercase tracking-widest transition-colors ${
-                    mode === value
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {mode === "timeline" ? (
-              <CalendarTimelineList timeline={timeline} />
-            ) : (
-              <CalendarWeekView timeline={timeline} />
-            )}
-          </>
+          <CalendarWeekView timeline={timeline} />
         )}
       </div>
     </>
