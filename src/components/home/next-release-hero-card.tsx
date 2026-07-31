@@ -90,22 +90,6 @@ export function NextReleaseHeroCard({
         </div>
       )}
 
-      {/* Badge/pill de statut — overlay, hors du flux du bloc texte (revue
-          lisibilité) : plus de partage de largeur avec le titre de la série,
-          s'appuie sur le dégradé `from-background/60` ci-dessus pour rester
-          lisible sur l'image. `backdrop-blur-sm` ici est fonctionnel (lisser
-          le contraste sur une image variable), pas un effet glassmorphism
-          décoratif — cf. CLAUDE.md. */}
-      {variant === "today" ? (
-        <span className="absolute right-3 top-3 z-10 rounded-md bg-primary px-3 py-1 font-counter text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground backdrop-blur-sm">
-          Aujourd'hui
-        </span>
-      ) : (
-        <span className="absolute right-3 top-3 z-10 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent backdrop-blur-sm">
-          {formatCountdownLabel(daysUntil)}
-        </span>
-      )}
-
       <div className="relative flex h-full flex-col justify-end p-4">
         <div className="min-w-0 space-y-1">
           <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">
@@ -119,6 +103,24 @@ export function NextReleaseHeroCard({
           )}
         </div>
       </div>
+
+      {/* Badge/pill de statut — overlay, hors du flux du bloc texte (revue
+          lisibilité) : plus de partage de largeur avec le titre de la série,
+          s'appuie sur le dégradé `from-background/60` ci-dessus pour rester
+          lisible sur l'image. `backdrop-blur-sm` ici est fonctionnel (lisser
+          le contraste sur une image variable), pas un effet glassmorphism
+          décoratif — cf. CLAUDE.md. Placé après le bloc texte dans le JSX
+          (bien qu'`absolute`, rendu visuel inchangé) pour un ordre de lecture
+          a11y logique : titre / S·E / titre d'épisode avant le badge. */}
+      {variant === "today" ? (
+        <span className="absolute right-3 top-3 z-10 rounded-md bg-primary px-3 py-1 font-counter text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground backdrop-blur-sm">
+          Aujourd'hui
+        </span>
+      ) : (
+        <span className="absolute right-3 top-3 z-10 rounded-full border border-cyan-accent/40 bg-background/60 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent backdrop-blur-sm">
+          {formatCountdownLabel(daysUntil)}
+        </span>
+      )}
     </Link>
   );
 }
