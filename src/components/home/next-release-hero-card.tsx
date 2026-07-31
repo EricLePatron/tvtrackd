@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { NextReleaseItem } from "@/lib/schedule";
-import { formatCountdownLabel, isGenericEpisodeTitle } from "@/lib/schedule";
+import { formatCountdownLabel, formatDropRange, isGenericEpisodeTitle } from "@/lib/schedule";
+import { SeasonDropTag } from "@/components/home/season-drop-tag";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -43,11 +44,12 @@ function pad(n: number) {
  *    compact `S02·E01` (sans `tracking-wide` ni espaces autour du `·` — revue
  *    design "trop espacé", aligné sur le `VhsCounter variant="grid"`). Sur un
  *    `item.drop` (fournée de toute la saison le même jour, cf.
- *    `computeSeasonDrop`), la ligne devient une PLAGE `S02·E01–10`.
+ *    `computeSeasonDrop`), la ligne devient une PLAGE `S02·E01–E10`.
  * 3. Selon le cas :
- *    - drop → un chip cyan "Saison complète" (drop entier) ou "N épisodes"
- *      (drop partiel), pour dire explicitement que toute la fournée est dispo
- *      plutôt qu'un seul épisode ;
+ *    - drop → une étiquette neutre `SeasonDropTag` "Saison complète" (drop
+ *      entier, confirmé contre le compte officiel) ou "N épisodes" sinon,
+ *      pour dire explicitement que toute la fournée est dispo plutôt qu'un
+ *      seul épisode ;
  *    - sinon → titre d'épisode (`text-sm text-muted-foreground`), UNIQUEMENT
  *      quand `!isGenericEpisodeTitle(...)` — un titre placeholder TMDb
  *      ("Épisode N") ou `null` n'affiche aucune ligne de remplissage plutôt
@@ -107,17 +109,16 @@ export function NextReleaseHeroCard({
               d'espaces autour du `·`, format compact `S02·E01` aligné sur le
               `VhsCounter variant="grid"` (`S02·E06`, cf. CLAUDE.md). Sur un
               drop de saison (Netflix/Amazon), l'épisode seul induirait en
-              erreur : on affiche la PLAGE `S02·E01–10` pour signaler d'un coup
-              d'œil que toute la fournée est dispo. */}
+              erreur : on affiche la PLAGE `S02·E01–E10` (bornes réelles du
+              batch, jamais dégénérée en `E02–E02`, cf. `computeSeasonDrop`)
+              pour signaler d'un coup d'œil que toute la fournée est dispo. */}
           <div className="font-counter text-base font-semibold text-foreground tabular-nums">
-            S{pad(episode.season_number)}·E{pad(episode.episode_number)}
-            {drop && `–${pad(drop.lastEpisode)}`}
+            {drop
+              ? formatDropRange(episode.season_number, drop)
+              : `S${pad(episode.season_number)}·E${pad(episode.episode_number)}`}
           </div>
           {drop ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-accent/40 bg-cyan-accent/10 px-2.5 py-0.5 font-counter text-[10px] uppercase tracking-widest text-cyan-accent">
-              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
-              {drop.wholeSeason ? "Saison complète" : `${drop.count} épisodes`}
-            </span>
+            <SeasonDropTag drop={drop} />
           ) : (
             showEpisodeTitle && (
               <div className="truncate text-sm text-muted-foreground">{episode.title}</div>

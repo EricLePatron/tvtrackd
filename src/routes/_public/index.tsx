@@ -19,6 +19,7 @@ import {
   groupUpcomingByDay,
   HOME_TIMEZONE,
   resolveHomeState,
+  formatDropRange,
   formatReadyLabel,
   seasonCountKey,
   selectNextReleases,
@@ -31,11 +32,13 @@ import {
   type NextReleaseItem,
   type ReadyItem,
   type ScheduleEpisode,
+  type SeasonDrop,
 } from "@/lib/schedule";
 import { SITE_URL } from "@/lib/app-config";
 import { ReadyListItem } from "@/components/home/ready-list-item";
 import { StartRail } from "@/components/home/start-rail";
 import { NextReleaseHeroCard } from "@/components/home/next-release-hero-card";
+import { SeasonDropTag } from "@/components/home/season-drop-tag";
 import { PremiereSoonCard } from "@/components/home/premiere-soon-card";
 import { UpcomingBucketRails } from "@/components/home/upcoming-section";
 import { DiscoverySection } from "@/components/home/discovery-section";
@@ -130,6 +133,7 @@ function HomeScreen() {
           followedActiveCount: 0,
           hero: null,
           heroProgress: null,
+          heroDrop: null,
           reprendre: [],
           reprendreProgressByShowId: new Map(),
           nouveau: [],
@@ -402,7 +406,7 @@ function HomeScreen() {
         heroSeasonEpisodeCount,
         reprendreSeasonEpisodeCounts,
       };
-      const { heroProgress, reprendreProgressByShowId } = deriveHomeView(raw, today);
+      const { heroProgress, heroDrop, reprendreProgressByShowId } = deriveHomeView(raw, today);
 
       const dayGroups = groupUpcomingByDay(episodes, today, 90);
       const upcomingCount = countUpcomingEntries(dayGroups);
@@ -446,6 +450,7 @@ function HomeScreen() {
         followedActiveCount: showIds.length,
         hero,
         heroProgress,
+        heroDrop,
         // Filtered (todayRelease's own show removed, see above) — the
         // version actually rendered/counted by `HomeContent` ("Voir tout ·
         // +N actives" reads `data.reprendre.length` directly, so it's
@@ -878,6 +883,7 @@ function HomeContent({ data }: { data: HomeData }) {
             key={`${data.hero.show.id}-${data.hero.nextEpisode.season_number}`}
             item={data.hero}
             progress={data.heroProgress ?? undefined}
+            drop={data.heroDrop ?? undefined}
             onTap={handleMarkWatchedTap}
             markButtonRef={heroButtonRef}
           />
@@ -1150,6 +1156,7 @@ function HeroTicket({
   badge,
   interactive = true,
   progress,
+  drop,
   onTap,
   markButtonRef,
 }: {
@@ -1169,6 +1176,17 @@ function HeroTicket({
    * `progress` is supplied.
    */
   progress?: { watched: number; total: number };
+  /**
+   * Set when the hero's current season had a same-day BATCH DROP today
+   * (`HomeData.heroDrop`, reliability-checked in `deriveHomeView`) — swaps the
+   * S/E line for a `S02·E01–E10` batch range and shows a "Saison complète"/"N
+   * épisodes" tag in place of the episode title. This is where the motivating
+   * case (a followed show whose new season drops in full) actually lands: it
+   * is usually promoted to hero by watch-recency rather than routed to "Sort
+   * aujourd'hui" (which excludes the hero's own show). Left `undefined` for
+   * the common weekly-release hero.
+   */
+  drop?: SeasonDrop;
   /**
    * (§5 a11y fix — design review) See `ReadyListItem`'s own `onTap` doc
    * comment — same mechanism, reported from the hero's OWN "Marquer comme
@@ -1346,11 +1364,17 @@ function HeroTicket({
           */}
           <div className="flex min-w-0 items-baseline gap-1.5">
             <span className="shrink-0 font-counter text-base font-semibold text-foreground tabular-nums">
-              S{pad(nextEpisode.season_number)}·E{pad(nextEpisode.episode_number)}
+              {drop
+                ? formatDropRange(nextEpisode.season_number, drop)
+                : `S${pad(nextEpisode.season_number)}·E${pad(nextEpisode.episode_number)}`}
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-              {nextEpisode.title ?? "—"}
-            </span>
+            {drop ? (
+              <SeasonDropTag drop={drop} />
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                {nextEpisode.title ?? "—"}
+              </span>
+            )}
           </div>
         </div>
 

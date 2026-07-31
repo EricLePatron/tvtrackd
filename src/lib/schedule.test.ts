@@ -4,6 +4,7 @@ import {
   buildLibraryProgress,
   buildReadyItems,
   computeReprendreProgress,
+  computeSeasonDrop,
   computeSeasonTally,
   deriveHomeView,
   formatCountdownLabel,
@@ -900,6 +901,61 @@ describe("deriveHomeView", () => {
     expect(after.heroProgress).toEqual({ watched: 1, total: 2 }); // ticked up, same total
   });
 
+  it("surfaces heroDrop with a reliable wholeSeason when the hero's season dropped in full today", () => {
+    // The motivating case: Batman: Caped Crusader, followed & en_cours, its
+    // new season 2 (4 episodes) drops entirely today → promoted to hero.
+    const s = show(1, "Batman: Caped Crusader");
+    const episodes = [
+      ep(s, 201, 2, 1, TODAY),
+      ep(s, 202, 2, 2, TODAY),
+      ep(s, 203, 2, 3, TODAY),
+      ep(s, 204, 2, 4, TODAY),
+    ];
+    const showStatusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const view = deriveHomeView(
+      raw({ episodes, showStatusByShowId, heroSeasonEpisodeCount: 4 }),
+      TODAY,
+    );
+
+    expect(view.hero?.show.id).toBe(1);
+    expect(view.heroDrop).toEqual({
+      count: 4,
+      firstEpisode: 1,
+      lastEpisode: 4,
+      wholeSeason: true,
+    });
+  });
+
+  it("keeps heroDrop wholeSeason:false when the hero's season count is unknown", () => {
+    const s = show(1);
+    const episodes = [ep(s, 201, 2, 1, TODAY), ep(s, 202, 2, 2, TODAY)];
+    const showStatusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const view = deriveHomeView(
+      raw({ episodes, showStatusByShowId, heroSeasonEpisodeCount: null }),
+      TODAY,
+    );
+
+    expect(view.heroDrop).toEqual({
+      count: 2,
+      firstEpisode: 1,
+      lastEpisode: 2,
+      wholeSeason: false,
+    });
+  });
+
+  it("leaves heroDrop null for an ordinary weekly-release hero (no same-day batch)", () => {
+    const s = show(1);
+    const episodes = [ep(s, 101, 1, 1, "2026-07-01"), ep(s, 102, 1, 2, "2026-07-08")];
+    const showStatusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+
+    const view = deriveHomeView(raw({ episodes, showStatusByShowId }), TODAY);
+
+    expect(view.hero?.show.id).toBe(1);
+    expect(view.heroDrop).toBeNull();
+  });
+
   it("drops the show and rotates the hero to the next candidate once its entire ready backlog is cleared", () => {
     const heroShow = show(1, "Hero Show"); // only one ready episode — its whole backlog
     const nextCandidate = show(2, "Next Candidate");
@@ -1383,6 +1439,79 @@ describe("getTodayInTimeZone", () => {
   });
 });
 
+describe("computeSeasonDrop", () => {
+  it("returns undefined for a lone episode airing on the date (below the 2-episode threshold)", () => {
+    const s = show(1);
+    const episodes = [ep(s, 201, 2, 1, TODAY), ep(s, 202, 2, 2, "2026-07-15")];
+
+    expect(computeSeasonDrop(episodes, 1, 2, TODAY)).toBeUndefined();
+  });
+
+  it("reports count + non-degenerate first/last range for a same-day batch", () => {
+    const s = show(1);
+    const episodes = [ep(s, 201, 2, 1, TODAY), ep(s, 202, 2, 2, TODAY), ep(s, 203, 2, 3, TODAY)];
+
+    expect(computeSeasonDrop(episodes, 1, 2, TODAY)).toEqual({
+      count: 3,
+      firstEpisode: 1,
+      lastEpisode: 3,
+      wholeSeason: false, // no official count supplied
+    });
+  });
+
+  it("never degenerates to `E02–E02`: range spans the batch, not the next-unwatched episode", () => {
+    // Batch of E01+E02 today; even if a caller later marks E01 watched and
+    // spotlights E02, the drop's own range is still E01..E02 (both aired
+    // today), so the UI renders a real span rather than `E02–E02`.
+    const s = show(1);
+    const episodes = [ep(s, 201, 2, 1, TODAY), ep(s, 202, 2, 2, TODAY)];
+
+    const drop = computeSeasonDrop(episodes, 1, 2, TODAY);
+    expect(drop?.firstEpisode).toBe(1);
+    expect(drop?.lastEpisode).toBe(2);
+    expect(drop?.firstEpisode).not.toBe(drop?.lastEpisode);
+  });
+
+  it("confirms wholeSeason ONLY against the official TMDb count, not the cached episode list", () => {
+    const s = show(1, "Batman: Caped Crusader");
+    // Whole season 2 (10 episodes) dropped today, all present in the cache.
+    const episodes = Array.from({ length: 10 }, (_, i) => ep(s, 300 + i, 2, i + 1, TODAY));
+
+    expect(computeSeasonDrop(episodes, 1, 2, TODAY, 10)).toEqual({
+      count: 10,
+      firstEpisode: 1,
+      lastEpisode: 10,
+      wholeSeason: true,
+    });
+  });
+
+  it("does NOT falsely claim wholeSeason for a multi-wave season whose later wave isn't cached yet (QA regression)", () => {
+    // Season 2 truly has 8 episodes, but only the first wave of 4 has an
+    // air_date today; the "Volume 2" (episodes 5-8) has no announced date, so
+    // those rows never make it into the Home fetch (`air_date IS NOT NULL`,
+    // `<= today+90`) and are absent from `episodes`. Comparing the batch to
+    // the cached list alone WOULD read 4/4 = "whole season" — the exact false
+    // positive this guard prevents. The official count (8) keeps it honest.
+    const s = show(1);
+    const episodes = [
+      ep(s, 301, 2, 1, TODAY),
+      ep(s, 302, 2, 2, TODAY),
+      ep(s, 303, 2, 3, TODAY),
+      ep(s, 304, 2, 4, TODAY),
+    ];
+
+    const drop = computeSeasonDrop(episodes, 1, 2, TODAY, 8);
+    expect(drop).toEqual({ count: 4, firstEpisode: 1, lastEpisode: 4, wholeSeason: false });
+  });
+
+  it("fails safe to wholeSeason:false when the official count is unknown (null)", () => {
+    const s = show(1);
+    const episodes = [ep(s, 301, 2, 1, TODAY), ep(s, 302, 2, 2, TODAY)];
+
+    expect(computeSeasonDrop(episodes, 1, 2, TODAY, null)?.wholeSeason).toBe(false);
+  });
+});
+
 describe("selectTodayRelease", () => {
   it("returns null when nothing airs exactly today among followed shows", () => {
     const s = show(1);
@@ -1439,7 +1568,7 @@ describe("selectTodayRelease", () => {
     expect(result?.episode.id).toBe(101);
   });
 
-  it("flags a whole-season same-day drop (Batman: Caped Crusader) with the full range and wholeSeason", () => {
+  it("flags a same-day batch drop with its full episode range (wholeSeason stays false — no official count on this path)", () => {
     const s = show(1, "Batman: Caped Crusader");
     // Entire season 2 dropped today — every episode shares TODAY.
     const episodes = [
@@ -1453,10 +1582,19 @@ describe("selectTodayRelease", () => {
     const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
 
     expect(result?.episode.episode_number).toBe(1); // still the earliest of the batch
-    expect(result?.drop).toEqual({ count: 4, lastEpisode: 4, wholeSeason: true });
+    // `selectTodayRelease` has no TMDb official count to verify against, so a
+    // today-drop is always a plain "N épisodes" (`wholeSeason: false`) — the
+    // reliable "Saison complète" claim only ever comes from the hero path
+    // (`deriveHomeView`, checked against `heroSeasonEpisodeCount`).
+    expect(result?.drop).toEqual({
+      count: 4,
+      firstEpisode: 1,
+      lastEpisode: 4,
+      wholeSeason: false,
+    });
   });
 
-  it("flags a partial same-day batch (2+ today, but the season has earlier episodes) as not wholeSeason", () => {
+  it("computes the batch range only over episodes airing today, ignoring earlier-aired ones", () => {
     const s = show(1);
     const episodes = [
       ep(s, 201, 2, 1, "2026-07-01"), // aired earlier, outside today's batch
@@ -1467,7 +1605,12 @@ describe("selectTodayRelease", () => {
 
     const result = selectTodayRelease(episodes, new Set(), statusByShowId, new Map(), TODAY);
 
-    expect(result?.drop).toEqual({ count: 2, lastEpisode: 3, wholeSeason: false });
+    expect(result?.drop).toEqual({
+      count: 2,
+      firstEpisode: 2,
+      lastEpisode: 3,
+      wholeSeason: false,
+    });
   });
 
   it("leaves `drop` undefined for an ordinary single-episode release", () => {

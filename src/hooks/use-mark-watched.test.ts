@@ -122,6 +122,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       followedActiveCount: 2,
       hero: null, // irrelevant here — components only ever read from the cache after these calls
       heroProgress: null,
+      heroDrop: null,
       reprendre: [],
       reprendreProgressByShowId: new Map(),
       nouveau: [],
@@ -236,6 +237,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       followedActiveCount: 2,
       hero: null,
       heroProgress: null,
+      heroDrop: null,
       reprendre: [],
       reprendreProgressByShowId: new Map(),
       nouveau: [],
@@ -509,6 +511,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       followedActiveCount: 1,
       hero: null,
       heroProgress: null,
+      heroDrop: null,
       reprendre: [],
       reprendreProgressByShowId: new Map(),
       nouveau: [],
@@ -543,6 +546,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       ...v1,
       hero: null,
       heroProgress: null,
+      heroDrop: null,
       raw: {
         episodes: [
           ep(showA, 101, 1, 1, "2026-01-01"),
@@ -582,6 +586,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
       followedActiveCount: 1,
       hero: null,
       heroProgress: null,
+      heroDrop: null,
       reprendre: [],
       reprendreProgressByShowId: new Map(),
       nouveau: [],
