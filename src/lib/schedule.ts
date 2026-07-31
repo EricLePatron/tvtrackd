@@ -734,9 +734,11 @@ export type NextReleaseItem = {
   /**
    * Set when the spotlighted episode is part of a same-day BATCH DROP of its
    * season — see `SeasonDrop`/`computeSeasonDrop`. Left `undefined` for an
-   * ordinary single-episode release. Only ever populated by
-   * `selectTodayRelease` (the "Sort aujourd'hui" spotlight);
-   * `selectNextReleases`/`selectPremiereSoon` never set it.
+   * ordinary single-episode release. Populated by BOTH `selectTodayRelease`
+   * ("Sort aujourd'hui") and `selectNextReleases` ("Bientôt") with a
+   * provisional `wholeSeason: false`; the caller then confirms `wholeSeason`
+   * against the official season count via `resolveNextReleaseDrop`.
+   * `selectPremiereSoon` never sets it (a premiere is a single first episode).
    */
   drop?: SeasonDrop;
 };
@@ -858,17 +860,59 @@ export function selectNextReleases(
       if (excludeShowIds?.has(showId)) continue;
       if (seenShowIds.has(showId)) continue;
       seenShowIds.add(showId);
-      const episode = entry.type === "drop" ? entry.episodes[0] : entry.episode;
+      const isDrop = entry.type === "drop";
+      const episode = isDrop ? entry.episodes[0] : entry.episode;
       result.push({
         show: entry.show,
         episode,
         date: group.date,
         daysUntil: daysBetween(today, group.date),
+        // Batch info comes straight from the day-group's own "drop" entry
+        // (2+ same-day episodes of one show+season — `groupUpcomingByDay`'s
+        // `>= 2` threshold, identical to this card's). `episodes` is already
+        // sorted by `byEpisodeOrder`, so `[0]`/`[last]` give the range bounds.
+        // `wholeSeason` stays a provisional `false` here — the reliable check
+        // needs TMDb's official per-season count, applied by the caller via
+        // `resolveNextReleaseDrop` once that count is fetched (see HomeScreen's
+        // queryFn). Left `undefined` for an ordinary single-episode release.
+        drop: isDrop
+          ? {
+              count: entry.count,
+              firstEpisode: entry.episodes[0].episode_number,
+              lastEpisode: entry.episodes[entry.episodes.length - 1].episode_number,
+              wholeSeason: false,
+            }
+          : undefined,
       });
     }
   }
 
   return result;
+}
+
+/**
+ * Re-resolves a `NextReleaseItem`'s provisional drop `wholeSeason` (always
+ * `false` out of `selectTodayRelease`/`selectNextReleases`, which have no
+ * official count on hand) against `officialEpisodeCount` — TMDb's
+ * `seasons.episode_count`, fetched by the caller for exactly the shows that
+ * have a drop. Uses the SAME `isSeasonTallyReliable` guard as the hero's
+ * `heroDrop` (`deriveHomeView`) so "Saison complète" means the same
+ * verified-against-official-count thing on all three surfaces (hero, "Sort
+ * aujourd'hui", "Bientôt"). A no-op (returns the item unchanged) when it has
+ * no drop; fails safe to `wholeSeason: false` when the count is unknown.
+ */
+export function resolveNextReleaseDrop(
+  item: NextReleaseItem,
+  officialEpisodeCount: number | null | undefined,
+): NextReleaseItem {
+  if (!item.drop) return item;
+  return {
+    ...item,
+    drop: {
+      ...item.drop,
+      wholeSeason: isSeasonTallyReliable({ total: item.drop.count }, officialEpisodeCount),
+    },
+  };
 }
 
 /**

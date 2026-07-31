@@ -15,6 +15,7 @@ import {
   HERO_STALE_DAYS,
   isGenericEpisodeTitle,
   isSeasonTallyReliable,
+  resolveNextReleaseDrop,
   seasonCountKey,
   selectHero,
   selectNextReleases,
@@ -1407,6 +1408,74 @@ describe("selectNextReleases", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].episode.id).toBe(201);
+  });
+
+  it("attaches a provisional drop (batch range, wholeSeason:false) for a same-day future drop entry", () => {
+    const s = show(1);
+    const episodes = [
+      ep(s, 201, 2, 1, "2026-07-15"),
+      ep(s, 202, 2, 2, "2026-07-15"),
+      ep(s, 203, 2, 3, "2026-07-15"),
+    ];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    const result = selectNextReleases(dayGroups, TODAY);
+
+    expect(result[0].drop).toEqual({
+      count: 3,
+      firstEpisode: 1,
+      lastEpisode: 3,
+      wholeSeason: false, // provisional — resolved against the official count by the caller
+    });
+  });
+
+  it("leaves drop undefined for a single upcoming episode", () => {
+    const s = show(1);
+    const episodes = [ep(s, 201, 2, 1, "2026-07-15")];
+    const dayGroups = groupUpcomingByDay(episodes, TODAY, 90);
+
+    expect(selectNextReleases(dayGroups, TODAY)[0].drop).toBeUndefined();
+  });
+});
+
+describe("resolveNextReleaseDrop", () => {
+  const s = show(1);
+  const baseItem = {
+    show: s,
+    episode: ep(s, 201, 2, 1, "2026-07-15"),
+    date: "2026-07-15",
+    daysUntil: 7,
+  };
+
+  it("confirms wholeSeason when the official count matches the batch size", () => {
+    const item = {
+      ...baseItem,
+      drop: { count: 8, firstEpisode: 1, lastEpisode: 8, wholeSeason: false },
+    };
+
+    expect(resolveNextReleaseDrop(item, 8).drop?.wholeSeason).toBe(true);
+  });
+
+  it("keeps wholeSeason false when the official count exceeds the batch (multi-wave season)", () => {
+    const item = {
+      ...baseItem,
+      drop: { count: 4, firstEpisode: 1, lastEpisode: 4, wholeSeason: false },
+    };
+
+    expect(resolveNextReleaseDrop(item, 8).drop?.wholeSeason).toBe(false);
+  });
+
+  it("fails safe to wholeSeason false when the official count is unknown", () => {
+    const item = {
+      ...baseItem,
+      drop: { count: 4, firstEpisode: 1, lastEpisode: 4, wholeSeason: false },
+    };
+
+    expect(resolveNextReleaseDrop(item, null).drop?.wholeSeason).toBe(false);
+  });
+
+  it("is a no-op for an item with no drop", () => {
+    expect(resolveNextReleaseDrop(baseItem, 10)).toBe(baseItem);
   });
 });
 
