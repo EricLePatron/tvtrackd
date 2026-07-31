@@ -16,6 +16,7 @@ import {
   seasonCountKey,
   selectHero,
   selectNextReleases,
+  selectPremiereSoon,
   selectTodayRelease,
   splitEnCoursByFreshness,
   type ActiveStatus,
@@ -1522,5 +1523,300 @@ describe("selectTodayRelease + selectHero — mutual exclusion with Reprendre/À
       ? reprendre.filter((item) => item.show.id !== todayRelease.show.id)
       : reprendre;
     expect(reprendreAfterToday.some((item) => item.show.id === 2)).toBe(false);
+  });
+});
+
+describe("selectPremiereSoon", () => {
+  it("returns null when there are no eligible premieres at all", () => {
+    const s = show(1);
+    const activeEpisodes = [ep(s, 101, 1, 1, "2026-07-01")]; // in the past, not a premiere candidate
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-07-01T00:00:00.000Z"]]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("excludes a never-started a_voir show's premiere (no `lastWatchedAtByShowId` entry)", () => {
+    const s = show(1);
+    const activeEpisodes = [ep(s, 201, 2, 1, "2026-08-01")]; // future season premiere
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "a_voir"]]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      new Map(), // no lastWatchedAtByShowId entry at all — never started
+      TODAY,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("includes an a_voir show's premiere once it's been started (`lastWatchedAtByShowId` has an entry)", () => {
+    const s = show(1);
+    const activeEpisodes = [ep(s, 201, 2, 1, "2026-08-01")];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "a_voir"]]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-07-01T00:00:00.000Z"]]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(1);
+    expect(result?.episode.id).toBe(201);
+  });
+
+  it("includes a `termine` show's premiere unconditionally — no `showStatusByShowId`/`lastWatchedAtByShowId` entry needed, `priorBacklogCount` assumed 0", () => {
+    const s = show(1, "Finished Show");
+    const termineEpisodes = [ep(s, 401, 4, 1, "2026-09-01")];
+
+    const result = selectPremiereSoon(
+      [], // activeEpisodes — empty, this show is termine, never in the a_voir/en_cours fetch
+      termineEpisodes,
+      new Set(),
+      new Map(), // no showStatusByShowId entry — termine is never in it
+      new Map(), // no lastWatchedAtByShowId entry — termine is never in the recency query either
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(1);
+    expect(result?.episode.id).toBe(401);
+  });
+
+  it("ignores non-premiere episodes (`episode_number !== 1`) and non-future ones (`air_date <= today`)", () => {
+    const s = show(1);
+    const activeEpisodes = [
+      ep(s, 101, 2, 2, "2026-08-01"), // future, but not episode 1 — not a premiere
+      ep(s, 102, 3, 1, TODAY), // episode 1, but not strictly future
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-07-01T00:00:00.000Z"]]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("excludes shows via `excludeShowIds` — e.g. the Home hero's own show", () => {
+    const heroShow = show(1, "Hero Show");
+    const otherShow = show(2, "Other Show");
+    const activeEpisodes = [
+      ep(heroShow, 101, 2, 1, "2026-08-01"),
+      ep(otherShow, 201, 2, 1, "2026-08-01"),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-01T00:00:00.000Z"],
+      [2, "2026-07-01T00:00:00.000Z"],
+    ]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+      { excludeShowIds: new Set([1]) },
+    );
+
+    expect(result?.show.id).toBe(2);
+  });
+
+  it("computes `daysUntil`/`date` from the premiere episode's own air_date", () => {
+    const s = show(1);
+    const activeEpisodes = [ep(s, 201, 2, 1, "2026-07-15")]; // TODAY + 7 days
+    const statusByShowId = new Map<number, ActiveStatus>([[1, "en_cours"]]);
+    const lastWatchedAtByShowId = new Map([[1, "2026-07-01T00:00:00.000Z"]]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.date).toBe("2026-07-15");
+    expect(result?.daysUntil).toBe(7);
+  });
+
+  it("a show at an up-to-date backlog bucket (0) always wins over one that's still behind on its current season (bucket >= 1) — tier 1 (bucket) is checked first and dominates tiers 2/3 (status/recency) regardless of who's ahead on those", () => {
+    const termineShow = show(1, "Termine Show");
+    const enCoursShow = show(2, "En Cours Show — behind on current season");
+    const termineEpisodes = [ep(termineShow, 401, 4, 1, "2026-08-15")];
+    const activeEpisodes = [
+      // 3 unwatched, already-aired episodes before TODAY — backlog bucket 2 (3+).
+      ep(enCoursShow, 201, 3, 1, "2026-06-01"),
+      ep(enCoursShow, 202, 3, 2, "2026-06-08"),
+      ep(enCoursShow, 203, 3, 3, "2026-06-15"),
+      ep(enCoursShow, 204, 4, 1, "2026-08-15"), // its own season 4 premiere
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([[2, "en_cours"]]);
+    // Even a VERY recent watch, AND a status (en_cours) that would normally
+    // rank ahead of termine, can't compensate for the worse backlog bucket
+    // (tier 1 is checked first, unconditionally, before status or recency).
+    const lastWatchedAtByShowId = new Map([[2, "2026-07-07T00:00:00.000Z"]]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      termineEpisodes,
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(1); // termine (bucket 0) beats en_cours (bucket 2)
+  });
+
+  it("a show at bucket 0 wins over a bucket >= 1 competitor even when the LATTER's status would otherwise rank higher — e.g. an a_voir show that's caught up beats an en_cours show that's fallen behind", () => {
+    const aVoirShow = show(1, "A Voir Show — caught up, ready for its premiere");
+    const enCoursShow = show(2, "En Cours Show — behind on current season");
+    const activeEpisodes = [
+      ep(aVoirShow, 101, 2, 1, "2026-08-15"), // bucket 0 — no backlog at all
+      ep(enCoursShow, 201, 3, 1, "2026-06-01"),
+      ep(enCoursShow, 202, 3, 2, "2026-06-08"),
+      ep(enCoursShow, 203, 3, 3, "2026-06-15"),
+      ep(enCoursShow, 204, 4, 1, "2026-08-15"), // bucket 2 (3+)
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "a_voir"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-01T00:00:00.000Z"],
+      [2, "2026-07-07T00:00:00.000Z"],
+    ]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(1); // bucket 0 wins despite a_voir normally ranking below en_cours
+  });
+
+  it("at an EQUAL backlog bucket (0), `termine` wins over `en_cours` and `a_voir` via the status tier — status is checked BEFORE recency for premieres (unlike 'Sort aujourd'hui')", () => {
+    const termineShow = show(1, "Termine Show");
+    const enCoursShow = show(2, "En Cours Show");
+    const aVoirShow = show(3, "A Voir Show");
+    const termineEpisodes = [ep(termineShow, 401, 2, 1, "2026-08-15")];
+    const activeEpisodes = [
+      ep(enCoursShow, 201, 2, 1, "2026-08-15"),
+      ep(aVoirShow, 301, 2, 1, "2026-08-15"),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [2, "en_cours"],
+      [3, "a_voir"],
+    ]);
+    // Both eligible competitors have a REAL, very recent recency signal —
+    // under the OLD (Lot-1-shared) tier order this would have made one of
+    // them win before the status tier was ever reached (the behavior pinned
+    // and flagged as a caveat in the previous revision). With status
+    // promoted ahead of recency, termine wins regardless.
+    const lastWatchedAtByShowId = new Map([
+      [2, "2026-07-07T00:00:00.000Z"],
+      [3, "2026-07-07T00:00:00.000Z"],
+    ]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      termineEpisodes,
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(1); // termine wins
+  });
+
+  it("at equal bucket AND equal status, `en_cours` beats `a_voir` via the status tier (termine absent from this pairing)", () => {
+    const enCoursShow = show(1, "En Cours Show");
+    const aVoirShow = show(2, "A Voir Show");
+    const activeEpisodes = [
+      ep(enCoursShow, 101, 2, 1, "2026-08-15"),
+      ep(aVoirShow, 201, 2, 1, "2026-08-15"),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "a_voir"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-07-01T00:00:00.000Z"], // older watch than show 2's
+      [2, "2026-07-07T00:00:00.000Z"], // more recent — would win under recency-first ordering
+    ]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    // en_cours wins on STATUS despite a_voir having the more recent watch —
+    // recency never gets a chance to override status here.
+    expect(result?.show.id).toBe(1);
+  });
+
+  it("recency only breaks ties AFTER bucket and status are both tied — e.g. two en_cours candidates, the more recently watched one wins", () => {
+    const staleShow = show(1, "Stale En Cours Show");
+    const freshShow = show(2, "Fresh En Cours Show");
+    const activeEpisodes = [
+      ep(staleShow, 101, 2, 1, "2026-08-15"),
+      ep(freshShow, 201, 2, 1, "2026-08-15"),
+    ];
+    const statusByShowId = new Map<number, ActiveStatus>([
+      [1, "en_cours"],
+      [2, "en_cours"],
+    ]);
+    const lastWatchedAtByShowId = new Map([
+      [1, "2026-06-01T00:00:00.000Z"],
+      [2, "2026-07-07T00:00:00.000Z"], // watched more recently
+    ]);
+
+    const result = selectPremiereSoon(
+      activeEpisodes,
+      [],
+      new Set(),
+      statusByShowId,
+      lastWatchedAtByShowId,
+      TODAY,
+    );
+
+    expect(result?.show.id).toBe(2);
   });
 });

@@ -74,6 +74,11 @@ const ZONE_B = {
   // reasoning as `nextReleases`/`dayGroups` above — so it's grouped here even
   // though it isn't itself derived from `dayGroups`.
   todayRelease: null,
+  // `premiereSoon` (Lot 2, "Nouvelle saison" spotlight, see
+  // `selectPremiereSoon` in schedule.ts) is a strictly-future episode by
+  // construction — same "never touched by recomputeFromBatch" reasoning as
+  // `nextReleases`/`dayGroups` above.
+  premiereSoon: null,
 };
 
 function seedHomeData(qc: QueryClient, userId: string, data: HomeData) {
@@ -150,6 +155,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups); // Zone B untouched (identity)
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
+    expect(cur.premiereSoon).toBe(ZONE_B.premiereSoon);
 
     // --- Tap B (episode 201) while A is still in flight ---
     const patchedB = markWatchedOnMutate(qc, USER_ID, { episodeId: 201, showId: 2 });
@@ -170,6 +176,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
+    expect(cur.premiereSoon).toBe(ZONE_B.premiereSoon);
 
     // --- A's mutation fails (network error) — settled via markWatchedOnSettled(..., "error") ---
     markWatchedOnSettled(qc, USER_ID, 101, "error");
@@ -198,6 +205,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
+    expect(cur.premiereSoon).toBe(ZONE_B.premiereSoon);
 
     // --- B's mutation eventually succeeds — settled via markWatchedOnSettled(..., "success") ---
     markWatchedOnSettled(qc, USER_ID, 201, "success");
