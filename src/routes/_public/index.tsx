@@ -960,8 +960,15 @@ function HomeContent({ data }: { data: HomeData }) {
             aujourd'hui" (ordre validé en état `normal` : Hero → Reprendre →
             Sort aujourd'hui → Bientôt → Programme à venir → À commencer,
             cf. plus bas — "À commencer" n'est plus dans cette Zone A, voir
-            la note sur son nouvel emplacement). */}
-        {state === "normal" && data.nextReleases.length > 0 && (
+            la note sur son nouvel emplacement).
+            Exclusion mutuelle avec "Sort aujourd'hui" (règle produit/design
+            validée) : `!data.todayRelease` — quand une sortie du jour est déjà
+            mise en avant juste au-dessus, "Bientôt" ne se réaffiche pas ici
+            (redondant avec le spotlight "Aujourd'hui"). `nextReleases` lui-même
+            n'est PAS recalculé pour ça : sa sortie future reste visible plus
+            bas, en Zone B ("Programme à venir") — seul CE rendu du bloc est
+            gaté, pas la donnée sous-jacente ni son usage dans `upcoming_only`. */}
+        {state === "normal" && data.nextReleases.length > 0 && !data.todayRelease && (
           <div className="mt-5">
             <NextReleasesBlock items={data.nextReleases} />
           </div>

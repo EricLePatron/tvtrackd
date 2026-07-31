@@ -27,6 +27,30 @@ export type EpisodeLite = {
 
 export type ScheduleEpisode = EpisodeLite & { show: ShowLite };
 
+/**
+ * Whether an episode's `title` is a placeholder TMDb value carrying no real
+ * information beyond the episode number itself — e.g. `"Episode 1"` /
+ * `"Épisode 1"` (TMDb falls back to this generic label for episodes it has
+ * no real title for yet, commonly recently-added or not-yet-detailed
+ * episodes). `null`/empty also counts as generic. Feeds
+ * `NextReleaseHeroCard` (both `soon`/`today` variants): the episode-title
+ * line is only rendered when this returns `false`, rather than showing a
+ * redundant "Épisode 6" right under an already-visible "S02 · E06" line.
+ *
+ * Deliberately an EXACT match against `episode ${episodeNumber}` /
+ * `épisode ${episodeNumber}` (the episode's OWN number, not a loose regex
+ * like `/^episode/i`) — a real episode title that happens to start with or
+ * contain the word "épisode" (e.g. a title literally about an episode of
+ * something else) must never be treated as generic just because it shares
+ * that word; only the exact placeholder pattern for THIS episode's own
+ * number is filtered out.
+ */
+export function isGenericEpisodeTitle(title: string | null, episodeNumber: number): boolean {
+  if (!title || !title.trim()) return true;
+  const normalized = title.trim().toLowerCase();
+  return normalized === `episode ${episodeNumber}` || normalized === `épisode ${episodeNumber}`;
+}
+
 export type ReadyItem = {
   show: ShowLite;
   status: ActiveStatus;

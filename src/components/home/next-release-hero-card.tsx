@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { NextReleaseItem } from "@/lib/schedule";
-import { formatCountdownLabel } from "@/lib/schedule";
+import { formatCountdownLabel, isGenericEpisodeTitle } from "@/lib/schedule";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -33,13 +33,17 @@ function pad(n: number) {
  * Nj") : l'en-tête de section "Bientôt" rendue par l'appelant juste
  * au-dessus porte déjà ce rôle ; en dupliquer un ici serait redondant.
  *
- * S/E mis en avant (phosphore `text-foreground`, jamais ambre — même
- * traitement que le hero, cf. index.tsx `HeroTicket`), le titre de la série
- * au-dessus reste la ligne dominante (`font-display`). Sous le S/E, le titre
- * d'épisode reprend EXACTEMENT le pattern de `HeroTicket` (index.tsx) : même
- * ligne `items-baseline`, S/E `shrink-0`, titre `min-w-0 flex-1 truncate
- * text-sm text-muted-foreground` — jamais l'inverse (le S/E ne cède jamais de
- * place à un titre d'épisode long).
+ * Bloc texte en 3 lignes empilées (revue lisibilité) — plus de partage de
+ * largeur ni avec le badge (déplacé en overlay, voir plus bas) ni entre S/E
+ * et le titre d'épisode (ex-ligne unique `items-baseline` façon `HeroTicket`,
+ * abandonnée ici pour laisser chaque ligne respirer sur toute la largeur) :
+ * 1. Titre de la série (`font-display`), ligne dominante, pleine largeur.
+ * 2. S/E seul (phosphore `text-foreground`, jamais ambre — même traitement
+ *    que le hero, cf. index.tsx `HeroTicket`), sur sa propre ligne.
+ * 3. Titre d'épisode (`text-sm text-muted-foreground`), UNIQUEMENT quand
+ *    `!isGenericEpisodeTitle(...)` — un titre placeholder TMDb ("Épisode N")
+ *    ou `null` n'affiche aucune ligne de remplissage plutôt qu'un "—" vide de
+ *    sens.
  *
  * `variant` ("soon" par défaut) sélectionne le gabarit "Bientôt" existant
  * (pill cyan contour, `formatCountdownLabel`, filet neutre `border-border`).
@@ -60,6 +64,7 @@ export function NextReleaseHeroCard({
 }) {
   const { show, episode, daysUntil } = item;
   const backdropUrl = episode.still_path ?? show.backdrop_path ?? show.poster_path;
+  const showEpisodeTitle = !isGenericEpisodeTitle(episode.title, episode.episode_number);
 
   return (
     <Link
@@ -85,38 +90,32 @@ export function NextReleaseHeroCard({
         </div>
       )}
 
+      {/* Badge/pill de statut — overlay, hors du flux du bloc texte (revue
+          lisibilité) : plus de partage de largeur avec le titre de la série,
+          s'appuie sur le dégradé `from-background/60` ci-dessus pour rester
+          lisible sur l'image. `backdrop-blur-sm` ici est fonctionnel (lisser
+          le contraste sur une image variable), pas un effet glassmorphism
+          décoratif — cf. CLAUDE.md. */}
+      {variant === "today" ? (
+        <span className="absolute right-3 top-3 z-10 rounded-md bg-primary px-3 py-1 font-counter text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground backdrop-blur-sm">
+          Aujourd'hui
+        </span>
+      ) : (
+        <span className="absolute right-3 top-3 z-10 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent backdrop-blur-sm">
+          {formatCountdownLabel(daysUntil)}
+        </span>
+      )}
+
       <div className="relative flex h-full flex-col justify-end p-4">
-        {/* (Design review, minor/cheap) `variant="today"`'s filled
-            "Aujourd'hui" badge is visually wider than `variant="soon"`'s
-            compact "N j" pill (longer word, `tracking-[0.18em]`) — sharing
-            this same `justify-between` row, `min-w-0 flex-1` on the title
-            column means the SERIES title gets a bit more aggressive
-            `line-clamp-1` truncation on narrow mobile widths under
-            `variant="today"` than under `variant="soon"`. Assumed trade-off
-            (badge width wins over title length here), not a bug — flagging
-            for whoever next touches this row's sizing. */}
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">
-              {show.title}
-            </h3>
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <span className="shrink-0 font-counter text-base font-semibold tracking-wide text-foreground">
-                S{pad(episode.season_number)} · E{pad(episode.episode_number)}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {episode.title ?? "—"}
-              </span>
-            </div>
+        <div className="min-w-0 space-y-1">
+          <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">
+            {show.title}
+          </h3>
+          <div className="font-counter text-base font-semibold tracking-wide text-foreground tabular-nums">
+            S{pad(episode.season_number)} · E{pad(episode.episode_number)}
           </div>
-          {variant === "today" ? (
-            <span className="shrink-0 rounded-md bg-primary px-3 py-1 font-counter text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground">
-              Aujourd'hui
-            </span>
-          ) : (
-            <span className="shrink-0 rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 font-counter text-xs tabular-nums text-cyan-accent">
-              {formatCountdownLabel(daysUntil)}
-            </span>
+          {showEpisodeTitle && (
+            <div className="truncate text-sm text-muted-foreground">{episode.title}</div>
           )}
         </div>
       </div>
