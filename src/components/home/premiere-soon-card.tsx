@@ -47,7 +47,7 @@ export function PremiereSoonCard({ item }: { item: NextReleaseItem }) {
           {show.title}
         </h3>
         <p className="mt-1 font-counter text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          Saison {episode.season_number} · Première
+          Saison {episode.season_number}
         </p>
 
         <div className="mt-2 flex items-end justify-between gap-3">
