@@ -155,6 +155,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups); // Zone B untouched (identity)
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
+    expect(cur.premiereSoon).toBe(ZONE_B.premiereSoon);
 
     // --- Tap B (episode 201) while A is still in flight ---
     const patchedB = markWatchedOnMutate(qc, USER_ID, { episodeId: 201, showId: 2 });
@@ -175,6 +176,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
+    expect(cur.premiereSoon).toBe(ZONE_B.premiereSoon);
 
     // --- A's mutation fails (network error) — settled via markWatchedOnSettled(..., "error") ---
     markWatchedOnSettled(qc, USER_ID, 101, "error");
@@ -203,6 +205,7 @@ describe("markWatchedOnMutate / markWatchedOnSettled", () => {
     expect(cur.dayGroups).toBe(ZONE_B.dayGroups);
     expect(cur.upcomingCount).toBe(ZONE_B.upcomingCount);
     expect(cur.nextReleases).toBe(ZONE_B.nextReleases);
+    expect(cur.premiereSoon).toBe(ZONE_B.premiereSoon);
 
     // --- B's mutation eventually succeeds — settled via markWatchedOnSettled(..., "success") ---
     markWatchedOnSettled(qc, USER_ID, 201, "success");

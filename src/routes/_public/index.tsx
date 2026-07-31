@@ -226,8 +226,13 @@ function HomeScreen() {
               .in("episode_id", epIds)
           : Promise.resolve({ data: [] as { episode_id: number }[] }),
         // Minimal fetch, on purpose: only season premieres (`episode_number
-        // = 1`), only strictly future ones, no accompanying `watch_status`
-        // query — `termine` shows are assumed backlog-0 by construction (see
+        // = 1`), only strictly future ones AND within the same `future`
+        // (today+90j) horizon as the active pool above — without this upper
+        // bound, a `termine` show's premiere scheduled far beyond the active
+        // pool's window (e.g. 200+j out) could win `selectPremiereSoon`'s
+        // ranking over a genuinely nearer-term active premiere the screen
+        // never even fetched past `future` to compare against. `termine`
+        // shows are assumed backlog-0 by construction (see
         // `selectPremiereSoon`'s doc comment), so there's nothing else this
         // screen needs to know about them.
         termineShowIds.length
@@ -239,6 +244,7 @@ function HomeScreen() {
               .in("show_id", termineShowIds)
               .eq("episode_number", 1)
               .gt("air_date", today)
+              .lte("air_date", future)
           : Promise.resolve({ data: [] as unknown[] }),
       ]);
       const watchedSet = new Set((watched ?? []).map((w) => w.episode_id));
