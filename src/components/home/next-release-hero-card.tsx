@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { NextReleaseItem } from "@/lib/schedule";
-import { formatCountdownLabel, isGenericEpisodeTitle } from "@/lib/schedule";
+import { formatCountdownLabel, formatDropRange, isGenericEpisodeTitle } from "@/lib/schedule";
+import { SeasonDropTag } from "@/components/home/season-drop-tag";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -39,11 +40,20 @@ function pad(n: number) {
  * abandonnée ici pour laisser chaque ligne respirer sur toute la largeur) :
  * 1. Titre de la série (`font-display`), ligne dominante, pleine largeur.
  * 2. S/E seul (phosphore `text-foreground`, jamais ambre — même traitement
- *    que le hero, cf. index.tsx `HeroTicket`), sur sa propre ligne.
- * 3. Titre d'épisode (`text-sm text-muted-foreground`), UNIQUEMENT quand
- *    `!isGenericEpisodeTitle(...)` — un titre placeholder TMDb ("Épisode N")
- *    ou `null` n'affiche aucune ligne de remplissage plutôt qu'un "—" vide de
- *    sens.
+ *    que le hero, cf. index.tsx `HeroTicket`), sur sa propre ligne, au format
+ *    compact `S02·E01` (sans `tracking-wide` ni espaces autour du `·` — revue
+ *    design "trop espacé", aligné sur le `VhsCounter variant="grid"`). Sur un
+ *    `item.drop` (fournée de toute la saison le même jour, cf.
+ *    `computeSeasonDrop`), la ligne devient une PLAGE `S02·E01–E10`.
+ * 3. Selon le cas :
+ *    - drop → une étiquette neutre `SeasonDropTag` "Saison complète" (drop
+ *      entier, confirmé contre le compte officiel) ou "N épisodes" sinon,
+ *      pour dire explicitement que toute la fournée est dispo plutôt qu'un
+ *      seul épisode ;
+ *    - sinon → titre d'épisode (`text-sm text-muted-foreground`), UNIQUEMENT
+ *      quand `!isGenericEpisodeTitle(...)` — un titre placeholder TMDb
+ *      ("Épisode N") ou `null` n'affiche aucune ligne de remplissage plutôt
+ *      qu'un "—" vide de sens.
  *
  * `variant` ("soon" par défaut) sélectionne le gabarit "Bientôt" existant
  * (pill cyan contour, `formatCountdownLabel`, filet neutre `border-border`).
@@ -62,9 +72,9 @@ export function NextReleaseHeroCard({
   item: NextReleaseItem;
   variant?: "soon" | "today";
 }) {
-  const { show, episode, daysUntil } = item;
+  const { show, episode, daysUntil, drop } = item;
   const backdropUrl = episode.still_path ?? show.backdrop_path ?? show.poster_path;
-  const showEpisodeTitle = !isGenericEpisodeTitle(episode.title, episode.episode_number);
+  const showEpisodeTitle = !drop && !isGenericEpisodeTitle(episode.title, episode.episode_number);
 
   return (
     <Link
@@ -95,11 +105,24 @@ export function NextReleaseHeroCard({
           <h3 className="font-display text-lg leading-tight text-foreground line-clamp-1">
             {show.title}
           </h3>
-          <div className="font-counter text-base font-semibold tracking-wide text-foreground tabular-nums">
-            S{pad(episode.season_number)} · E{pad(episode.episode_number)}
+          {/* Compteur S/E resserré (revue design) — plus de `tracking-wide` ni
+              d'espaces autour du `·`, format compact `S02·E01` aligné sur le
+              `VhsCounter variant="grid"` (`S02·E06`, cf. CLAUDE.md). Sur un
+              drop de saison (Netflix/Amazon), l'épisode seul induirait en
+              erreur : on affiche la PLAGE `S02·E01–E10` (bornes réelles du
+              batch, jamais dégénérée en `E02–E02`, cf. `computeSeasonDrop`)
+              pour signaler d'un coup d'œil que toute la fournée est dispo. */}
+          <div className="font-counter text-base font-semibold text-foreground tabular-nums">
+            {drop
+              ? formatDropRange(episode.season_number, drop)
+              : `S${pad(episode.season_number)}·E${pad(episode.episode_number)}`}
           </div>
-          {showEpisodeTitle && (
-            <div className="truncate text-sm text-muted-foreground">{episode.title}</div>
+          {drop ? (
+            <SeasonDropTag drop={drop} />
+          ) : (
+            showEpisodeTitle && (
+              <div className="truncate text-sm text-muted-foreground">{episode.title}</div>
+            )
           )}
         </div>
       </div>

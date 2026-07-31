@@ -731,7 +731,71 @@ export type NextReleaseItem = {
   /** Raw YYYY-MM-DD air_date of `episode` — feeds `formatUpcomingDayLabel` for the card's secondary line. */
   date: string;
   daysUntil: number;
+  /**
+   * Set when the spotlighted episode is part of a same-day BATCH DROP of its
+   * season — see `SeasonDrop`/`computeSeasonDrop`. Left `undefined` for an
+   * ordinary single-episode release. Populated by BOTH `selectTodayRelease`
+   * ("Sort aujourd'hui") and `selectNextReleases` ("Bientôt") with a
+   * provisional `wholeSeason: false`; the caller then confirms `wholeSeason`
+   * against the official season count via `resolveNextReleaseDrop`.
+   * `selectPremiereSoon` never sets it (a premiere is a single first episode).
+   */
+  drop?: SeasonDrop;
 };
+
+/**
+ * A same-day BATCH DROP of a season — 2+ episodes of the same show+season
+ * sharing one `air_date` (Netflix/Amazon "toute la saison d'un coup", e.g.
+ * Batman: Caped Crusader). `count` = how many dropped that day;
+ * `firstEpisode`/`lastEpisode` = the batch's episode-number span (for a
+ * `S02·E01–E10` range label); `wholeSeason` = true ONLY when the batch is
+ * confirmed to be the entire season against TMDb's official per-season count.
+ */
+export type SeasonDrop = {
+  count: number;
+  firstEpisode: number;
+  lastEpisode: number;
+  wholeSeason: boolean;
+};
+
+/**
+ * Describes whether `showId`'s `seasonNumber` had a same-day BATCH DROP on
+ * `date` — 2+ of its episodes sharing that exact `air_date` (mirrors
+ * `groupUpcomingByDay`'s own `>= 2` "drop" threshold). Returns `undefined`
+ * for a lone episode (the common weekly-release case). Feeds
+ * `selectTodayRelease`'s "Sort aujourd'hui" drop, the counterpart of the
+ * batch info `selectNextReleases` reads straight from `groupUpcomingByDay`.
+ *
+ * `wholeSeason` is returned as a PROVISIONAL `false` here on purpose: whether
+ * the batch is the WHOLE season can only be told against TMDb's official
+ * per-season count (`seasons.episode_count`), NEVER against the episodes
+ * present in `episodes` — that list is bounded by the Home fetch (air_date
+ * non-null, ≤ today+90), so a season released in several waves (a "Part 1 /
+ * Part 2" whose second wave has no announced date yet) has its later episodes
+ * missing entirely, and a naive "batch === cached episodes" check would read
+ * a half-season drop as a full one. The caller confirms `wholeSeason` against
+ * that official count via `resolveNextReleaseDrop`.
+ */
+export function computeSeasonDrop(
+  episodes: ScheduleEpisode[],
+  showId: number,
+  seasonNumber: number,
+  date: string,
+): SeasonDrop | undefined {
+  let count = 0;
+  let firstEpisode = Infinity;
+  let lastEpisode = 0;
+  for (const ep of episodes) {
+    if (ep.show.id !== showId || ep.season_number !== seasonNumber) continue;
+    if (ep.air_date === date) {
+      count++;
+      if (ep.episode_number < firstEpisode) firstEpisode = ep.episode_number;
+      if (ep.episode_number > lastEpisode) lastEpisode = ep.episode_number;
+    }
+  }
+  if (count < 2) return undefined;
+  return { count, firstEpisode, lastEpisode, wholeSeason: false };
+}
 
 /**
  * Up to `limit` distinct-by-show upcoming releases (soonest first) — feeds
@@ -787,17 +851,59 @@ export function selectNextReleases(
       if (excludeShowIds?.has(showId)) continue;
       if (seenShowIds.has(showId)) continue;
       seenShowIds.add(showId);
-      const episode = entry.type === "drop" ? entry.episodes[0] : entry.episode;
+      const isDrop = entry.type === "drop";
+      const episode = isDrop ? entry.episodes[0] : entry.episode;
       result.push({
         show: entry.show,
         episode,
         date: group.date,
         daysUntil: daysBetween(today, group.date),
+        // Batch info comes straight from the day-group's own "drop" entry
+        // (2+ same-day episodes of one show+season — `groupUpcomingByDay`'s
+        // `>= 2` threshold, identical to this card's). `episodes` is already
+        // sorted by `byEpisodeOrder`, so `[0]`/`[last]` give the range bounds.
+        // `wholeSeason` stays a provisional `false` here — the reliable check
+        // needs TMDb's official per-season count, applied by the caller via
+        // `resolveNextReleaseDrop` once that count is fetched (see HomeScreen's
+        // queryFn). Left `undefined` for an ordinary single-episode release.
+        drop: isDrop
+          ? {
+              count: entry.count,
+              firstEpisode: entry.episodes[0].episode_number,
+              lastEpisode: entry.episodes[entry.episodes.length - 1].episode_number,
+              wholeSeason: false,
+            }
+          : undefined,
       });
     }
   }
 
   return result;
+}
+
+/**
+ * Re-resolves a `NextReleaseItem`'s provisional drop `wholeSeason` (always
+ * `false` out of `selectTodayRelease`/`selectNextReleases`, which have no
+ * official count on hand) against `officialEpisodeCount` — TMDb's
+ * `seasons.episode_count`, fetched by the caller for exactly the shows that
+ * have a drop. Uses the SAME `isSeasonTallyReliable` guard as the hero's
+ * progress fraction (`heroProgress`, `deriveHomeView`) so "Saison complète"
+ * is verified against the official count on BOTH drop surfaces ("Sort
+ * aujourd'hui" and "Bientôt"). A no-op (returns the item unchanged) when it
+ * has no drop; fails safe to `wholeSeason: false` when the count is unknown.
+ */
+export function resolveNextReleaseDrop(
+  item: NextReleaseItem,
+  officialEpisodeCount: number | null | undefined,
+): NextReleaseItem {
+  if (!item.drop) return item;
+  return {
+    ...item,
+    drop: {
+      ...item.drop,
+      wholeSeason: isSeasonTallyReliable({ total: item.drop.count }, officialEpisodeCount),
+    },
+  };
 }
 
 /**
@@ -972,7 +1078,8 @@ export function selectTodayRelease(
   );
 
   const winner = candidates[0];
-  return { show: winner.episode.show, episode: winner.episode, date: today, daysUntil: 0 };
+  const drop = computeSeasonDrop(episodes, winner.show.id, winner.episode.season_number, today);
+  return { show: winner.episode.show, episode: winner.episode, date: today, daysUntil: 0, drop };
 }
 
 /** Status of a "Première bientôt" candidate — wider than `ActiveStatus`: includes `termine` (a finished show whose new season is about to premiere), the canonical case this block exists for. `abandonne`/`archive` are structurally excluded — the caller only ever feeds this from the `a_voir`/`en_cours` fetch plus a dedicated `termine`-only fetch (see index.tsx's queryFn), never the other two statuses. */
@@ -1120,6 +1227,18 @@ export function formatCountdownLabel(daysUntil: number): string {
   if (daysUntil === 0) return "aujourd'hui";
   if (daysUntil === 1) return "demain";
   return `${daysUntil} j`;
+}
+
+/**
+ * Libellé S/E d'un `SeasonDrop` sous forme de PLAGE compacte `S02·E01–E10`
+ * (Plex Mono), au lieu du seul épisode "suivant" — trompeur quand toute la
+ * fournée est dispo. Format identique au compteur compact `S{pad}·E{pad}` du
+ * `VhsCounter variant="grid"`, avec un tiret demi-cadratin (U+2013) entre les
+ * deux bornes. Utilisé par `NextReleaseHeroCard` ("Sort aujourd'hui"/"Bientôt").
+ */
+export function formatDropRange(seasonNumber: number, drop: SeasonDrop): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `S${pad(seasonNumber)}·E${pad(drop.firstEpisode)}–E${pad(drop.lastEpisode)}`;
 }
 
 /**

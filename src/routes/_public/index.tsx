@@ -20,6 +20,7 @@ import {
   HOME_TIMEZONE,
   resolveHomeState,
   formatReadyLabel,
+  resolveNextReleaseDrop,
   seasonCountKey,
   selectNextReleases,
   selectPremiereSoon,
@@ -441,6 +442,49 @@ function HomeScreen() {
         excludeShowIds: nextReleasesExcludeShowIds.size ? nextReleasesExcludeShowIds : undefined,
       });
 
+      // "Saison complète" fiable sur "Sort aujourd'hui" ET "Bientôt" (le hero,
+      // lui, ne porte jamais de drop — il garde son compteur watched/total) :
+      // un batch détecté (`todayRelease`/`nextReleases`) ne porte qu'un
+      // `wholeSeason: false` provisoire ; on le confirme ici contre le compte
+      // officiel TMDb (`seasons.episode_count`), même garde
+      // `isSeasonTallyReliable` que la fraction du hero. Fetch CONDITIONNEL
+      // et ciblé — uniquement s'il existe au moins un drop parmi ces deux
+      // cartes (cas rare d'une saison qui sort d'un coup) : aucun round-trip
+      // supplémentaire sur le load courant sans drop, et borné aux (<=2) shows
+      // concernés. Reste un `wholeSeason: false` (→ "N épisodes", toujours
+      // exact) si le compte n'est pas encore en cache.
+      const dropItems = [todayRelease, ...nextReleases].filter(
+        (i): i is NextReleaseItem => !!i?.drop,
+      );
+      let resolvedTodayRelease = todayRelease;
+      let resolvedNextReleases = nextReleases;
+      if (dropItems.length) {
+        const dropShowIds = [...new Set(dropItems.map((i) => i.show.id))];
+        const { data: dropSeasonRows } = await supabase
+          .from("seasons")
+          .select("show_id, season_number, episode_count")
+          .in("show_id", dropShowIds);
+        const dropSeasonCounts = new Map<string, number>(
+          (dropSeasonRows ?? [])
+            .filter(
+              (row): row is { show_id: number; season_number: number; episode_count: number } =>
+                row.episode_count != null,
+            )
+            .map((row): [string, number] => [
+              seasonCountKey(row.show_id, row.season_number),
+              row.episode_count,
+            ]),
+        );
+        const officialFor = (item: NextReleaseItem) =>
+          dropSeasonCounts.get(seasonCountKey(item.show.id, item.episode.season_number)) ?? null;
+        resolvedTodayRelease = todayRelease
+          ? resolveNextReleaseDrop(todayRelease, officialFor(todayRelease))
+          : null;
+        resolvedNextReleases = nextReleases.map((nr) =>
+          resolveNextReleaseDrop(nr, officialFor(nr)),
+        );
+      }
+
       return {
         today,
         followedActiveCount: showIds.length,
@@ -456,8 +500,8 @@ function HomeScreen() {
         readyCount,
         dayGroups,
         upcomingCount,
-        nextReleases,
-        todayRelease,
+        nextReleases: resolvedNextReleases,
+        todayRelease: resolvedTodayRelease,
         premiereSoon,
         raw,
       };
@@ -1345,8 +1389,8 @@ function HeroTicket({
             titre d'épisode long.
           */}
           <div className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 font-counter text-base font-semibold tracking-wide text-foreground">
-              S{pad(nextEpisode.season_number)} · E{pad(nextEpisode.episode_number)}
+            <span className="shrink-0 font-counter text-base font-semibold text-foreground tabular-nums">
+              S{pad(nextEpisode.season_number)}·E{pad(nextEpisode.episode_number)}
             </span>
             <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
               {nextEpisode.title ?? "—"}
