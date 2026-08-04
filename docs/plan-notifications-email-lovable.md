@@ -37,7 +37,7 @@ Pourquoi c'est « le plus simple » : aucune nouvelle donnée métier (réutilis
 2. **Edge function** `notify-new-episodes` — avec un mode `dry_run` (calcule sans envoyer ni logger) **non négociable** pour tester avant le premier envoi réel.
 3. **Edge function** `unsubscribe-notifications` — désactive l'opt-in via `unsubscribe_token`, sans auth (le token EST l'autorisation).
 4. **Route publique** `src/routes/unsubscribe.tsx` (modèle `src/routes/legal/`).
-5. **Toggle** dans `profile.tsx` (Switch shadcn existant, RLS `profiles_update_own` déjà couvrante).
+5. **Section « Notifications » dans l'espace utilisateur** (`profile.tsx`) — switch activer/désactiver que l'utilisateur pilote à tout moment ; reflète et écrit `email_notifications_enabled` (optimistic + toast, RLS `profiles_update_own` déjà couvrante). Même colonne que le lien de désabonnement des mails → les deux restent cohérents.
 6. **Secrets** Supabase : `RESEND_API_KEY`, `NOTIFY_CRON_SECRET` (jamais committés).
 
 ## Prompt Lovable — prêt à coller
@@ -108,7 +108,12 @@ Objectif : envoyer un e-mail digest quotidien "nouveaux épisodes disponibles au
 
 4. Route front src/routes/unsubscribe.tsx (page publique, non authentifiée, sur le modèle des pages simples de src/routes/legal/) : lit le paramètre ?token= de l'URL, appelle unsubscribe-notifications, affiche un message de confirmation clair ("Vous ne recevrez plus de notifications par e-mail").
 
-5. Dans src/routes/_authenticated/profile.tsx, ajoute un switch "Recevoir un e-mail pour les nouveaux épisodes disponibles" qui lit/écrit profiles.email_notifications_enabled (déjà couvert par la policy RLS profiles_update_own existante, pas de nouvelle policy nécessaire) — utilise le composant Switch de shadcn/ui déjà utilisé ailleurs dans le projet, pas un nouveau composant.
+5. Espace utilisateur — activer/désactiver les notifications : dans src/routes/_authenticated/profile.tsx, ajoute une section "Notifications" contenant un switch "Recevoir un e-mail quand un nouvel épisode est disponible" qui :
+   - reflète au chargement l'état stocké dans profiles.email_notifications_enabled (le switch doit montrer la valeur réelle du profil, pas un défaut codé en dur) ;
+   - écrit profiles.email_notifications_enabled à chaque bascule, en optimistic UI + toast de confirmation (cohérent avec le reste de l'app), avec rollback si l'update échoue ;
+   - permet à l'utilisateur d'ACTIVER ET DÉSACTIVER ce réglage à tout moment depuis son espace, indépendamment de la valeur par défaut à l'inscription (email_notifications_enabled DEFAULT false) — ce switch et le lien de désabonnement des mails pointent vers la même colonne, ils doivent rester cohérents (désactiver via le mail doit se refléter sur le switch au prochain chargement, et inversement) ;
+   - affiche un court texte d'aide sous le switch expliquant ce que l'utilisateur recevra (un digest quotidien vers 18h les jours où un épisode suivi sort, désactivable à tout moment).
+   Utilise le composant Switch de shadcn/ui déjà utilisé ailleurs dans le projet (RLS profiles_update_own déjà couvrante, pas de nouvelle policy nécessaire), pas un nouveau composant.
 
 Contraintes impératives :
 - Ne modifie AUCUN fichier existant en dehors de profile.tsx (ajout du switch) et de la création des nouveaux fichiers listés ci-dessus.
