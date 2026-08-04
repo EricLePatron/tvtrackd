@@ -61,10 +61,12 @@ export type Database = {
           followed_shows: number
           id: number
           imported_episodes: number
+          resolved_keys: Json
           source: string
           total_groups: number | null
           unmatched: Json
           unmatched_count: number
+          unmatched_items: Json
           user_id: string
         }
         Insert: {
@@ -72,10 +74,12 @@ export type Database = {
           followed_shows?: number
           id?: number
           imported_episodes?: number
+          resolved_keys?: Json
           source?: string
           total_groups?: number | null
           unmatched?: Json
           unmatched_count?: number
+          unmatched_items?: Json
           user_id: string
         }
         Update: {
@@ -83,10 +87,12 @@ export type Database = {
           followed_shows?: number
           id?: number
           imported_episodes?: number
+          resolved_keys?: Json
           source?: string
           total_groups?: number | null
           unmatched?: Json
           unmatched_count?: number
+          unmatched_items?: Json
           user_id?: string
         }
         Relationships: []
