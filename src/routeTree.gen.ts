@@ -27,6 +27,7 @@ import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as PublicPersonPersonIdRouteImport } from './routes/_public/person.$personId'
+import { Route as AuthenticatedImportRunRunIdRouteImport } from './routes/_authenticated/import-run.$runId'
 import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/show.$mediaType.$tmdbId'
 
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -117,6 +118,12 @@ const PublicPersonPersonIdRoute = PublicPersonPersonIdRouteImport.update({
   path: '/person/$personId',
   getParentRoute: () => PublicRoute,
 } as any)
+const AuthenticatedImportRunRunIdRoute =
+  AuthenticatedImportRunRunIdRouteImport.update({
+    id: '/import-run/$runId',
+    path: '/import-run/$runId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const PublicShowMediaTypeTmdbIdRoute =
   PublicShowMediaTypeTmdbIdRouteImport.update({
     id: '/show/$mediaType/$tmdbId',
@@ -140,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/legal/confidentialite': typeof LegalConfidentialiteRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
+  '/import-run/$runId': typeof AuthenticatedImportRunRunIdRoute
   '/person/$personId': typeof PublicPersonPersonIdRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -159,6 +167,7 @@ export interface FileRoutesByTo {
   '/legal/confidentialite': typeof LegalConfidentialiteRoute
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
+  '/import-run/$runId': typeof AuthenticatedImportRunRunIdRoute
   '/person/$personId': typeof PublicPersonPersonIdRoute
   '/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -181,6 +190,7 @@ export interface FileRoutesById {
   '/legal/cookies': typeof LegalCookiesRoute
   '/legal/mentions-legales': typeof LegalMentionsLegalesRoute
   '/_public/': typeof PublicIndexRoute
+  '/_authenticated/import-run/$runId': typeof AuthenticatedImportRunRunIdRoute
   '/_public/person/$personId': typeof PublicPersonPersonIdRoute
   '/_public/show/$mediaType/$tmdbId': typeof PublicShowMediaTypeTmdbIdRoute
 }
@@ -202,6 +212,7 @@ export interface FileRouteTypes {
     | '/legal/confidentialite'
     | '/legal/cookies'
     | '/legal/mentions-legales'
+    | '/import-run/$runId'
     | '/person/$personId'
     | '/show/$mediaType/$tmdbId'
   fileRoutesByTo: FileRoutesByTo
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/legal/confidentialite'
     | '/legal/cookies'
     | '/legal/mentions-legales'
+    | '/import-run/$runId'
     | '/person/$personId'
     | '/show/$mediaType/$tmdbId'
   id:
@@ -242,6 +254,7 @@ export interface FileRouteTypes {
     | '/legal/cookies'
     | '/legal/mentions-legales'
     | '/_public/'
+    | '/_authenticated/import-run/$runId'
     | '/_public/person/$personId'
     | '/_public/show/$mediaType/$tmdbId'
   fileRoutesById: FileRoutesById
@@ -382,6 +395,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicPersonPersonIdRouteImport
       parentRoute: typeof PublicRoute
     }
+    '/_authenticated/import-run/$runId': {
+      id: '/_authenticated/import-run/$runId'
+      path: '/import-run/$runId'
+      fullPath: '/import-run/$runId'
+      preLoaderRoute: typeof AuthenticatedImportRunRunIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_public/show/$mediaType/$tmdbId': {
       id: '/_public/show/$mediaType/$tmdbId'
       path: '/show/$mediaType/$tmdbId'
@@ -397,6 +417,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedImportRoute: typeof AuthenticatedImportRoute
   AuthenticatedLibraryRoute: typeof AuthenticatedLibraryRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedImportRunRunIdRoute: typeof AuthenticatedImportRunRunIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -404,6 +425,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedImportRoute: AuthenticatedImportRoute,
   AuthenticatedLibraryRoute: AuthenticatedLibraryRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedImportRunRunIdRoute: AuthenticatedImportRunRunIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

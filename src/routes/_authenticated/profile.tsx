@@ -180,12 +180,16 @@ function ImportRunRow({ run }: { run: ImportRun }) {
     : "Import";
 
   return (
-    <div className="flex items-start justify-between rounded-md bg-surface-elevated/50 px-3 py-2.5">
+    <Link
+      to="/import-run/$runId"
+      params={{ runId: String(run.id) }}
+      className="flex items-start justify-between rounded-md bg-surface-elevated/50 px-3 py-2.5 hover:bg-surface-elevated"
+    >
       <div className="min-w-0">
         <p className="text-xs font-medium text-foreground">{sourceLabel}</p>
         <p className="mt-0.5 text-[10px] text-muted-foreground">{date}</p>
       </div>
-      <div className="ml-3 flex shrink-0 gap-3 text-right">
+      <div className="ml-3 flex shrink-0 items-center gap-3 text-right">
         <div>
           <p className="font-counter text-sm text-foreground tabular-nums">
             {run.imported_episodes}
@@ -204,7 +208,8 @@ function ImportRunRow({ run }: { run: ImportRun }) {
             <p className="text-[9px] uppercase tracking-widest text-muted-foreground">manqués</p>
           </div>
         )}
+        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
-    </div>
+    </Link>
   );
 }
