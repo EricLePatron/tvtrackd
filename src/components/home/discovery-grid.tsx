@@ -48,9 +48,10 @@ export function DiscoveryGrid({
 
   return (
     <section className={variant === "grid" ? "mt-10" : "mt-8"}>
-      <h3 className="mb-4 font-display text-xl font-bold text-foreground sm:text-2xl">
+      <h2 className="mb-4 font-display text-xl font-bold text-foreground sm:text-2xl">
         {title}
-      </h3>
+      </h2>
+
       {showError ? (
         <p className="font-counter text-[11px] uppercase tracking-widest text-muted-foreground">
           Indisponible pour le moment

@@ -82,12 +82,16 @@ function SearchScreen() {
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 focus-within:border-primary/60">
           <SearchIcon className="h-4 w-4 text-muted-foreground" />
           <input
+            id="search-query"
+            type="search"
+            aria-label="Rechercher une série ou un film"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Chercher une série ou un film…"
             autoFocus
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
+
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
           ) : (
