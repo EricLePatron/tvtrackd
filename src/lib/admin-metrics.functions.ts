@@ -75,17 +75,17 @@ type WatchActivityRow = {
 export const getAdminMetrics = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<AdminMetrics> => {
-    // Check admin role via RPC (uses authenticated user client, respects RLS)
-    const { data: isAdmin, error: roleError } = await (context.supabase as AnySupabase).rpc(
-      "has_role",
-      {
-        _user_id: context.userId,
-        _role: "admin",
-      },
-    );
-    if (roleError || !isAdmin) {
+    // Check admin role via the user-scoped client (RLS restricts rows to own roles)
+    const { data: roleRow, error: roleError } = await (context.supabase as AnySupabase)
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", context.userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (roleError || !roleRow) {
       throw new Error("Forbidden");
     }
+
 
     // Use service-role client for privileged queries
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
