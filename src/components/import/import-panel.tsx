@@ -297,7 +297,7 @@ export function ImportPanel({
   );
 }
 
-function ResolutionRow({
+export function ResolutionRow({
   item,
   onPick,
   chosen,
