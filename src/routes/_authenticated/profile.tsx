@@ -127,15 +127,8 @@ function ProfileScreen() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard label="Épisodes" value={stats?.episodesWatched ?? 0} />
-          <StatCard
-            label="Heures"
-            value={stats?.hours ?? 0}
-            suffix={stats && stats.days > 0 ? `${stats.days}j` : undefined}
-          />
-          <StatCard label="En cours" value={stats?.inProgress ?? 0} />
-        </div>
+        <ProfileStatsSection userId={user?.id} />
+
 
         {/* Import / Export */}
         <div className="rounded-xl border border-border bg-card p-5">
