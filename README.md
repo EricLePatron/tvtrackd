@@ -2,9 +2,9 @@
 
 # tvtrackd
 
-**Le tracker de séries et de films fiable, rapide et francophone — pensé pour le rituel du visionnage nocturne.**
+**A reliable, fast, French-first tracker for TV shows and movies — built around the ritual of a night in front of a screen.**
 
-_Un produit conçu et piloté en solo, orchestré par une équipe d'agents IA spécialisés._
+_A product designed and driven solo on the product side, orchestrated by a team of specialized AI agents._
 
 <br/>
 
@@ -12,164 +12,164 @@ _Un produit conçu et piloté en solo, orchestré par une équipe d'agents IA sp
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
 ![TanStack Start](https://img.shields.io/badge/TanStack_Start-SSR-FF4154?logo=react-query&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres_·_Auth_·_Edge-3ECF8E?logo=supabase&logoColor=white)
-![TMDb](https://img.shields.io/badge/TMDb-Métadonnées-01B4E4?logo=themoviedatabase&logoColor=white)
+![TMDb](https://img.shields.io/badge/TMDb-Metadata-01B4E4?logo=themoviedatabase&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
 
 </div>
 
 ---
 
-## Pourquoi ce projet existe
+## Why this project exists
 
-Le **15 juillet 2026, TV Time ferme.** L'un des plus gros trackers de séries au monde (25M+ d'utilisateurs revendiqués) est abandonné par son éditeur qui pivote vers l'IA — avec à peine deux semaines de préavis. Du jour au lendemain, des millions de personnes risquent de perdre un historique de visionnage accumulé sur des années.
+On **July 15, 2026, TV Time shuts down.** One of the largest TV-show trackers in the world (25M+ claimed users) is being abandoned by its owner, who is pivoting to AI — with barely two weeks' notice. Overnight, millions of people risk losing a viewing history built up over years.
 
-L'alternative française naturelle, **Betaseries**, a la marque et la communauté mais une exécution technique datée : bugs de synchronisation, désarchivage cassé, bot de recommandation en panne une fois sur deux, lenteurs signalées depuis des années sans correctif.
+The natural French alternative, **Betaseries**, has the brand and the community but a dated, unreliable technical execution: sync bugs, broken un-archiving, a recommendation bot that fails half the time, and slowness reported for years without a fix.
 
-> **La thèse produit :** il y a un vide pour un tracker qui fait _bien_ les choses basiques — fiable, rapide, sans bug — sur le marché francophone. On ne réinvente pas la catégorie : on l'exécute correctement là où les acteurs en place échouent.
+> **The product thesis:** there's a gap for a tracker that does the _basics_ well — reliable, fast, bug-free — for the French-speaking market. We're not reinventing the category; we're executing it correctly where the incumbents fail.
 
-### Le vrai besoin utilisateur (jobs-to-be-done)
+### The real user need (jobs-to-be-done)
 
-| # | Besoin | Ce que ça implique |
-|---|--------|--------------------|
-| 1 | **Tracker fiable** | Marquer vu / à voir, calendrier des sorties, sans bug ni lenteur |
-| 2 | **Mémoire durable** | Un historique de plusieurs années qu'on ne veut plus jamais perdre — l'export de données devient un **argument produit**, pas un détail |
-| 3 | **Découverte qui marche** | Des recommandations pertinentes, pas du remplissage marketing cassé |
+| # | Need | What it implies |
+|---|------|-----------------|
+| 1 | **Reliable tracker** | Mark watched / to-watch, release calendar — no bugs, no lag |
+| 2 | **Durable memory** | A multi-year history you never want to lose again — data export becomes a **product argument**, not a footnote |
+| 3 | **Discovery that works** | Relevant recommendations, not broken marketing filler |
 
 ---
 
-## Ce qui rend ce repo différent : un produit piloté en solo avec une équipe d'agents IA
+## What makes this repo different: a solo-driven product built with a team of AI agents
 
-Ce projet n'est pas seulement une app — c'est une **méthode de développement**. Une seule personne côté produit, mais une organisation complète simulée par des **agents IA spécialisés**, chacun avec un périmètre strict, des règles d'écriture et un droit de veto. L'humain arbitre et valide ; les agents recherchent, planifient, implémentent, relisent.
+This project isn't just an app — it's a **development method**. One person on the product side, but a full organization simulated by **specialized AI agents**, each with a strict scope, its own writing rules, and veto power. The human arbitrates and validates; the agents research, plan, implement, and review.
 
-### L'équipe d'agents
+### The agent team
 
 ```mermaid
 flowchart TD
-    U([👤 Fondateur solo<br/>arbitre &amp; valide]):::human
+    U([👤 Solo founder<br/>arbitrates &amp; validates]):::human
 
-    subgraph Discovery["🔎 Recherche &amp; stratégie — n'écrivent jamais de code applicatif"]
+    subgraph Discovery["🔎 Research &amp; strategy — never write application code"]
         UX[ux-researcher<br/>personas · jobs-to-be-done · verbatims]
-        PROD[entertainment-product-expert<br/>priorisation · specs · benchmark]
+        PROD[entertainment-product-expert<br/>prioritization · specs · benchmark]
         DATA[entertainment-analytics-expert<br/>KPIs · funnels · A/B tests]
-        DES[entertainment-design-expert<br/>design system · revues UI]
-        SEO[seo-expert<br/>intention de recherche · SEO technique]
-        MKT[marketing-communication-expert<br/>positionnement · acquisition]
+        DES[entertainment-design-expert<br/>design system · UI reviews]
+        SEO[seo-expert<br/>search intent · technical SEO]
+        MKT[marketing-communication-expert<br/>positioning · acquisition]
     end
 
-    subgraph Build["⚙️ Fabrication — boucle contrôlée"]
-        DEV[tvtrackd-developer<br/>SEUL agent autorisé à écrire du code<br/>plan → validation → implémentation]
-        QA[tvtrackd-qa-reviewer<br/>revue anti-régression avant tout merge<br/>verdict BLOQUANT / RÉSERVES / OK]
+    subgraph Build["⚙️ Build — a controlled loop"]
+        DEV[tvtrackd-developer<br/>the ONLY agent allowed to write code<br/>plan → validation → implementation]
+        QA[tvtrackd-qa-reviewer<br/>anti-regression review before any merge<br/>verdict BLOCKING / RESERVATIONS / OK]
     end
 
     U --> Discovery
-    Discovery -->|besoins traduits en specs| DEV
-    U -->|valide le plan écrit| DEV
-    DEV -->|diff prêt| QA
-    QA -->|points bloquants| DEV
+    Discovery -->|needs turned into specs| DEV
+    U -->|approves the written plan| DEV
+    DEV -->|diff ready| QA
+    QA -->|blocking issues| DEV
     QA -->|OK| U
 
     classDef human fill:#FF8A3D,stroke:#FF8A3D,color:#0B0E14;
 ```
 
-### Les règles qui rendent ça sérieux (pas un gadget)
+### The rules that make it serious (not a gimmick)
 
-- **Un seul agent écrit du code.** `tvtrackd-developer` est le seul habilité à modifier l'applicatif. Les experts produit / design / SEO / data ne _proposent_ que des specs ; ils ne touchent jamais au code. Cela évite la dérive et garde une frontière nette entre décision et exécution.
-- **Plan écrit → validation humaine → implémentation.** Le développeur ne code jamais sans un plan de recherche validé explicitement. On tranche _avant_ d'écrire, pas après.
-- **QA anti-régression obligatoire avant merge.** `tvtrackd-qa-reviewer` relit chaque diff avec un mandat précis : trouver les **régressions sur l'existant**. Il rend un verdict, ne corrige rien lui-même, et renvoie les points bloquants au développeur. Plusieurs bugs latents ont été trouvés ainsi _avant_ d'atteindre `main` (écrasement silencieux de statut, contraste inaccessible sur le compteur signature…).
-- **La discovery précède le code.** Un vrai dossier UX ([`etude-ux-tvtrackd.md`](./etude-ux-tvtrackd.md)), une roadmap priorisée par impact ([`ROADMAP.md`](./ROADMAP.md)), une étude de mots-clés ([`docs/seo/`](./docs/seo/)) et un plan marketing ([`MARKETING.md`](./MARKETING.md)) nourrissent chaque décision de build.
+- **Only one agent writes code.** `tvtrackd-developer` is the only one allowed to touch the application. The product / design / SEO / data experts only _propose_ specs; they never touch the code. This prevents drift and keeps a clean line between decision and execution.
+- **Written plan → human validation → implementation.** The developer never writes code without a research plan that's been explicitly approved. Decisions are made _before_ writing, not after.
+- **Mandatory anti-regression QA before merge.** `tvtrackd-qa-reviewer` reviews every diff with a precise mandate: find **regressions on existing features**. It returns a verdict, fixes nothing itself, and sends blocking issues back to the developer. Several latent bugs were caught this way _before_ reaching `main` (silent status overwrite, inaccessible contrast on the signature counter, and more).
+- **Discovery precedes code.** A real UX dossier ([`etude-ux-tvtrackd.md`](./etude-ux-tvtrackd.md)), a roadmap prioritized by impact ([`ROADMAP.md`](./ROADMAP.md)), a keyword study ([`docs/seo/`](./docs/seo/)), and a marketing plan ([`MARKETING.md`](./MARKETING.md)) feed every build decision.
 
-> C'est le point que je veux mettre en avant : **penser comme un studio produit à une seule personne.** La valeur n'est pas « j'ai utilisé de l'IA » — c'est l'orchestration, les garde-fous, et la discipline plan → revue → merge qui font que le code livré reste fiable.
+> This is the point worth highlighting: **thinking like a one-person product studio.** The value isn't "I used AI" — it's the orchestration, the guardrails, and the plan → review → merge discipline that keep shipped code reliable.
 
-_Le détail des rôles et des politiques d'écriture vit dans [`.claude/agents/`](./.claude/agents) et [`AGENTS.md`](./AGENTS.md)._
-
----
-
-## Stack technique
-
-| Couche | Choix | Pourquoi |
-|--------|-------|----------|
-| Front | **React 19 + TanStack Start** (SSR), TanStack Router / Query, Tailwind v4, Radix UI | SSR pour le SEO des fiches série/film, routing typé, cache serveur intégré |
-| Back | **Supabase** — Postgres, Auth, Edge Functions (Deno), Cron, Storage | Backend complet, RLS stricte sur chaque table utilisateur |
-| Données | **TMDb API** | Films + séries + images gratuits en une seule source ; cache partagé côté DB avec TTL 24-48 h pour ne pas multiplier les appels |
-| Qualité | TypeScript strict, ESLint, Prettier, **Vitest** | — |
-
-**Choix documenté :** TMDb plutôt que TheTVDB (meilleure précision horaire mais licence commerciale payante, non viable pour un MVP gratuit). Décision réévaluable seulement si la précision horaire devient un vrai pain point remonté.
+_Role definitions and writing policies live in [`.claude/agents/`](./.claude/agents) and [`AGENTS.md`](./AGENTS.md)._
 
 ---
 
-## Fonctionnalités
+## Tech stack
 
-**Livré**
-- 🔐 Auth Supabase (email/mot de passe)
-- 🔎 Recherche TMDb + fiches série/film avec cache partagé
-- 📺 **Tracking épisode par épisode** avec gestion native des rewatchs (`watch_status` : une ligne par visionnage, jamais un booléen)
-- 📚 Bibliothèque par statut (à voir / en cours / terminé / abandonné / archivé) — **le désarchivage fonctionne** (le bug précis qui rend Betaseries frustrant)
-- 🗓️ Accueil « Ce soir » (talon de billet) + rail « Programme » + écran calendrier dédié
-- ⬆️ **Import CSV / JSON / ZIP** des exports TV Time & Betaseries, avec détection explicite de format, matching TMDb et **statut déduit** (jamais tout marqué « en cours » à l'aveugle)
-- ⬇️ Export JSON des données utilisateur — la portabilité comme argument de confiance
-- 🖼️ Génération de cartes de partage, page SEO « alternative à TV Time », pages légales FR
+| Layer | Choice | Why |
+|-------|--------|-----|
+| Front | **React 19 + TanStack Start** (SSR), TanStack Router / Query, Tailwind v4, Radix UI | SSR for show/movie-page SEO, typed routing, built-in server cache |
+| Back | **Supabase** — Postgres, Auth, Edge Functions (Deno), Cron, Storage | Full backend, strict RLS on every user table |
+| Data | **TMDb API** | Movies + shows + images, free, from a single source; a shared DB-side cache with a 24-48h TTL avoids redundant API calls |
+| Quality | Strict TypeScript, ESLint, Prettier, **Vitest** | — |
 
-**Backlog priorisé** (voir [`ROADMAP.md`](./ROADMAP.md))
-Notifications nouvel épisode · moteur de recommandation fiable · tracking film complet (date + rewatch) · profil public en lecture seule · import Trakt (OAuth) · scrobbling streaming.
+**Documented choice:** TMDb over TheTVDB (better airtime precision, but a paid commercial license — not viable for a free MVP). Revisited only if airtime precision becomes a real, user-reported pain point.
 
 ---
 
-## Direction design — la signature
+## Features
 
-Concept : évoquer le **rituel du visionnage** — la cassette, le compteur qui défile, le programme TV du soir — avec une exécution 2026, pas un pastiche. « Vidéo-club nocturne modernisé ».
+**Shipped**
+- 🔐 Supabase auth (email/password)
+- 🔎 TMDb search + show/movie pages with a shared cache
+- 📺 **Episode-by-episode tracking** with native rewatch support (`watch_status`: one row per view, never a boolean)
+- 📚 Library by status (to-watch / watching / finished / dropped / archived) — **un-archiving works** (the exact bug that makes Betaseries frustrating)
+- 🗓️ "Tonight" home hero (ticket stub) + "Schedule" rail + a dedicated calendar screen
+- ⬆️ **CSV / JSON / ZIP import** of TV Time & Betaseries exports, with explicit format detection, TMDb matching, and **inferred status** (never blindly marking everything as "watching")
+- ⬇️ JSON export of user data — portability as a trust argument
+- 🖼️ Share-card generation, an "alternative to TV Time" SEO page, French legal pages
 
-L'élément signature : le suivi de progression n'est **jamais** une checkbox générique, mais un **compteur mécanique façon bande VHS** (chiffres en IBM Plex Mono, léger défilement à l'incrément). Tout le reste reste sobre et discipliné autour de cet unique risque esthétique assumé.
+**Prioritized backlog** (see [`ROADMAP.md`](./ROADMAP.md))
+New-episode notifications · a reliable recommendation engine · full movie tracking (date + rewatch) · read-only public profiles · Trakt import (OAuth) · streaming scrobbling.
+
+---
+
+## Design direction — the signature
+
+Concept: evoke the **ritual of watching** — the cassette, the counter ticking over, tonight's TV listings — with a 2026 execution, not a pastiche. A "modernized late-night video store".
+
+The signature element: progress tracking is **never** a generic checkbox, but a **mechanical VHS-tape counter** (IBM Plex Mono digits, a light roll animation on increment). Everything else stays restrained and disciplined around that single, deliberate aesthetic risk.
 
 ```
---bg-void: #0B0E14      écran éteint      --accent-amber: #FF8A3D   CTA, « en cours »
---bg-surface: #151A24   cartes            --accent-cyan:  #4DD9C4   « vu », succès, stats
---text-primary: #F2EDE4 blanc phosphore   Titres: Archivo Expanded · Corps: Inter · Chiffres: IBM Plex Mono
+--bg-void: #0B0E14      screen off        --accent-amber: #FF8A3D   CTA, "watching"
+--bg-surface: #151A24   cards             --accent-cyan:  #4DD9C4   "watched", success, stats
+--text-primary: #F2EDE4 warm phosphor     Headings: Archivo Expanded · Body: Inter · Numbers: IBM Plex Mono
 ```
 
-Un [skill dédié `anti-ia-slop`](./.claude/skills/anti-ia-slop) garde-fou contre les esthétiques de génération IA « par défaut » : chaque choix visuel doit être ancré dans le concept produit, pas dans la moyenne d'un template.
+A dedicated [`anti-ia-slop` skill](./.claude/skills/anti-ia-slop) guards against "default" AI-generated aesthetics: every visual choice must be anchored in the product concept, not in the average of a template.
 
 ---
 
-## Architecture du repo
+## Repo architecture
 
 ```
 src/
 ├─ routes/               TanStack Start (SSR) — _public / _authenticated / legal
-│  ├─ _public/           accueil, recherche, fiche show, calendrier, alternative-tv-time
-│  └─ _authenticated/    bibliothèque, import, profil, admin
+│  ├─ _public/           home, search, show page, calendar, alternative-tv-time
+│  └─ _authenticated/    library, import, profile, admin
 ├─ components/           show · home · import · profile · onboarding · ui (design system)
-├─ lib/                  app-config, import-parsers, share-card, métriques admin…
-└─ integrations/supabase client typé
+├─ lib/                  app-config, import-parsers, share-card, admin metrics…
+└─ integrations/supabase typed client
 
 supabase/
 ├─ functions/            search-media · get-show-details · import-history · export-data
 │                        · public-calendar · trending-media · similar-media …
-└─ migrations/           schéma versionné (shows, seasons, episodes, user_shows, watch_status)
+└─ migrations/           versioned schema (shows, seasons, episodes, user_shows, watch_status)
 
-docs/                    product/ · design/ · seo/     — dossiers de discovery
-.claude/agents/          l'équipe d'agents IA          — voir plus haut
+docs/                    product/ · design/ · seo/     — discovery dossiers
+.claude/agents/          the AI agent team             — see above
 ```
 
 ---
 
-## Démarrer en local
+## Run it locally
 
 ```bash
 bun install
-# Renseigner un fichier .env avec les clés Supabase & TMDb
-bun run dev               # serveur de dev (SSR)
+# Fill a .env file with your Supabase & TMDb keys
+bun run dev               # dev server (SSR)
 ```
 
 ```bash
 bun run test              # Vitest
 bun run lint              # ESLint
-bun run build             # build de production (SSR)
+bun run build             # production build (SSR)
 ```
 
 ---
 
 <div align="center">
 
-_Construit pour les gens qui n'ont pas envie de perdre dix ans d'historique de séries une deuxième fois._
+_Built for people who don't want to lose ten years of viewing history a second time._
 
 </div>
