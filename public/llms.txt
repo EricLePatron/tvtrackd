@@ -1,0 +1,19 @@
+# tvtrackd
+
+> tvtrackd est un tracker de séries francophone : suivez vos séries épisode par épisode, consultez le calendrier des sorties et importez votre historique TV Time ou BetaSeries.
+
+tvtrackd permet de marquer les épisodes vus (rewatchs inclus), d'organiser sa bibliothèque par statut (à voir, en cours, terminé, abandonné, archivé), de suivre les prochaines diffusions et d'exporter ses données à tout moment. Les métadonnées proviennent de TMDb.
+
+## Pages
+
+- [Accueil](/): Prochain épisode à voir, programme des sorties et découvertes du moment.
+- [Calendrier](/calendar): Calendrier des sorties d'épisodes, par jour ou par semaine.
+- [Recherche](/search): Rechercher une série et consulter sa fiche.
+- [Alternative à TV Time](/alternative-tv-time): Migrer depuis TV Time après sa fermeture, import de l'historique.
+
+## Optional
+
+- [Mentions légales](/legal/mentions-legales): Éditeur et hébergeur du site.
+- [Confidentialité](/legal/confidentialite): Traitement des données personnelles.
+- [CGU](/legal/cgu): Conditions générales d'utilisation.
+- [Cookies](/legal/cookies): Politique de cookies.
