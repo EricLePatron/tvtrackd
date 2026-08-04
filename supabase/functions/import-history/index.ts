@@ -182,6 +182,9 @@ Deno.serve(async (req) => {
     let followed = 0;
     const unmatched: { key: string; title: string; year: number | null; occurrences: number }[] =
       [];
+    // Items bruts des groupes non matchés : conservés dans import_runs pour
+    // permettre la correction manuelle + relance depuis le détail d'un import.
+    const unmatchedItems: Item[] = [];
 
     for (const [key, group] of groups) {
       const first = group[0];
@@ -206,6 +209,7 @@ Deno.serve(async (req) => {
 
       if (!tmdbId) {
         unmatched.push({ key, title: first.title, year, occurrences: group.length });
+        if (unmatchedItems.length < 5000) unmatchedItems.push(...group);
         continue;
       }
 
@@ -346,6 +350,7 @@ Deno.serve(async (req) => {
       followed_shows: followed,
       unmatched_count: unmatched.length,
       unmatched,
+      unmatched_items: unmatchedItems,
       total_groups: groups.size,
     });
 
