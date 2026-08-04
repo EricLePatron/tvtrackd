@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ScreenHeader } from "@/components/screen-header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { estimateWatchMinutes } from "@/lib/watch-time";
+import { ProfileStatsSection } from "@/components/profile/stats-section";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfileScreen,
@@ -40,29 +40,6 @@ function ProfileScreen() {
       .maybeSingle()
       .then(({ data }) => data && setUsername(data.username));
   }, []);
-
-  const { data: stats } = useQuery({
-    queryKey: ["profile-stats", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const [watchRes, showsRes] = await Promise.all([
-        supabase.from("watch_status").select("watch_count").eq("user_id", user!.id),
-        supabase.from("user_shows").select("status").eq("user_id", user!.id),
-      ]);
-      const episodesWatched = (watchRes.data ?? []).reduce(
-        (sum, r) => sum + (r.watch_count ?? 1),
-        0,
-      );
-      const inProgress = (showsRes.data ?? []).filter((s) => s.status === "en_cours").length;
-      const minutes = estimateWatchMinutes(episodesWatched);
-      return {
-        episodesWatched,
-        inProgress,
-        hours: Math.round(minutes / 60),
-        days: Math.floor(minutes / (60 * 24)),
-      };
-    },
-  });
 
   // Historique des runs d'import (20 plus récents)
   const { data: importRuns } = useQuery({
@@ -228,18 +205,6 @@ function ImportRunRow({ run }: { run: ImportRun }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <p className="font-counter text-2xl text-foreground tabular-nums">
-        {value.toString().padStart(2, "0")}
-      </p>
-      {suffix && <p className="font-counter text-[10px] text-secondary">≈ {suffix}</p>}
-      <p className="mt-1 text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
     </div>
   );
 }
