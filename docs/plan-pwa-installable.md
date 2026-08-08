@@ -68,6 +68,47 @@ Dev courant (ajout de fichiers/balises, pas de refonte visuelle) → **Claude Co
 - Décider si on profite de ce lot pour migrer les littéraux « tvtrackd » déjà en dur dans `__root.tsx` (title/og/JSON-LD) vers `APP_NAME` (aujourd'hui documenté comme hors-scope délibéré) — à trancher explicitement.
 - Exports d'icônes = dépendance à la production des assets design.
 
+## Prompt Lovable — solution A (prêt à coller)
+
+```
+Contexte : tvtrackd est un tracker de séries (TanStack Start SSR + Vite + React 19 + Supabase, déployé via Cloudflare). Objectif : rendre l'app INSTALLABLE en PWA, solution minimale SANS service worker (pas d'offline, pas de cache — on veut juste l'ajout à l'écran d'accueil et le lancement en standalone). Ne crée AUCUN service worker, n'installe PAS vite-plugin-pwa, ne modifie PAS vite.config.ts.
+
+Contraintes de repo à respecter :
+- Le <head> est géré par la fonction head() de createRootRouteWithContext dans src/routes/__root.tsx (meta/links), rendu via <HeadContent /> — il n'y a pas d'index.html statique. Ajoute donc les balises PWA dans head(), pas ailleurs.
+- APP_NAME et SITE_URL vivent dans src/lib/app-config.ts. Le nom d'app et le domaine ne sont PAS tranchés juridiquement : n'écris JAMAIS "tvtrackd" en dur dans les nouveaux fichiers, dérive le nom de APP_NAME.
+- Design system dark-only : fond #0B0E14, accent CTA ambre #FF8A3D, accent cyan #4DD9C4, texte #F2EDE4. N'introduis aucune nouvelle couleur, police ou pattern de composant. Réutilise le composant Switch/Button/Sheet de shadcn déjà présents, les icônes lucide-react déjà utilisées, et le hook useReducedMotion existant.
+
+À réaliser :
+
+1. ICÔNES (public/icons/) — génère un jeu d'icônes d'app à partir de ce glyphe abstrait (NE dessine PAS de cassette VHS ni d'écran de TV ni de triangle "play" — ce sont des clichés à éviter) :
+   - fond plein #0B0E14, coin arrondi ~18% du canvas, aucun dégradé, aucun halo derrière le glyphe ;
+   - au centre, deux barres arrondies horizontales empilées : la barre du haut en cyan #4DD9C4 (plus longue, ~55% de la largeur utile), la barre du bas en ambre #FF8A3D (plus courte, ~35%), fine séparation entre les deux, léger glow uniquement sur la barre cyan ;
+   - jamais de chiffre lisible, le glyphe reste abstrait.
+   Exporte : icon-192.png (192x192, purpose any), icon-512.png (512x512, any), icon-192-maskable.png et icon-512-maskable.png (purpose maskable : glyphe contenu dans une zone de sécurité ~80% du canvas, fond void bord à bord), apple-touch-icon.png (180x180, OPAQUE sans transparence, ne pas pré-arrondir), et remplace le favicon par défaut (32x32/16x16, + version SVG si possible). (Ces icônes sont des placeholders acceptables ; le jeu final viendra du design — garde des noms de fichiers stables.)
+
+2. MANIFEST — crée public/manifest.webmanifest avec : name et short_name dérivés de APP_NAME (voir note ci-dessous), start_url "/", scope "/", display "standalone", theme_color "#0B0E14", background_color "#0B0E14", lang "fr", et le tableau icons pointant vers les fichiers ci-dessus (avec purpose "any" et "maskable" corrects). N'AJOUTE PAS de clé orientation (pas de lock). 
+   Note name/short_name : comme un .webmanifest statique ne peut pas importer APP_NAME, préfère générer ce manifest via un server route/handler qui lit APP_NAME et renvoie le JSON avec Content-Type application/manifest+json ; si tu pars sur un fichier statique, mets une valeur cohérente avec APP_NAME et un commentaire renvoyant vers src/lib/app-config.ts comme source de vérité à resynchroniser.
+
+3. BALISES dans head() de src/routes/__root.tsx (ne casse pas les meta existantes, dont theme-color #0B0E14 déjà présente) :
+   - links : { rel: "manifest", href: "/manifest.webmanifest" }, { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" } ;
+   - meta : { name: "apple-mobile-web-app-capable", content: "yes" }, { name: "apple-mobile-web-app-status-bar-style", content: "black" }, { name: "apple-mobile-web-app-title", content: <valeur APP_NAME> }.
+
+4. BANDEAU D'INSTALLATION — crée un composant (ex. src/components/pwa-install-prompt.tsx) monté dans l'app shell, avec ces règles IMPÉRATIVES :
+   a. NE JAMAIS afficher le bandeau si l'app est DÉJÀ INSTALLÉE / lancée en mode app. Détecte-le par : window.matchMedia("(display-mode: standalone)").matches === true OU (navigator.standalone === true) [cas iOS]. Si l'un des deux est vrai, le composant ne rend rien du tout.
+   b. Écoute l'événement "appinstalled" sur window : dès qu'il se déclenche, masque immédiatement le bandeau ET persiste un flag localStorage ("pwa-installed") pour ne plus jamais le montrer, même après réouverture dans le navigateur.
+   c. Écoute "beforeinstallprompt" (Android/Chrome) : preventDefault(), stocke l'événement différé ; le CTA du bandeau appellera .prompt() puis exploitera userChoice.
+   d. Déclenchement : NE PAS montrer au premier écran ni sur un timer. N'afficher qu'après un SIGNAL D'ENGAGEMENT réel — expose un moyen (ex. un petit helper/localStorage flag "pwa-engaged" positionné) déclenché après le premier épisode marqué vu (voir src/hooks/use-mark-watched.ts) OU après un import réussi. Le bandeau apparaît seulement une fois ce flag présent.
+   e. Fréquence : afficher UNE SEULE FOIS. Si l'utilisateur ferme/refuse ("Plus tard"), persiste-le en localStorage ("pwa-prompt-dismissed") et ne le remontre jamais, ni dans la session ni aux visites suivantes.
+   f. Ne pas afficher sur desktop Chrome (où l'omnibox propose déjà l'installation) : n'affiche le variant Android que si l'événement beforeinstallprompt a été capté (mobile), sinon rien.
+   g. iOS (Safari, non-standalone, pas de beforeinstallprompt) : au même déclencheur d'engagement, affiche le MÊME bandeau mais avec un contenu d'INSTRUCTIONS en deux étapes ("Appuyez sur Partager, puis « Sur l'écran d'accueil »") en réutilisant les icônes lucide share/plus — pas de bouton actionnable puisque iOS n'a pas d'API. Détecte iOS Safari non-standalone de façon simple (userAgent iOS + navigator.standalone !== true).
+   h. Forme visuelle : une feuille basse (Sheet/carte) positionnée AU-DESSUS de la bottom nav, PAS une modale bloquante. Grammaire carte existante (fond near-void, filet 1px, rounded-xl). Un seul CTA fort en ambre "Ajouter à l'écran d'accueil" (Android) + un lien discret "Plus tard". Reveal via l'animation existante, en respectant useReducedMotion. N'introduis aucune nouvelle couleur ni animation.
+
+Contraintes finales :
+- Ne modifie aucun fichier existant hormis src/routes/__root.tsx (balises head), le montage du bandeau dans l'app shell, et éventuellement un point d'appel du flag d'engagement dans le flux "marquer vu"/"import". Tout le reste = nouveaux fichiers.
+- Aucun service worker, aucun cache, aucune interception réseau (le produit est SSR + auth Supabase : on ne veut RIEN qui puisse servir du contenu périmé).
+- Teste que : sur Chrome Android le bandeau apparaît après engagement et déclenche l'installation ; après installation (ou en mode standalone) le bandeau NE réapparaît JAMAIS ; sur iOS Safari les instructions s'affichent une fois ; sur desktop rien d'intrusif.
+```
+
 ## Checklist
 
 - [ ] Produire les icônes (192/512 any + maskable, apple-touch 180 opaque, favicon).
