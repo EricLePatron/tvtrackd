@@ -120,29 +120,32 @@ export function ShareWatchDialog({
     const blob = blobRef.current;
     if (!blob) return;
 
-    // On saute la feuille de partage iOS + le sélecteur Reel/Publication/Story :
-    // l'image est enregistrée localement puis on ouvre directement le
-    // composeur de story via le schéma `instagram-stories://share`, qui
-    // atterrit sur l'écran story de l'app (l'image est à sélectionner depuis
-    // la pellicule, le web ne pouvant pas écrire dans le presse-papier natif
-    // d'Instagram).
-    downloadBlob(blob, filename);
-    await copyText(instagramUrl);
+    // Sur mobile, le partage natif de fichier est le seul chemin qui envoie
+    // réellement l'image à Instagram (« Stories » apparaît dans la feuille de
+    // partage iOS/Android). Le téléchargement via <a download> échoue sur iOS
+    // Safari : il ouvre un aperçu de fichier au lieu d'enregistrer.
+    const file = new File([blob], filename, { type: "image/png" });
+    const canShareFile =
+      typeof navigator !== "undefined" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [file] });
 
-    const ua = navigator.userAgent || "";
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
-    if (isMobile) {
-      window.location.href = "instagram-stories://share?source_application=tvtrackd";
-      // Repli si Instagram n'est pas installé : ouverture du web.
-      setTimeout(() => {
-        if (!document.hidden) window.location.href = "instagram://story-camera";
-      }, 1200);
-      toast.success("Image enregistrée — sélectionnez-la dans votre story");
-      return;
+    if (canShareFile) {
+      try {
+        await navigator.share({ files: [file] });
+        copyText(instagramUrl);
+        return;
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+      }
     }
 
+    // Repli desktop / navigateurs sans partage de fichier.
+    downloadBlob(blob, filename);
+    await copyText(instagramUrl);
     toast.success("Image téléchargée et lien copié — à publier en story");
   };
+
 
   const shareTwitter = async () => {
     // X n'accepte pas de fichier via une URL d'intention : on télécharge
