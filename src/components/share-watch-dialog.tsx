@@ -119,27 +119,29 @@ export function ShareWatchDialog({
   const shareInstagram = async () => {
     const blob = blobRef.current;
     if (!blob) return;
-    const file = new File([blob], filename, { type: "image/png" });
-    if (navigator.canShare?.({ files: [file] })) {
-      // Instagram ne rend pas l'image cliquable : le seul moyen de renvoyer
-      // vers la fiche est le sticker « Lien ». On copie donc l'URL de la
-      // série en amont pour un simple collage dans ce sticker.
-      await copyText(instagramUrl);
-      try {
-        await navigator.share({ files: [file], url: instagramUrl });
-        toast.success("Lien de la série copié — collez-le dans le sticker « Lien »");
-        return;
-      } catch (err) {
-        if ((err as Error)?.name === "AbortError") return;
-      }
-    }
+
+    // On saute la feuille de partage iOS + le sélecteur Reel/Publication/Story :
+    // l'image est enregistrée localement puis on ouvre directement le
+    // composeur de story via le schéma `instagram-stories://share`, qui
+    // atterrit sur l'écran story de l'app (l'image est à sélectionner depuis
+    // la pellicule, le web ne pouvant pas écrire dans le presse-papier natif
+    // d'Instagram).
     downloadBlob(blob, filename);
-    const ok = await copyText(instagramUrl);
-    toast.success(
-      ok
-        ? "Image téléchargée et lien copié — ajoutez un sticker « Lien » à la story"
-        : "Image téléchargée — à publier en story",
-    );
+    await copyText(instagramUrl);
+
+    const ua = navigator.userAgent || "";
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+    if (isMobile) {
+      window.location.href = "instagram-stories://share?source_application=tvtrackd";
+      // Repli si Instagram n'est pas installé : ouverture du web.
+      setTimeout(() => {
+        if (!document.hidden) window.location.href = "instagram://story-camera";
+      }, 1200);
+      toast.success("Image enregistrée — sélectionnez-la dans votre story");
+      return;
+    }
+
+    toast.success("Image téléchargée et lien copié — à publier en story");
   };
 
   const shareTwitter = async () => {
