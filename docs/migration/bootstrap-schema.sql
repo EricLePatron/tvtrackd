@@ -1,7 +1,7 @@
 -- ===== 20260703094535_c9e306dc-1e21-4707-b150-9e210e30df9b.sql =====
 
 -- profiles
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username text,
   avatar_url text,
@@ -10,12 +10,15 @@ CREATE TABLE public.profiles (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
 GRANT ALL ON public.profiles TO service_role;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
 CREATE POLICY "profiles_select_own" ON public.profiles FOR SELECT TO authenticated USING (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_insert_own" ON public.profiles;
 CREATE POLICY "profiles_insert_own" ON public.profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
 CREATE POLICY "profiles_update_own" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 -- shows (cache partagé, lecture publique)
-CREATE TABLE public.shows (
+CREATE TABLE IF NOT EXISTS public.shows (
   id serial PRIMARY KEY,
   tmdb_id int UNIQUE NOT NULL,
   media_type text NOT NULL CHECK (media_type IN ('tv','movie')),
@@ -29,10 +32,11 @@ CREATE TABLE public.shows (
 GRANT SELECT ON public.shows TO anon, authenticated;
 GRANT ALL ON public.shows TO service_role;
 ALTER TABLE public.shows ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "shows_public_read" ON public.shows;
 CREATE POLICY "shows_public_read" ON public.shows FOR SELECT TO anon, authenticated USING (true);
 
 -- seasons
-CREATE TABLE public.seasons (
+CREATE TABLE IF NOT EXISTS public.seasons (
   id serial PRIMARY KEY,
   show_id int NOT NULL REFERENCES public.shows(id) ON DELETE CASCADE,
   season_number int NOT NULL,
@@ -42,10 +46,11 @@ CREATE TABLE public.seasons (
 GRANT SELECT ON public.seasons TO anon, authenticated;
 GRANT ALL ON public.seasons TO service_role;
 ALTER TABLE public.seasons ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "seasons_public_read" ON public.seasons;
 CREATE POLICY "seasons_public_read" ON public.seasons FOR SELECT TO anon, authenticated USING (true);
 
 -- episodes
-CREATE TABLE public.episodes (
+CREATE TABLE IF NOT EXISTS public.episodes (
   id serial PRIMARY KEY,
   show_id int NOT NULL REFERENCES public.shows(id) ON DELETE CASCADE,
   season_number int NOT NULL,
@@ -58,10 +63,11 @@ CREATE TABLE public.episodes (
 GRANT SELECT ON public.episodes TO anon, authenticated;
 GRANT ALL ON public.episodes TO service_role;
 ALTER TABLE public.episodes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "episodes_public_read" ON public.episodes;
 CREATE POLICY "episodes_public_read" ON public.episodes FOR SELECT TO anon, authenticated USING (true);
 
 -- user_shows
-CREATE TABLE public.user_shows (
+CREATE TABLE IF NOT EXISTS public.user_shows (
   id serial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   show_id int NOT NULL REFERENCES public.shows(id) ON DELETE CASCADE,
@@ -72,13 +78,17 @@ CREATE TABLE public.user_shows (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_shows TO authenticated;
 GRANT ALL ON public.user_shows TO service_role;
 ALTER TABLE public.user_shows ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "user_shows_select_own" ON public.user_shows;
 CREATE POLICY "user_shows_select_own" ON public.user_shows FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "user_shows_insert_own" ON public.user_shows;
 CREATE POLICY "user_shows_insert_own" ON public.user_shows FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "user_shows_update_own" ON public.user_shows;
 CREATE POLICY "user_shows_update_own" ON public.user_shows FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "user_shows_delete_own" ON public.user_shows;
 CREATE POLICY "user_shows_delete_own" ON public.user_shows FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 -- watch_status
-CREATE TABLE public.watch_status (
+CREATE TABLE IF NOT EXISTS public.watch_status (
   id serial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   episode_id int NOT NULL REFERENCES public.episodes(id) ON DELETE CASCADE,
@@ -88,9 +98,13 @@ CREATE TABLE public.watch_status (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.watch_status TO authenticated;
 GRANT ALL ON public.watch_status TO service_role;
 ALTER TABLE public.watch_status ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "watch_status_select_own" ON public.watch_status;
 CREATE POLICY "watch_status_select_own" ON public.watch_status FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "watch_status_insert_own" ON public.watch_status;
 CREATE POLICY "watch_status_insert_own" ON public.watch_status FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "watch_status_update_own" ON public.watch_status;
 CREATE POLICY "watch_status_update_own" ON public.watch_status FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "watch_status_delete_own" ON public.watch_status;
 CREATE POLICY "watch_status_delete_own" ON public.watch_status FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 -- Auto-create profile on signup
@@ -107,7 +121,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER on_auth_user_created
+CREATE OR REPLACE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
@@ -117,11 +131,36 @@ REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authentic
 
 -- ===== 20260703095703_c8c24b4c-c76d-4966-aadd-c13b12752640.sql =====
 -- Add unique constraints needed for TMDb upsert flows
-ALTER TABLE public.shows ADD CONSTRAINT shows_tmdb_media_unique UNIQUE (tmdb_id, media_type);
-ALTER TABLE public.seasons ADD CONSTRAINT seasons_show_season_unique UNIQUE (show_id, season_number);
-ALTER TABLE public.episodes ADD CONSTRAINT episodes_show_season_ep_unique UNIQUE (show_id, season_number, episode_number);
-ALTER TABLE public.user_shows ADD CONSTRAINT user_shows_user_show_unique UNIQUE (user_id, show_id);
-ALTER TABLE public.watch_status ADD CONSTRAINT watch_status_user_ep_unique UNIQUE (user_id, episode_id);
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'shows_tmdb_media_unique' AND conrelid = 'public.shows'::regclass) THEN
+    ALTER TABLE public.shows ADD CONSTRAINT shows_tmdb_media_unique UNIQUE (tmdb_id, media_type);
+  END IF;
+END $do$;
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'seasons_show_season_unique' AND conrelid = 'public.seasons'::regclass) THEN
+    ALTER TABLE public.seasons ADD CONSTRAINT seasons_show_season_unique UNIQUE (show_id, season_number);
+  END IF;
+END $do$;
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'episodes_show_season_ep_unique' AND conrelid = 'public.episodes'::regclass) THEN
+    ALTER TABLE public.episodes ADD CONSTRAINT episodes_show_season_ep_unique UNIQUE (show_id, season_number, episode_number);
+  END IF;
+END $do$;
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'user_shows_user_show_unique' AND conrelid = 'public.user_shows'::regclass) THEN
+    ALTER TABLE public.user_shows ADD CONSTRAINT user_shows_user_show_unique UNIQUE (user_id, show_id);
+  END IF;
+END $do$;
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'watch_status_user_ep_unique' AND conrelid = 'public.watch_status'::regclass) THEN
+    ALTER TABLE public.watch_status ADD CONSTRAINT watch_status_user_ep_unique UNIQUE (user_id, episode_id);
+  END IF;
+END $do$;
 
 -- Grant service_role full access for edge functions (needed for upserts)
 GRANT ALL ON public.shows TO service_role;
@@ -136,7 +175,7 @@ GRANT USAGE, SELECT ON SEQUENCE public.episodes_id_seq TO service_role;
 -- Betaseries, qui ne fournit qu'un dernier épisode vu et un statut de complétion,
 -- sans date par épisode). Additif uniquement : aucune contrainte existante modifiée.
 ALTER TABLE public.watch_status
-  ADD COLUMN watched_at_approximate boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS watched_at_approximate boolean NOT NULL DEFAULT false;
 
 -- ===== 20260704120008_episodes_show_air_date_index.sql =====
 -- Perf: the /calendar timeline (bidirectional scroll, unlimited backward
@@ -150,9 +189,9 @@ CREATE INDEX IF NOT EXISTS episodes_show_id_air_date_idx
 
 -- ===== 20260705085630_b06deb43-8898-48cc-a7bb-b8eac22f85fe.sql =====
 ALTER TABLE public.shows
-  ADD COLUMN genres text[] NOT NULL DEFAULT '{}',
-  ADD COLUMN vote_average numeric,
-  ADD COLUMN tagline text;
+  ADD COLUMN IF NOT EXISTS genres text[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS vote_average numeric,
+  ADD COLUMN IF NOT EXISTS tagline text;
 
 UPDATE public.shows SET cached_at = 'epoch';
 -- ===== 20260705120000_show_metadata.sql =====
@@ -192,7 +231,7 @@ UPDATE public.shows SET cached_at = 'epoch';
 -- ne fait que figer `status`, il ne touche jamais à `watch_status`.
 
 ALTER TABLE public.user_shows
-  ADD COLUMN manual_override text CHECK (manual_override IN ('abandonne', 'archive'));
+  ADD COLUMN IF NOT EXISTS manual_override text CHECK (manual_override IN ('abandonne', 'archive'));
 
 -- ------------------------------------------------------------------------
 -- compute_tv_status : reprend deduceStatus()/getShowProgress() de l'edge
@@ -356,7 +395,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER watch_status_recompute_status
+CREATE OR REPLACE TRIGGER watch_status_recompute_status
 AFTER INSERT OR UPDATE OR DELETE ON public.watch_status
 FOR EACH ROW EXECUTE FUNCTION public.trg_watch_status_recompute();
 
@@ -382,7 +421,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER episodes_recompute_status
+CREATE OR REPLACE TRIGGER episodes_recompute_status
 AFTER INSERT ON public.episodes
 FOR EACH ROW EXECUTE FUNCTION public.trg_episodes_recompute();
 
@@ -404,7 +443,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER seasons_recompute_status
+CREATE OR REPLACE TRIGGER seasons_recompute_status
 AFTER INSERT OR UPDATE OF episode_count ON public.seasons
 FOR EACH ROW EXECUTE FUNCTION public.trg_seasons_recompute();
 
@@ -434,7 +473,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER shows_recompute_status
+CREATE OR REPLACE TRIGGER shows_recompute_status
 AFTER UPDATE OF status ON public.shows
 FOR EACH ROW EXECUTE FUNCTION public.trg_shows_recompute();
 
@@ -465,7 +504,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER user_shows_manual_override_recompute
+CREATE OR REPLACE TRIGGER user_shows_manual_override_recompute
 AFTER UPDATE OF manual_override ON public.user_shows
 FOR EACH ROW
 WHEN (NEW.manual_override IS DISTINCT FROM OLD.manual_override)
@@ -539,7 +578,7 @@ END $$;
 
 DROP FUNCTION IF EXISTS public.apply_computed_status(int, uuid);
 
-CREATE FUNCTION public.apply_computed_status(
+CREATE OR REPLACE FUNCTION public.apply_computed_status(
   p_show_id int,
   p_user_id uuid,
   p_new_watch_event boolean DEFAULT false
@@ -623,7 +662,7 @@ $$;
 
 -- ===== 20260707052758_347ab50e-3988-43bd-97c4-10f6906bce84.sql =====
 ALTER TABLE public.user_shows
-  ADD COLUMN manual_override text CHECK (manual_override IN ('abandonne', 'archive'));
+  ADD COLUMN IF NOT EXISTS manual_override text CHECK (manual_override IN ('abandonne', 'archive'));
 
 CREATE OR REPLACE FUNCTION public.compute_tv_status(p_show_id int, p_user_id uuid)
 RETURNS text
@@ -701,7 +740,7 @@ $$;
 DROP FUNCTION IF EXISTS public.apply_computed_status(int, uuid);
 DROP FUNCTION IF EXISTS public.apply_computed_status(int, uuid, boolean);
 
-CREATE FUNCTION public.apply_computed_status(
+CREATE OR REPLACE FUNCTION public.apply_computed_status(
   p_show_id int,
   p_user_id uuid,
   p_new_watch_event boolean DEFAULT false
@@ -762,7 +801,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER episodes_recompute_status
+CREATE OR REPLACE TRIGGER episodes_recompute_status
 AFTER INSERT ON public.episodes
 FOR EACH ROW EXECUTE FUNCTION public.trg_episodes_recompute();
 
@@ -782,7 +821,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER seasons_recompute_status
+CREATE OR REPLACE TRIGGER seasons_recompute_status
 AFTER INSERT OR UPDATE OF episode_count ON public.seasons
 FOR EACH ROW EXECUTE FUNCTION public.trg_seasons_recompute();
 
@@ -808,7 +847,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER shows_recompute_status
+CREATE OR REPLACE TRIGGER shows_recompute_status
 AFTER UPDATE OF status ON public.shows
 FOR EACH ROW EXECUTE FUNCTION public.trg_shows_recompute();
 
@@ -830,7 +869,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER user_shows_manual_override_recompute
+CREATE OR REPLACE TRIGGER user_shows_manual_override_recompute
 AFTER UPDATE OF manual_override ON public.user_shows
 FOR EACH ROW
 WHEN (NEW.manual_override IS DISTINCT FROM OLD.manual_override)
@@ -868,7 +907,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER watch_status_recompute_status
+CREATE OR REPLACE TRIGGER watch_status_recompute_status
 AFTER INSERT OR UPDATE OR DELETE ON public.watch_status
 FOR EACH ROW EXECUTE FUNCTION public.trg_watch_status_recompute();
 
@@ -912,7 +951,7 @@ ALTER TABLE public.shows
 UPDATE public.shows SET cached_at = 'epoch';
 
 -- ===== 20260709143021_a096a63e-26b5-4c55-b1e3-d637422867ba.sql =====
-CREATE TABLE public.import_runs (
+CREATE TABLE IF NOT EXISTS public.import_runs (
   id                bigserial PRIMARY KEY,
   user_id           uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   source            text        NOT NULL DEFAULT '',
@@ -923,7 +962,7 @@ CREATE TABLE public.import_runs (
   created_at        timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX import_runs_user_created ON public.import_runs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS import_runs_user_created ON public.import_runs (user_id, created_at DESC);
 
 GRANT SELECT, INSERT ON public.import_runs TO authenticated;
 GRANT ALL ON public.import_runs TO service_role;
@@ -932,12 +971,14 @@ GRANT USAGE, SELECT ON SEQUENCE public.import_runs_id_seq TO authenticated;
 
 ALTER TABLE public.import_runs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "import_runs_select_own" ON public.import_runs;
 CREATE POLICY "import_runs_select_own"
   ON public.import_runs
   FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "import_runs_insert_own" ON public.import_runs;
 CREATE POLICY "import_runs_insert_own"
   ON public.import_runs
   FOR INSERT
@@ -945,9 +986,14 @@ CREATE POLICY "import_runs_insert_own"
   WITH CHECK (user_id = auth.uid());
 -- ===== 20260709153416_ae01b070-03f8-46cc-b260-64d7e65044c1.sql =====
 
-CREATE TYPE public.app_role AS ENUM ('admin', 'moderator', 'user');
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE t.typname = 'app_role' AND n.nspname = 'public') THEN
+    CREATE TYPE public.app_role AS ENUM ('admin', 'moderator', 'user');
+  END IF;
+END $do$;
 
-CREATE TABLE public.user_roles (
+CREATE TABLE IF NOT EXISTS public.user_roles (
   id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role       public.app_role NOT NULL,
@@ -973,6 +1019,7 @@ AS $$
   );
 $$;
 
+DROP POLICY IF EXISTS "user_roles_select" ON public.user_roles;
 CREATE POLICY "user_roles_select"
   ON public.user_roles
   FOR SELECT
@@ -1017,7 +1064,7 @@ ALTER TABLE public.episodes ADD COLUMN IF NOT EXISTS still_path text;
 -- RLS stricte : lecture/insert uniquement pour l'utilisateur propriétaire,
 -- service_role a tous les droits (nécessaire pour l'insert depuis l'edge function).
 
-CREATE TABLE public.import_runs (
+CREATE TABLE IF NOT EXISTS public.import_runs (
   id           bigserial PRIMARY KEY,
   user_id      uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   source       text        NOT NULL DEFAULT '',
@@ -1029,12 +1076,13 @@ CREATE TABLE public.import_runs (
 );
 
 -- Index pour les requêtes courantes côté front (derniers runs d'un user)
-CREATE INDEX import_runs_user_created ON public.import_runs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS import_runs_user_created ON public.import_runs (user_id, created_at DESC);
 
 -- RLS
 ALTER TABLE public.import_runs ENABLE ROW LEVEL SECURITY;
 
 -- L'utilisateur peut voir uniquement ses propres runs
+DROP POLICY IF EXISTS "import_runs_select_own" ON public.import_runs;
 CREATE POLICY "import_runs_select_own"
   ON public.import_runs
   FOR SELECT
@@ -1042,6 +1090,7 @@ CREATE POLICY "import_runs_select_own"
   USING (user_id = auth.uid());
 
 -- L'utilisateur peut insérer pour lui-même (utile pour de futurs appels directs)
+DROP POLICY IF EXISTS "import_runs_insert_own" ON public.import_runs;
 CREATE POLICY "import_runs_insert_own"
   ON public.import_runs
   FOR INSERT
@@ -1060,10 +1109,15 @@ GRANT SELECT, INSERT ON public.import_runs TO authenticated;
 -- ============================================================
 
 -- 1. Enum
-CREATE TYPE public.app_role AS ENUM ('admin', 'moderator', 'user');
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE t.typname = 'app_role' AND n.nspname = 'public') THEN
+    CREATE TYPE public.app_role AS ENUM ('admin', 'moderator', 'user');
+  END IF;
+END $do$;
 
 -- 2. Table user_roles
-CREATE TABLE public.user_roles (
+CREATE TABLE IF NOT EXISTS public.user_roles (
   id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role       public.app_role NOT NULL,
@@ -1091,6 +1145,7 @@ AS $$
 $$;
 
 -- 4. RLS policies
+DROP POLICY IF EXISTS "user_roles_select" ON public.user_roles;
 CREATE POLICY "user_roles_select"
   ON public.user_roles
   FOR SELECT
@@ -1162,7 +1217,7 @@ ALTER TABLE public.shows
 -- agrège des données tous utilisateurs confondus, jamais exposée en RPC
 -- direct à authenticated/anon — même convention que compute_show_status.
 
-CREATE INDEX watch_status_approx_watched_at_idx
+CREATE INDEX IF NOT EXISTS watch_status_approx_watched_at_idx
   ON public.watch_status (watched_at_approximate, watched_at DESC);
 
 CREATE OR REPLACE FUNCTION public.admin_watch_activity(_now timestamptz DEFAULT now())
@@ -1213,16 +1268,16 @@ GRANT EXECUTE ON FUNCTION public.admin_watch_activity(timestamptz) TO service_ro
 -- taux de matching, pas les traiter comme 0/0.
 
 ALTER TABLE public.import_runs
-  ADD COLUMN total_groups int NULL;
+  ADD COLUMN IF NOT EXISTS total_groups int NULL;
 
 COMMENT ON COLUMN public.import_runs.total_groups IS
   'Nombre total de groupes (titre, année) rencontrés dans le run — dénominateur du taux de matching TMDb (matched = total_groups - unmatched_count). NULL pour les runs créés avant cette colonne : non calculable rétroactivement, à exclure du calcul du taux plutôt qu''à traiter comme 0.';
 
 -- ===== 20260713072211_c028ff04-cabc-4a68-8309-1f641542d8d0.sql =====
 ALTER TABLE public.watch_status
-  ADD COLUMN watched_at_approximate boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS watched_at_approximate boolean NOT NULL DEFAULT false;
 
-CREATE INDEX watch_status_approx_watched_at_idx
+CREATE INDEX IF NOT EXISTS watch_status_approx_watched_at_idx
   ON public.watch_status (watched_at_approximate, watched_at DESC);
 
 CREATE OR REPLACE FUNCTION public.admin_watch_activity(_now timestamptz DEFAULT now())
@@ -1258,12 +1313,12 @@ REVOKE EXECUTE ON FUNCTION public.admin_watch_activity(timestamptz) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.admin_watch_activity(timestamptz) TO service_role;
 
 ALTER TABLE public.import_runs
-  ADD COLUMN total_groups int NULL;
+  ADD COLUMN IF NOT EXISTS total_groups int NULL;
 -- ===== 20260717113657_311b1fd5-2fe1-4ded-b266-80f20e1fc64a.sql =====
 ALTER TABLE public.shows ADD COLUMN IF NOT EXISTS providers_cached_at timestamptz;
 -- ===== 20260718070748_268c0c09-0470-4cfc-93a4-40f92c226b20.sql =====
 
-CREATE TABLE public.show_ratings (
+CREATE TABLE IF NOT EXISTS public.show_ratings (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users ON DELETE CASCADE,
   show_id integer NOT NULL REFERENCES public.shows(id) ON DELETE CASCADE,
@@ -1279,27 +1334,31 @@ GRANT ALL ON public.show_ratings TO service_role;
 
 ALTER TABLE public.show_ratings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Ratings are viewable by everyone" ON public.show_ratings;
 CREATE POLICY "Ratings are viewable by everyone"
   ON public.show_ratings FOR SELECT
   USING (true);
 
+DROP POLICY IF EXISTS "Users can insert their own rating" ON public.show_ratings;
 CREATE POLICY "Users can insert their own rating"
   ON public.show_ratings FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own rating" ON public.show_ratings;
 CREATE POLICY "Users can update their own rating"
   ON public.show_ratings FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own rating" ON public.show_ratings;
 CREATE POLICY "Users can delete their own rating"
   ON public.show_ratings FOR DELETE
   TO authenticated
   USING (auth.uid() = user_id);
 
-CREATE INDEX show_ratings_show_id_idx ON public.show_ratings(show_id);
+CREATE INDEX IF NOT EXISTS show_ratings_show_id_idx ON public.show_ratings(show_id);
 
 CREATE OR REPLACE FUNCTION public.update_show_ratings_updated_at()
 RETURNS trigger
@@ -1312,7 +1371,7 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER trg_show_ratings_updated_at
+CREATE OR REPLACE TRIGGER trg_show_ratings_updated_at
 BEFORE UPDATE ON public.show_ratings
 FOR EACH ROW EXECUTE FUNCTION public.update_show_ratings_updated_at();
 
@@ -1320,6 +1379,7 @@ FOR EACH ROW EXECUTE FUNCTION public.update_show_ratings_updated_at();
 
 -- 1. show_ratings: restrict SELECT to owner only
 DROP POLICY IF EXISTS "Ratings are viewable by everyone" ON public.show_ratings;
+DROP POLICY IF EXISTS "Users can view their own rating" ON public.show_ratings;
 CREATE POLICY "Users can view their own rating"
   ON public.show_ratings FOR SELECT
   TO authenticated
@@ -1390,6 +1450,7 @@ $$;
 REVOKE ALL ON FUNCTION private.has_role(uuid, public.app_role) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION private.has_role(uuid, public.app_role) TO authenticated, service_role;
 
+DROP POLICY IF EXISTS user_roles_select ON public.user_roles;
 DROP POLICY IF EXISTS user_roles_select ON public.user_roles;
 CREATE POLICY user_roles_select ON public.user_roles
   FOR SELECT TO authenticated
@@ -1464,6 +1525,7 @@ ALTER TABLE public.import_runs
   ADD COLUMN IF NOT EXISTS unmatched_items jsonb NOT NULL DEFAULT '[]',
   ADD COLUMN IF NOT EXISTS resolved_keys   jsonb NOT NULL DEFAULT '[]';
 
+DROP POLICY IF EXISTS "import_runs_update_own" ON public.import_runs;
 DROP POLICY IF EXISTS "import_runs_update_own" ON public.import_runs;
 CREATE POLICY "import_runs_update_own"
   ON public.import_runs

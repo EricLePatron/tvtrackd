@@ -41,6 +41,18 @@ par un fichier committé.
 migrations du repo, avec un séparateur commenté par fichier. À exécuter tel
 quel sur la base cible (SQL editor ou `psql`).
 
+Le script est **idempotent** : toutes les créations sont gardées (`CREATE TABLE
+IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`,
+`CREATE OR REPLACE TRIGGER`/`FUNCTION`, `DROP POLICY IF EXISTS` avant chaque
+`CREATE POLICY`, contraintes `UNIQUE` et type `app_role` gardés via un bloc
+`DO`). Nécessaire parce que les snapshots régénérés par Lovable rejouent du DDL
+déjà présent (ex. `manual_override`, `import_runs`, `user_roles`, triggers de
+recalcul, tous dupliqués entre migrations) : sans ces gardes, le run échoue à la
+première collision et le SQL editor annule tout dans sa transaction implicite.
+Le script peut donc être relancé sans risque après un run partiel. Vérifié en
+local : deux exécutions consécutives passent sans erreur, sur base fraîche puis
+en rejeu.
+
 Contrôles ensuite, sur la cible :
 
 ```sql
