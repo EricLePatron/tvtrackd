@@ -1,21 +1,23 @@
 /**
- * Transfert MINIMAL : ne copie que le patrimoine irremplaçable + le strict
- * sous-ensemble de cache TMDb qu'il référence.
+ * Transfert MINIMAL vers la base cible quand elle ne peut pas héberger tout le
+ * cache TMDb (ex. plan gratuit Supabase, 500 Mo — le cache complet fait ~433 k
+ * séries + ~4,6 M épisodes et sature le disque).
  *
- * Contexte : le cache complet (~433 k séries, ~4,6 M épisodes) sature le disque
- * d'un projet Supabase gratuit (500 Mo). Or il est reconstructible depuis TMDb.
- * On ne transfère donc que :
- *   - les tables utilisateur (profiles, user_roles, user_shows, watch_status,
- *     show_ratings, import_runs) — le vrai patrimoine ;
- *   - les seules lignes de `shows` / `seasons` / `episodes` référencées par ces
- *     tables, pour satisfaire les clés étrangères
- *     (user_shows.show_id → shows.id, watch_status.episode_id → episodes.id).
- * Le reste du cache se reconstruit tout seul à l'usage (get-show-details).
+ * Au lieu de copier tout le cache, on ne copie que le sous-ensemble de
+ * `shows` / `seasons` / `episodes` RÉFÉRENCÉ par les données utilisateur, puis
+ * les tables utilisateur elles-mêmes. Le reste du cache se reconstruira tout
+ * seul via les edge functions (get-show-details) au fil de l'usage.
  *
- * Prérequis : le schéma est déjà appliqué sur la cible (bootstrap-schema.sql) et
- * les comptes auth recréés avec les mêmes UUID (transfer-users.ts). Les triggers
- * de recalcul de statut doivent être DÉSACTIVÉS pendant l'import (voir RUNBOOK
- * étape 3) et réactivés après, avec réalignement des séquences.
+ * Pourquoi le sous-ensemble est obligatoire et pas seulement « --skip-cache » :
+ * `user_shows.show_id` → `shows.id` et `watch_status.episode_id` → `episodes.id`
+ * sont des clés étrangères NOT NULL. Charger les tables utilisateur sans les
+ * lignes de cache correspondantes échoue en violation de FK.
+ *
+ * Prérequis sur la cible AVANT de lancer (voir docs/migration/RUNBOOK.md) :
+ *   1. Base remontée / disque libéré (cache vidé : TRUNCATE ... CASCADE).
+ *   2. Triggers de recalcul désactivés (watch_status/episodes/seasons/
+ *      user_shows) — sinon des dizaines de milliers de recalculs.
+ * APRÈS : réactiver les triggers + réaligner les séquences (setval).
  *
  * Usage :
  *   SOURCE_URL=... SOURCE_SERVICE_KEY=... \
@@ -27,7 +29,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const PAGE_SIZE = 1000;
-const IN_BATCH = 200; // taille des lots pour les filtres .in(...) (longueur d'URL)
+const IN_CHUNK = 200; // taille des listes `id in (...)` pour rester sous la limite d'URL
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -45,7 +47,7 @@ function client(url: string, key: string): SupabaseClient {
       fetch: (input, init) => {
         const headers = new Headers(init?.headers);
         // Les clés sb_secret_* sont opaques, pas des JWT : PostgREST n'attend
-        // que l'en-tête `apikey`, pas `Authorization: Bearer <clé>`.
+        // que l'en-tête `apikey`, pas `Authorization: Bearer`.
         if (
           key.startsWith("sb_") &&
           headers.get("Authorization") === `Bearer ${key}`
@@ -59,127 +61,168 @@ function client(url: string, key: string): SupabaseClient {
   });
 }
 
-/** Lit toutes les lignes d'une table en paginant sur `id` (keyset stable). */
-async function readAll(
+/** Collecte l'ensemble des valeurs distinctes d'une colonne, en paginant par id. */
+async function collectIds(
   db: SupabaseClient,
   table: string,
-  columns = "*",
-): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = [];
-  let cursor: number | null = null;
+  column: string,
+): Promise<Set<number>> {
+  const ids = new Set<number>();
+  let cursor = 0;
   for (;;) {
-    let q = db
+    const { data, error } = await db
       .from(table)
-      .select(columns)
+      .select(`id, ${column}`)
       .order("id", { ascending: true })
+      .gt("id", cursor)
       .limit(PAGE_SIZE);
-    if (cursor !== null) q = q.gt("id", cursor);
-    const { data, error } = await q;
-    if (error) throw new Error(`[${table}] lecture: ${error.message}`);
+    if (error) throw new Error(`[${table}] lecture ${column}: ${error.message}`);
     if (!data || data.length === 0) break;
-    const page = data as unknown as Record<string, unknown>[];
-    rows.push(...page);
-    cursor = (page[page.length - 1] as { id: number }).id;
+    for (const row of data as unknown as Array<Record<string, number>>) {
+      if (row[column] != null) ids.add(row[column]);
+    }
+    cursor = (data[data.length - 1] as unknown as Record<string, number>).id;
   }
-  return rows;
+  return ids;
 }
 
-/** Récupère les lignes d'une table dont `col` ∈ ids, par lots. */
-async function readByIds(
+/** Récupère des lignes complètes par lots d'`id in (...)`. */
+async function fetchByIds(
   db: SupabaseClient,
   table: string,
-  col: string,
   ids: number[],
-): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = [];
-  for (let i = 0; i < ids.length; i += IN_BATCH) {
-    const batch = ids.slice(i, i + IN_BATCH);
-    const { data, error } = await db.from(table).select("*").in(col, batch);
-    if (error) throw new Error(`[${table}] lecture .in(${col}): ${error.message}`);
-    if (data) rows.push(...(data as unknown as Record<string, unknown>[]));
+): Promise<Array<Record<string, unknown>>> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    const chunk = ids.slice(i, i + IN_CHUNK);
+    const { data, error } = await db.from(table).select("*").in("id", chunk);
+    if (error) throw new Error(`[${table}] fetchByIds: ${error.message}`);
+    if (data) rows.push(...(data as Array<Record<string, unknown>>));
   }
   return rows;
 }
 
-/** Upsert par lots sur la cible. */
-async function writeAll(
+/** Récupère des lignes complètes par lots de `show_id in (...)`. */
+async function fetchByShowIds(
   db: SupabaseClient,
   table: string,
-  rows: Record<string, unknown>[],
-  onConflict = "id",
+  showIds: number[],
+): Promise<Array<Record<string, unknown>>> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < showIds.length; i += IN_CHUNK) {
+    const chunk = showIds.slice(i, i + IN_CHUNK);
+    const { data, error } = await db
+      .from(table)
+      .select("*")
+      .in("show_id", chunk);
+    if (error) throw new Error(`[${table}] fetchByShowIds: ${error.message}`);
+    if (data) rows.push(...(data as Array<Record<string, unknown>>));
+  }
+  return rows;
+}
+
+async function upsertAll(
+  db: SupabaseClient,
+  table: string,
+  rows: Array<Record<string, unknown>>,
+  dryRun: boolean,
 ): Promise<void> {
+  if (dryRun || rows.length === 0) {
+    console.log(`  ${table}: ${rows.length} lignes${dryRun ? " (dry-run)" : ""}`);
+    return;
+  }
   for (let i = 0; i < rows.length; i += PAGE_SIZE) {
     const batch = rows.slice(i, i + PAGE_SIZE);
-    const { error } = await db.from(table).upsert(batch, { onConflict });
+    const { error } = await db.from(table).upsert(batch, { onConflict: "id" });
     if (error) throw new Error(`[${table}] écriture: ${error.message}`);
   }
+  console.log(`  ${table}: ${rows.length} lignes ✓`);
 }
 
-function uniqueNums(values: unknown[]): number[] {
-  const set = new Set<number>();
-  for (const v of values) if (typeof v === "number") set.add(v);
-  return Array.from(set);
+/** Transfert plein d'une petite table utilisateur (pagination keyset par id). */
+async function transferUserTable(
+  source: SupabaseClient,
+  target: SupabaseClient,
+  table: string,
+  dryRun: boolean,
+): Promise<void> {
+  let cursor: number | null = null;
+  let moved = 0;
+  for (;;) {
+    let query = source
+      .from(table)
+      .select("*")
+      .order("id", { ascending: true })
+      .limit(PAGE_SIZE);
+    if (cursor !== null) query = query.gt("id", cursor);
+    const { data, error } = await query;
+    if (error) throw new Error(`[${table}] lecture: ${error.message}`);
+    if (!data || data.length === 0) break;
+    if (!dryRun) {
+      const { error: writeError } = await target
+        .from(table)
+        .upsert(data, { onConflict: "id" });
+      if (writeError)
+        throw new Error(`[${table}] écriture: ${writeError.message}`);
+    }
+    moved += data.length;
+    cursor = (data[data.length - 1] as Record<string, number>).id;
+  }
+  console.log(`  ${table}: ${moved} lignes ✓`);
+}
+
+async function count(db: SupabaseClient, table: string): Promise<number | null> {
+  const { count: c } = await db
+    .from(table)
+    .select("*", { count: "exact", head: true });
+  return c;
 }
 
 async function main(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
-  const source = client(requireEnv("SOURCE_URL"), requireEnv("SOURCE_SERVICE_KEY"));
-  const target = client(requireEnv("TARGET_URL"), requireEnv("TARGET_SERVICE_KEY"));
+  const source = client(
+    requireEnv("SOURCE_URL"),
+    requireEnv("SOURCE_SERVICE_KEY"),
+  );
+  const target = client(
+    requireEnv("TARGET_URL"),
+    requireEnv("TARGET_SERVICE_KEY"),
+  );
 
   console.log(`Transfert minimal${dryRun ? " (dry-run, aucune écriture)" : ""}`);
 
-  // 1. Tables utilisateur (patrimoine) — lues intégralement depuis la source.
-  const profiles = await readAll(source, "profiles");
-  const userRoles = await readAll(source, "user_roles");
-  const userShows = await readAll(source, "user_shows");
-  const watchStatus = await readAll(source, "watch_status");
-  const showRatings = await readAll(source, "show_ratings");
-  const importRuns = await readAll(source, "import_runs");
+  // 1. Quelles lignes de cache l'historique référence-t-il ? (côté source)
+  console.log("\n1) Collecte des références (source) :");
+  const showIds = await collectIds(source, "user_shows", "show_id");
+  for (const id of await collectIds(source, "show_ratings", "show_id"))
+    showIds.add(id);
+  const episodeIds = await collectIds(source, "watch_status", "episode_id");
   console.log(
-    `  utilisateur — profiles:${profiles.length} user_roles:${userRoles.length} ` +
-      `user_shows:${userShows.length} watch_status:${watchStatus.length} ` +
-      `show_ratings:${showRatings.length} import_runs:${importRuns.length}`,
+    `  ${showIds.size} séries référencées, ${episodeIds.size} épisodes référencés`,
   );
 
-  // 2. Épisodes référencés par l'historique (FK watch_status.episode_id).
-  const episodeIds = uniqueNums(watchStatus.map((r) => r.episode_id));
-  const episodes = await readByIds(source, "episodes", "id", episodeIds);
-
-  // 3. Séries référencées : suivies + notées + parents des épisodes vus
-  //    (FK user_shows.show_id / show_ratings.show_id / episodes.show_id).
-  const showIds = uniqueNums([
-    ...userShows.map((r) => r.show_id),
-    ...showRatings.map((r) => r.show_id),
-    ...episodes.map((r) => r.show_id),
-  ]);
-  const shows = await readByIds(source, "shows", "id", showIds);
-
-  // 4. Saisons des séries référencées (confort UI ; aucune FK ne l'exige).
-  const seasons = await readByIds(source, "seasons", "show_id", showIds);
-
-  console.log(
-    `  cache référencé — shows:${shows.length} seasons:${seasons.length} ` +
-      `episodes:${episodes.length} (sur ${episodeIds.length} épisodes distincts vus)`,
-  );
-
-  if (dryRun) {
-    console.log("\nDry-run : rien écrit.");
-    return;
+  // 2. Épisodes référencés + leurs séries parentes (episodes.show_id → shows.id)
+  const episodeRows = await fetchByIds(source, "episodes", [...episodeIds]);
+  for (const ep of episodeRows) {
+    const sid = (ep as { show_id?: number }).show_id;
+    if (sid != null) showIds.add(sid);
   }
+  console.log(
+    `  ${showIds.size} séries au total (avec parents des épisodes vus)`,
+  );
 
-  // 5. Écriture sur la cible, dans l'ordre des dépendances de clés étrangères.
-  await writeAll(target, "shows", shows);
-  await writeAll(target, "seasons", seasons);
-  await writeAll(target, "episodes", episodes);
-  await writeAll(target, "profiles", profiles);
-  await writeAll(target, "user_roles", userRoles);
-  await writeAll(target, "user_shows", userShows);
-  await writeAll(target, "watch_status", watchStatus);
-  await writeAll(target, "show_ratings", showRatings);
-  await writeAll(target, "import_runs", importRuns);
+  // 3. Séries + saisons référencées
+  const showRows = await fetchByIds(source, "shows", [...showIds]);
+  const seasonRows = await fetchByShowIds(source, "seasons", [...showIds]);
 
-  // 6. Contrôle des compteurs sur les tables utilisateur : doivent tomber juste.
-  console.log("\nContrôle des compteurs (tables utilisateur) :");
+  // 4. Écriture du sous-ensemble de cache — ORDRE FK : shows → seasons → episodes
+  console.log("\n2) Écriture du cache référencé (cible) :");
+  await upsertAll(target, "shows", showRows, dryRun);
+  await upsertAll(target, "seasons", seasonRows, dryRun);
+  await upsertAll(target, "episodes", episodeRows, dryRun);
+
+  // 5. Tables utilisateur — ORDRE FK strict (profiles/user_roles avant le reste)
+  console.log("\n3) Tables utilisateur (cible) :");
   const userTables = [
     "profiles",
     "user_roles",
@@ -189,14 +232,22 @@ async function main(): Promise<void> {
     "import_runs",
   ];
   for (const t of userTables) {
-    const [{ count: from }, { count: to }] = await Promise.all([
-      source.from(t).select("*", { count: "exact", head: true }),
-      target.from(t).select("*", { count: "exact", head: true }),
-    ]);
+    await transferUserTable(source, target, t, dryRun);
+  }
+
+  if (dryRun) return;
+
+  // 6. Contrôle : les tables utilisateur doivent tomber au chiffre près.
+  console.log("\n4) Contrôle des compteurs (tables utilisateur) :");
+  for (const t of userTables) {
+    const [from, to] = await Promise.all([count(source, t), count(target, t)]);
     const ok = from === to;
     console.log(`  ${ok ? "✓" : "✗"} ${t}: source=${from} cible=${to}`);
     if (!ok) process.exitCode = 1;
   }
+  console.log(
+    "\nCache transféré en sous-ensemble (non comparé au total source, c'est voulu).",
+  );
 }
 
 main().catch((err) => {
