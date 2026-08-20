@@ -10,6 +10,19 @@ Ce fichier est aussi lu par Lovable, mais **Lovable doit se limiter au contexte 
 - **Lovable ne doit pas coder via ces agents ni tenter de les invoquer** — Lovable produit son code directement, comme d'habitude, sans passer par le workflow d'agents décrit pour Claude Code.
 - Les mentions « Claude Code » (sections « Ce que Claude Code NE doit PAS faire » et « Principes de développement pour Claude Code ») sont des consignes d'orchestration Claude Code, pas des instructions destinées à Lovable.
 
+### Backend : externe et hors périmètre Lovable (règle absolue)
+
+Depuis 2026, le backend a été **migré de Lovable Cloud vers un projet Supabase indépendant**, possédé en propre. La source de vérité du backend est désormais **les migrations du repo appliquées sur ce projet externe** (voir `docs/migration/`). En conséquence, Lovable **ne doit jamais** :
+
+- **utiliser ou réactiver Lovable Cloud** — le backend n'est plus là ; toute opération qui provisionne, migre ou lit/écrit sur Lovable Cloud est interdite ;
+- **générer, modifier ou appliquer une migration Supabase** (`supabase/migrations/`), une edge function (`supabase/functions/`), une policy RLS, un trigger ou toute logique de base de données ;
+- **toucher aux fichiers de connexion / configuration Supabase** — `src/integrations/supabase/*`, `client.server.ts`, `auth-middleware.ts`, ni aux variables d'environnement (`VITE_SUPABASE_*`, `SUPABASE_*`) ;
+- **réintroduire la dépendance `@lovable.dev/cloud-auth-js`** ni les fichiers client auto-générés Lovable — ils ont été retirés volontairement lors de la migration.
+
+**Périmètre autorisé pour Lovable : le front / visuel uniquement** (composants UI, écrans, styles, direction design décrite plus bas), et **seulement** pour une refonte visuelle large décidée explicitement. Tout le reste — schéma, RLS, edge functions, auth, logique métier, moteur de reco, notifications, data — passe exclusivement par Claude Code + les migrations du repo.
+
+**Revue obligatoire** : toute production Lovable est relue par Claude Code avant merge, notamment pour vérifier qu'elle n'a créé aucune migration, n'a touché aucun fichier de connexion/env, et n'a pas recouplé le projet à Lovable Cloud. Une consigne donnée dans un prompt ne suffit pas : cette règle du fichier de contexte prévaut.
+
 ## Pourquoi ce projet existe
 
 TV Time (25M+ utilisateurs revendiqués) ferme le 15 juillet 2026 — l'éditeur (Whip Media, racheté par Blue Torch Capital en 2025) pivote vers l'IA et abandonne le produit faute de rentabilité. C'est la fermeture soudaine d'un des plus gros trackers de séries au monde, avec seulement ~2 semaines de préavis aux utilisateurs.
