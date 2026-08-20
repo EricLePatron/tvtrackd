@@ -120,6 +120,32 @@ Le script pagine par 1000 lignes, upsert sur la clé primaire (relançable sans
 doublon), respecte l'ordre des dépendances et compare les compteurs
 source/cible à la fin. Un écart fait sortir le script en code 1.
 
+### Variante « cible à disque limité » (plan gratuit)
+
+Le cache TMDb complet (~433 k `shows` + ~4,6 M `episodes`) dépasse les 500 Mo
+d'un projet Supabase gratuit et **sature le disque** en cours de transfert (la
+base tombe alors en 503 PGRST002 / auth 500). Dans ce cas :
+
+1. Remonter la base en libérant le disque — vider le cache (les tables
+   utilisateur étant encore vides, `CASCADE` ne détruit rien d'irremplaçable) :
+   ```sql
+   TRUNCATE public.episodes, public.seasons, public.shows RESTART IDENTITY CASCADE;
+   ```
+2. Utiliser `transfer-minimal.ts` au lieu de `transfer-data.ts`. Il ne copie que
+   le sous-ensemble de `shows` / `seasons` / `episodes` **référencé** par les
+   données utilisateur (obligatoire : `user_shows.show_id` et
+   `watch_status.episode_id` sont des FK NOT NULL, un simple `--skip-cache`
+   échouerait en violation de clé étrangère), puis les tables utilisateur :
+   ```bash
+   SOURCE_URL=... SOURCE_SERVICE_KEY=... \
+   TARGET_URL=... TARGET_SERVICE_KEY=... \
+   bun scripts/migrate/transfer-minimal.ts --dry-run   # puis sans --dry-run
+   ```
+
+Le reste du cache se reconstruit tout seul via `get-show-details` au fil de
+l'usage. Les mêmes gestes AVANT/APRÈS (triggers coupés, séquences réalignées)
+s'appliquent.
+
 ```sql
 -- Sur la cible, APRÈS le transfert
 alter table public.watch_status enable trigger watch_status_recompute_status;
