@@ -1,1 +1,30 @@
 project_id = "wrzexhpjsmddsbimvqaw"
+
+# --- Edge functions : auth au niveau du gateway ---
+# Fonctions publiques (anon OK, cf. page 07) : le JWT ne doit PAS être exigé
+# par le gateway, sinon le SSR/SEO anonyme (fiche, recherche, calendrier)
+# reçoit un 401 avant d'atteindre la fonction.
+[functions.search-media]
+verify_jwt = false
+[functions.get-show-details]
+verify_jwt = false
+[functions.trending-media]
+verify_jwt = false
+[functions.new-releases-media]
+verify_jwt = false
+[functions.public-calendar]
+verify_jwt = false
+[functions.similar-media]
+verify_jwt = false
+[functions.show-credits]
+verify_jwt = false
+[functions.person-credits]
+verify_jwt = false
+
+# Fonctions authentifiées : elles lisent Authorization: Bearer <token>,
+# valident via admin.auth.getUser(token), puis opèrent en service_role scopé
+# à l'utilisateur validé. Le gateway vérifie le JWT en amont (défaut).
+[functions.import-history]
+verify_jwt = true
+[functions.export-data]
+verify_jwt = true
