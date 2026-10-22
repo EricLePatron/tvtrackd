@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
@@ -11,11 +11,19 @@ import viteReact from "@vitejs/plugin-react";
 // - tailwindcss   : Tailwind v4
 // - tanstackStart : SSR + routing fichier (entrée serveur = src/server.ts)
 // - viteReact     : React 19
-export default defineConfig({
-  plugins: [
-    tsConfigPaths(),
-    tailwindcss(),
-    tanstackStart({ server: { entry: "server" } }),
-    viteReact(),
-  ],
+export default defineConfig(({ mode }) => {
+  // Expose les variables de `.env` (y compris non-`VITE_`) à `process.env` pour
+  // que le SSR (client.server.ts, auth-middleware.ts, feedback) les lise en dev,
+  // quel que soit le runtime (bun, npm ou vite lancé directement). En prod, c'est
+  // l'hébergeur qui fournit ces variables — ce bloc ne s'exécute qu'au build/dev.
+  Object.assign(process.env, loadEnv(mode, process.cwd(), ""));
+
+  return {
+    plugins: [
+      tsConfigPaths(),
+      tailwindcss(),
+      tanstackStart({ server: { entry: "server" } }),
+      viteReact(),
+    ],
+  };
 });
