@@ -11,10 +11,8 @@ export const submitFeedback = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => feedbackSchema.parse(input))
   .handler(async ({ data }) => {
     const NOTION_DATABASE_ID = "399a22c5-4be2-8067-b6f5-f222e272a51d";
-    const GATEWAY_URL = "https://connector-gateway.lovable.dev/notion/v1";
-    const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
     const NOTION_API_KEY = process.env.NOTION_API_KEY;
-    if (!LOVABLE_API_KEY || !NOTION_API_KEY) {
+    if (!NOTION_API_KEY) {
       throw new Error("Feedback service not configured");
     }
 
@@ -30,8 +28,7 @@ export const submitFeedback = createServerFn({ method: "POST" })
           rich_text: [
             {
               text: {
-                content:
-                  data.message + (data.email ? `\n\n— ${data.email}` : ""),
+                content: data.message + (data.email ? `\n\n— ${data.email}` : ""),
               },
             },
           ],
@@ -40,11 +37,11 @@ export const submitFeedback = createServerFn({ method: "POST" })
       },
     };
 
-    const res = await fetch(`${GATEWAY_URL}/pages`, {
+    const res = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": NOTION_API_KEY,
+        Authorization: `Bearer ${NOTION_API_KEY}`,
+        "Notion-Version": "2022-06-28",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

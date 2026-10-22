@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,18 +59,20 @@ function AuthPage() {
   async function handleGoogle() {
     setGoogleLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin },
       });
-      if (result.error) {
+      if (error) {
         toast.error("Connexion Google impossible");
-        return;
+        setGoogleLoading(false);
       }
-      if (result.redirected) return;
-      navigate({ to: target });
+      // En cas de succès, supabase-js redirige le navigateur vers Google : le
+      // code ci-dessous ne s'exécute pas. Au retour sur l'origine, la session
+      // est récupérée automatiquement (detectSessionInUrl) puis l'effet
+      // getSession ci-dessus redirige vers `target`.
     } catch {
       toast.error("Connexion Google impossible");
-    } finally {
       setGoogleLoading(false);
     }
   }
@@ -183,8 +184,6 @@ function AuthPage() {
             </span>
             <span className="h-px flex-1 bg-border" />
           </div>
-
-
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && (
