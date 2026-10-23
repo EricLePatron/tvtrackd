@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { admin } from "../_shared/admin.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
 const TMDB_API_KEY = Deno.env.get("TMDB_API_KEY")!;
@@ -12,11 +12,6 @@ const CACHE_MS = 48 * 60 * 60 * 1000;
 // figé sur un instantané vide jusqu'à 48h). `networks` reste sur CACHE_MS
 // (les chaînes de diffusion ne changent quasiment jamais).
 const PROVIDERS_TTL_MS = 8 * 60 * 60 * 1000;
-
-const admin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
 
 const IS_V4 = TMDB_API_KEY.startsWith("eyJ");
 

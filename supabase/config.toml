@@ -22,8 +22,12 @@ verify_jwt = false
 verify_jwt = false
 
 # Fonctions authentifiées : elles lisent Authorization: Bearer <token>,
-# valident via admin.auth.getUser(token), puis opèrent en service_role scopé
-# à l'utilisateur validé. Le gateway vérifie le JWT en amont (défaut).
+# valident via admin.auth.getUser(token), puis opèrent avec la clé secrète
+# nouvelle génération (cf. functions/_shared/admin.ts) scopée à l'utilisateur
+# validé. Le gateway vérifie le JWT en amont (défaut) : d'après la doc Supabase
+# actuelle (auth-headers), verify_jwt valide les JWT HS256 legacy ET ceux signés
+# par les JWT Signing Keys asymétriques (ES256) : compatible après rotation.
+# Le front n'envoie à ces fonctions que le access_token de la session (user JWT).
 [functions.import-history]
 verify_jwt = true
 [functions.export-data]
