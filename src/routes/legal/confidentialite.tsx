@@ -64,7 +64,7 @@ function Confidentialite() {
             hébergement des données utilisateur.
           </li>
           <li>
-            <strong>Cloudflare</strong> — hébergement et distribution du site via Lovable.
+            <strong>Cloudflare</strong> — hébergement et distribution du site (Cloudflare Workers).
           </li>
           <li>
             <strong>TMDb (The Movie Database)</strong> — fournisseur des métadonnées films/séries.

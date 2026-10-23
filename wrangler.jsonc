@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tvtrackd",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // Variables publiques (runtime). Les secrets (SUPABASE_SERVICE_ROLE_KEY,
+  // NOTION_API_KEY) se posent via `wrangler secret put`, jamais ici.
+  "vars": {
+    "SUPABASE_URL": "https://wrzexhpjsmddsbimvqaw.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_V4OGAtB-4hxVRq_BZZcRhA_5C2zgRIl",
+    "SUPABASE_PROJECT_ID": "wrzexhpjsmddsbimvqaw",
+    // À remplacer par l'URL workers.dev réelle après le 1er déploiement.
+    "SITE_URL": "https://tvtrackd.com"
+  }
+}

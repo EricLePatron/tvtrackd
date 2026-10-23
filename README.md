@@ -168,6 +168,28 @@ bun run build             # production build (SSR)
 
 ---
 
+## Deploy (Cloudflare Workers, `*.workers.dev`)
+
+Config : `wrangler.jsonc` (Worker `tvtrackd`, entrée `src/server.ts`, `nodejs_compat`).
+
+```bash
+bun install
+bunx wrangler login                          # une fois, ouvre le navigateur
+bun run deploy                               # build + wrangler deploy
+bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+bunx wrangler secret put NOTION_API_KEY
+```
+
+- `VITE_*` sont injectées au build depuis `.env` (publiques). `vars` publiques dans `wrangler.jsonc` ;
+  secrets uniquement via `wrangler secret put`.
+- Après le 1er déploiement : mettre l'URL `https://tvtrackd.<compte>.workers.dev` dans `VITE_SITE_URL`
+  (`.env`) et `vars.SITE_URL` (`wrangler.jsonc`), puis `bun run deploy` à nouveau.
+- À autoriser : Supabase (Auth → URL Configuration : Site URL + Redirect URLs `https://…workers.dev/**`)
+  et Google Cloud (OAuth client → Authorized JavaScript origins : l'URL workers.dev).
+- `bun run preview` exécute le build dans workerd en local (secrets via `.dev.vars`, gitignoré).
+
+---
+
 <div align="center">
 
 _Built for people who don't want to lose ten years of viewing history a second time._

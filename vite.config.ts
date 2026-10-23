@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
@@ -10,6 +11,7 @@ import viteReact from "@vitejs/plugin-react";
 // - tsConfigPaths : alias `@/*` lu depuis tsconfig.json
 // - tailwindcss   : Tailwind v4
 // - tanstackStart : SSR + routing fichier (entrée serveur = src/server.ts)
+// - cloudflare    : build/runtime Cloudflare Workers (cf. wrangler.jsonc)
 // - viteReact     : React 19
 export default defineConfig(({ mode }) => {
   // Expose les variables de `.env` (y compris non-`VITE_`) à `process.env` pour
@@ -20,6 +22,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      // Doit précéder tanstackStart. Cible Cloudflare Workers (wrangler.jsonc).
+      cloudflare({ viteEnvironment: { name: "ssr" } }),
       tsConfigPaths(),
       tailwindcss(),
       tanstackStart({ server: { entry: "server" } }),
