@@ -7,9 +7,6 @@
 //                                 Le préfixe SUPABASE_ est réservé, d'où ce nom.
 //   2. SUPABASE_SECRET_KEYS     : injecté automatiquement par Supabase, objet JSON
 //                                 { "<nom>": "sb_secret_..." } ; on lit la clé "default".
-//   3. SUPABASE_SERVICE_ROLE_KEY: clé legacy (JWT). FALLBACK TRANSITOIRE, avec
-//                                 avertissement. À supprimer une fois le legacy JWT
-//                                 secret révoqué.
 //
 // supabase-js 2.112.2 (épinglé, identique à l'app web / bun.lock) accepte les
 // clés `sb_secret_` mais, pour REST/Auth, les renvoie aussi en
@@ -33,16 +30,9 @@ function readSecretKey(): string {
     }
   }
 
-  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (legacy) {
-    console.warn(
-      "[admin] Clé secrète nouvelle génération introuvable (SB_SECRET_KEY / SUPABASE_SECRET_KEYS) : " +
-        "repli sur SUPABASE_SERVICE_ROLE_KEY (legacy). À corriger avant de révoquer le legacy JWT secret.",
-    );
-    return legacy;
-  }
-
-  throw new Error("Aucune clé secrète Supabase disponible pour le client admin");
+  throw new Error(
+    'Aucune clé secrète Supabase disponible pour le client admin : définir SB_SECRET_KEY ou vérifier SUPABASE_SECRET_KEYS (clé "default").',
+  );
 }
 
 function withApiKeyOnly(key: string): typeof fetch {
