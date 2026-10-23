@@ -11,7 +11,6 @@
     "SUPABASE_URL": "https://wrzexhpjsmddsbimvqaw.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_V4OGAtB-4hxVRq_BZZcRhA_5C2zgRIl",
     "SUPABASE_PROJECT_ID": "wrzexhpjsmddsbimvqaw",
-    // À remplacer par l'URL workers.dev réelle après le 1er déploiement.
-    "SITE_URL": "https://tvtrackd.com"
+    "SITE_URL": "https://tvtrackd.ericlepatron.workers.dev"
   }
 }
