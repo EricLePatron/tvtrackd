@@ -1,13 +1,40 @@
 // Génère les icônes PWA/favicon dans public/ depuis docs/design/logo/.
-// Usage : node scripts/generate-icons.mjs  (Playwright/Chromium déjà installés,
-// non déclarés dans package.json ; NODE_PATH peut être nécessaire).
+//
+// Prérequis : Playwright + Chromium, volontairement NON déclarés dans
+// package.json (outil de génération ponctuel, pas une dépendance de l'app).
+//   - soit : bun add -d playwright && bunx playwright install chromium
+//   - soit : pointer NODE_PATH vers une installation existante de Playwright
+//
+// Usage (depuis la racine du repo) :
+//   node scripts/generate-icons.mjs
+//   NODE_PATH=/chemin/vers/node_modules node scripts/generate-icons.mjs
+//
+// Sources : docs/design/logo/app-icon.svg et favicon.svg. Sorties : public/
+// (apple-touch-icon.png, icon-192.png, icon-512.png, icon-512-maskable.png,
+// favicon.ico). public/favicon.svg est une copie de la source, à resynchroniser
+// à la main si elle change.
 import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { chromium } = require("playwright");
+let chromium;
+try {
+  ({ chromium } = require("playwright"));
+} catch {
+  console.error(
+    [
+      "Erreur : le module « playwright » est introuvable.",
+      "Ce script en a besoin pour rendre les SVG en PNG (il n'est pas déclaré dans package.json).",
+      "Installez-le puis Chromium :",
+      "  bun add -d playwright && bunx playwright install chromium",
+      "ou pointez NODE_PATH vers une installation existante :",
+      "  NODE_PATH=/chemin/vers/node_modules node scripts/generate-icons.mjs",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const logo = (f) => readFileSync(join(root, "docs/design/logo", f), "utf8");
