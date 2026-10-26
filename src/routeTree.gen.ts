@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as ManifestDotwebmanifestRouteImport } from './routes/manifest[.]webmanifest'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as LegalRouteRouteImport } from './routes/legal/route'
@@ -33,6 +34,11 @@ import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManifestDotwebmanifestRoute = ManifestDotwebmanifestRouteImport.update({
+  id: '/manifest.webmanifest',
+  path: '/manifest.webmanifest',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/legal': typeof LegalRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/import': typeof AuthenticatedImportRoute
   '/library': typeof AuthenticatedLibraryRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/legal': typeof LegalRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/import': typeof AuthenticatedImportRoute
   '/library': typeof AuthenticatedLibraryRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/_public': typeof PublicRouteWithChildren
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/manifest.webmanifest': typeof ManifestDotwebmanifestRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/import': typeof AuthenticatedImportRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
@@ -201,6 +210,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/auth'
     | '/sitemap.xml'
+    | '/manifest.webmanifest'
     | '/admin'
     | '/import'
     | '/library'
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/legal'
     | '/auth'
     | '/sitemap.xml'
+    | '/manifest.webmanifest'
     | '/admin'
     | '/import'
     | '/library'
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/_public'
     | '/auth'
     | '/sitemap.xml'
+    | '/manifest.webmanifest'
     | '/_authenticated/admin'
     | '/_authenticated/import'
     | '/_authenticated/library'
@@ -265,6 +277,7 @@ export interface RootRouteChildren {
   PublicRoute: typeof PublicRouteWithChildren
   AuthRoute: typeof AuthRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  ManifestDotwebmanifestRoute: typeof ManifestDotwebmanifestRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -274,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manifest.webmanifest': {
+      id: '/manifest.webmanifest'
+      path: '/manifest.webmanifest'
+      fullPath: '/manifest.webmanifest'
+      preLoaderRoute: typeof ManifestDotwebmanifestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -476,6 +496,7 @@ const rootRouteChildren: RootRouteChildren = {
   PublicRoute: PublicRouteWithChildren,
   AuthRoute: AuthRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  ManifestDotwebmanifestRoute: ManifestDotwebmanifestRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
