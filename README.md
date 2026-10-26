@@ -186,6 +186,10 @@ bunx wrangler secret put NOTION_API_KEY
   (`.env`) et `vars.SITE_URL` (`wrangler.jsonc`), puis `bun run deploy` à nouveau.
 - À autoriser : Supabase (Auth → URL Configuration : Site URL + Redirect URLs `https://…workers.dev/**`)
   et Google Cloud (OAuth client → Authorized JavaScript origins : l'URL workers.dev).
+- Domaine personnalisé (`tvtrackd.com`) : zone DNS gérée par Cloudflare (nameservers changés chez OVH,
+  DNSSEC désactivé côté OVH avant le changement), puis Worker → Settings → Domains & Routes → Custom
+  domain. Mettre le domaine dans `VITE_SITE_URL` / `vars.SITE_URL` et l'autoriser dans Supabase et
+  Google Cloud comme ci-dessus.
 - `bun run preview` exécute le build dans workerd en local (secrets via `.dev.vars`, gitignoré).
 
 ---
