@@ -9,7 +9,8 @@
 //   node scripts/generate-icons.mjs
 //   NODE_PATH=/chemin/vers/node_modules node scripts/generate-icons.mjs
 //
-// Sources : docs/design/logo/app-icon.svg et favicon.svg. Sorties : public/
+// Sources : docs/design/logo/app-icon.svg (plein cadre), app-icon-any.svg (tuile
+// arrondie, coins transparents) et favicon.svg. Sorties : public/
 // (apple-touch-icon.png, icon-192.png, icon-512.png, icon-512-maskable.png,
 // favicon.ico). public/favicon.svg est une copie de la source, à resynchroniser
 // à la main si elle change.
@@ -51,12 +52,15 @@ async function render(svg, size, transparent) {
   return page.screenshot({ type: "png", omitBackground: transparent });
 }
 
+// Plein cadre opaque (l'OS applique son masque) : apple-touch + maskable.
 const appIcon = logo("app-icon.svg");
 writeFileSync(out("apple-touch-icon.png"), await render(appIcon, 180, false));
-writeFileSync(out("icon-192.png"), await render(appIcon, 192, false));
-writeFileSync(out("icon-512.png"), await render(appIcon, 512, false));
-// Même visuel : le symbole est déjà dans la safe zone maskable de 80 %.
+// Le contenu est inscrit dans le cercle de diamètre 80 % (rayon 25,6 u sur 64).
 writeFileSync(out("icon-512-maskable.png"), await render(appIcon, 512, false));
+// purpose: any : tuile arrondie aux coins transparents (PNG RGBA).
+const appIconAny = logo("app-icon-any.svg");
+writeFileSync(out("icon-192.png"), await render(appIconAny, 192, true));
+writeFileSync(out("icon-512.png"), await render(appIconAny, 512, true));
 
 // favicon.ico : 16/32/48, PNG embarqués (ICONDIR).
 const favicon = logo("favicon.svg");

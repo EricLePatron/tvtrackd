@@ -13,7 +13,7 @@ Statut : proposition v1. Le favicon et l'icône d'app PWA sont intégrés (voir 
 
 ## 2. Piste retenue
 
-Une fenêtre arrondie `#1E2530` = le module du compteur signature. Dedans, un triangle « play » ambre `#FF8A3D` (en cours / prochain épisode), coupé en deux par une fine charnière transparente : le geste d'un afficheur mécanique qui s'apprête à tourner. Un filet cyan `#4DD9C4` en pied = la progression vue. Aucune lettre : le symbole ne dépend pas du nom.
+Une fenêtre arrondie `#1E2530` = le module du compteur signature. Dedans, un triangle « play » ambre `#FF8A3D` (en cours / prochain épisode), coupé en deux par une fine charnière (transparente dans `symbol.svg` et `favicon.svg`, peinte en `#0B0E14` dans les icônes d'app) : le geste d'un afficheur mécanique qui s'apprête à tourner. Un filet cyan `#4DD9C4` en pied = la progression vue. Aucune lettre : le symbole ne dépend pas du nom.
 
 Provenance (anti-ia-slop) :
 
@@ -25,16 +25,17 @@ Test du swap : on met le symbole sur un CRM — le play ambre en carré sombre p
 
 ## 3. Fichiers
 
-| Fichier                                | Usage                                                                                                                                                                                                                                        |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `symbol.svg`                           | Symbole couleur, utilisable sur fond clair et sombre (porte sa propre fenêtre)                                                                                                                                                               |
-| `symbol-mono.svg`                      | Une couleur via `currentColor`, motif détouré (charnière, play, filet transparents)                                                                                                                                                          |
-| `favicon.svg`                          | Simplifié 16–32 px : plein cadre, play agrandi, charnière 4 u, sans filet                                                                                                                                                                    |
-| `app-icon.svg`                         | Icône d'app plein cadre, viewBox 64, 100 % opaque : fond `#1E2530`, symbole mis à l'échelle 0,75 (play + filet cyan) dans la safe zone maskable de 80 %, charnière peinte en `#0B0E14` (iOS refuse la transparence). Source des PNG d'icônes |
-| `lockup-horizontal(.svg / -light.svg)` | Symbole + wordmark ; la version claire inverse fenêtre et texte en `#0B0E14`                                                                                                                                                                 |
-| `lockup-stacked(.svg / -light.svg)`    | Version empilée (partage social, splash)                                                                                                                                                                                                     |
-| `wordmark.svg` / `wordmark-light.svg`  | Texte seul                                                                                                                                                                                                                                   |
-| `preview.html`                         | Planche (charge les SVG voisins par `<img>` : l'ouvrir depuis ce dossier)                                                                                                                                                                    |
+| Fichier                                | Usage                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `symbol.svg`                           | Symbole couleur, utilisable sur fond clair et sombre (porte sa propre fenêtre)                                                                                                                                                                                                                                                    |
+| `symbol-mono.svg`                      | Une couleur via `currentColor`, motif détouré (charnière, play, filet transparents)                                                                                                                                                                                                                                               |
+| `favicon.svg`                          | Simplifié 16–32 px : tuile arrondie rx 14, coins transparents, play agrandi, charnière 4 u, sans filet                                                                                                                                                                                                                            |
+| `app-icon.svg`                         | Icône d'app plein cadre, viewBox 64, 100 % opaque : fond `#1E2530`, contenu (play + filet cyan) à l'échelle 0,88 et inscrit dans le cercle de diamètre 80 % (rayon 25,6 u), charnière de 2,4 u peinte en `#0B0E14`, centrée sur le play (iOS refuse la transparence). Source de `apple-touch-icon.png` et `icon-512-maskable.png` |
+| `app-icon-any.svg`                     | Variante `purpose: any` : même contenu (échelle 0,88, charnière 2,4 u peinte `#0B0E14`) sur une tuile arrondie rx 14/64 aux coins transparents (PNG RGBA). Source de `icon-192.png` et `icon-512.png`                                                                                                                             |
+| `lockup-horizontal(.svg / -light.svg)` | Symbole + wordmark ; la version claire inverse fenêtre et texte en `#0B0E14`                                                                                                                                                                                                                                                      |
+| `lockup-stacked(.svg / -light.svg)`    | Version empilée (partage social, splash)                                                                                                                                                                                                                                                                                          |
+| `wordmark.svg` / `wordmark-light.svg`  | Texte seul                                                                                                                                                                                                                                                                                                                        |
+| `preview.html`                         | Planche (charge les SVG voisins par `<img>` : l'ouvrir depuis ce dossier)                                                                                                                                                                                                                                                         |
 
 **Wordmark PROVISOIRE** : « TVTrackd » dessiné en tracés géométriques (traits de 7 u, polygones) pour ne dépendre d'aucune police. Ce n'est PAS de l'Archivo Expanded : approximation extended-bold à retravailler une fois le nom tranché. Dans les lockups il est isolé dans `<g id="wm">` : remplacer ce groupe suffit. Les traits sont des `stroke` non convertis en contours : convertir en contours avant export print/impression si nécessaire.
 
@@ -46,17 +47,19 @@ Test du swap : on met le symbole sur un CRM — le play ambre en carré sombre p
 - **Interdits** : changer les couleurs ou en ajouter ; dégradé, ombre, glow, contour ; étirer ; faire tourner/animer en boucle ; ajouter scanlines/bruit/cassette ; inverser ambre et cyan ; recouper la charnière avec autre chose ; utiliser le play seul sans fenêtre.
 - Animation autorisée (optionnelle) : un seul « flip » de la moitié inférieure au premier chargement, respect de `prefers-reduced-motion`. Jamais en boucle.
 
+> Note antériorité : lors de la recherche d'antériorité, vérifier aussi la proximité avec l'icône Plex (forme ambre sur fond sombre), en plus des icônes de lecteurs vidéo.
+
 ## 5. Intégration (état réel)
 
 ### Fait
 
-- **Fichiers dans `public/`** : `favicon.svg` (copie nettoyée de `favicon.svg`, charnière transparente), `favicon.ico` (16/32/48), `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png` (`purpose: any`) et `icon-512-maskable.png` (`purpose: maskable`). Tous les PNG d'icônes sont opaques et rendus depuis `app-icon.svg`.
+- **Fichiers dans `public/`** : `favicon.svg` (copie nettoyée de `docs/design/logo/favicon.svg`, charnière transparente), `favicon.ico` (16/32/48), `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png` (`purpose: any`) et `icon-512-maskable.png` (`purpose: maskable`). `icon-192.png` et `icon-512.png` (`any`) sont rendus depuis `app-icon-any.svg` (RGBA, coins transparents) ; `icon-512-maskable.png` et `apple-touch-icon.png` sont rendus depuis `app-icon.svg` (plein cadre, RGB opaques).
 - **Manifest** : servi dynamiquement par la route `src/routes/manifest[.]webmanifest.ts` sur `/manifest.webmanifest` (`application/manifest+json`). `name` et `short_name` valent `APP_NAME` (`src/lib/app-config.ts`), `display: standalone`, `background_color` et `theme_color` `#0B0E14`. Pas de service worker (donc pas de mode hors ligne).
 - **Head** (`src/routes/__root.tsx`) : `rel="icon"` svg + ico, `apple-touch-icon`, `rel="manifest"`, `theme-color`, `apple-mobile-web-app-title` (`APP_NAME`).
 
 ### Régénérer les PNG et l'ICO
 
-`scripts/generate-icons.mjs` rend `app-icon.svg` et `favicon.svg` dans `public/`. Il demande Playwright + Chromium, volontairement non déclarés dans `package.json` :
+`scripts/generate-icons.mjs` rend `app-icon.svg`, `app-icon-any.svg` et `favicon.svg` dans `public/`. Il demande Playwright + Chromium, volontairement non déclarés dans `package.json` :
 
 ```
 # soit installer Playwright
