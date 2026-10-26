@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 265 40" width="265" height="40" role="img" aria-label="TVTrackd (provisoire)">
+  <!-- PROVISOIRE : "TVTrackd" non tranché (vérif. marque en cours). Tracés géométriques, aucune police requise. Version fond sombre. -->
+  <g fill="none" stroke="#F2EDE4" stroke-width="7">
+    <path d="M0 3.5H30M15 3.5V40"/>
+    <path d="M73 3.5H103M88 3.5V40"/>
+    <path d="M109.5 40V14M109.5 28C109.5 20 114 17.5 120 17.5H124"/>
+    <circle cx="143" cy="27" r="9.5"/>
+    <path d="M156.5 14V40"/>
+    <path d="M188.28 20.89A9.5 9.5 0 1 0 188.28 33.11"/>
+    <circle cx="248" cy="27" r="9.5"/>
+    <path d="M261.5 0V40"/>
+    <path d="M201.5 0V40"/>
+  </g>
+  <g fill="#F2EDE4">
+    <path d="M34 0H42.5L51 24L59.5 0H68L55 40H47Z"/>
+    <path d="M205 27L216 14H225.5L212.5 27.5L227 40H217L205 31Z"/>
+  </g>
+</svg>
