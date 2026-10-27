@@ -135,6 +135,6 @@ le quota du Worker. Ne pas créer cette règle au niveau du compte (WAF « Accou
 - **Deploy to production (intégration GitHub Supabase) : à laisser désactivé** tant que l'historique
   de migrations n'est pas aligné avec la base (le schéma vient de `schema-consolidated.sql`).
 - **DNSSEC** : désactivé chez OVH avant la bascule des serveurs DNS, réactivé côté Cloudflare, avec un
-  DS record déclaré chez OVH (onglet DS Records). La publication de ce DS peut être encore en cours :
-  ne pas désactiver DNSSEC côté Cloudflare sans retirer d'abord le DS chez OVH, sous peine de rendre
+  DS record déclaré chez OVH (onglet DS Records). DS publié (key tag 2371, algorithme 13, digest
+  SHA-256 ; vérifier avec `dig +short DS tvtrackd.com @8.8.8.8`). Ne pas désactiver DNSSEC côté Cloudflare sans retirer d'abord le DS chez OVH, sous peine de rendre
   le domaine non résolvable.
