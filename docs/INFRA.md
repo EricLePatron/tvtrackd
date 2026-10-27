@@ -65,6 +65,7 @@ bun run deploy        # bun run build && wrangler deploy
   `vite build` (donc `bun run deploy`) échoue avec un message explicite ; `bun dev` n'affiche qu'un
   avertissement.
 - **Après un `git pull`, lancer `bun install` avant de déployer.**
+
 `bun run preview` exécute le build dans workerd en local (secrets via `.dev.vars`, gitignoré).
 
 ### Déployer les edge functions
