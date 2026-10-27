@@ -8,6 +8,19 @@ Dernière mise à jour : 2026-07-04, fiabilisation de l'import (formats réels +
 
 ## Livré depuis ce dossier
 
+### Rebuild : sortie de Lovable, infrastructure en propre *(octobre 2026, PR #76 à #81, en production)*
+
+Le projet ne dépend plus de Lovable (ni code, ni backend, ni hébergement). Référence technique : [`docs/INFRA.md`](docs/INFRA.md).
+
+- **Backend** : projet Supabase possédé en propre, schéma consolidé, clés nouvelle génération (`sb_publishable_` / `sb_secret_`), clés legacy désactivées et legacy JWT secret révoqué après une fuite dans une capture.
+- **Hébergement** : Cloudflare Workers sur `https://tvtrackd.com` (domaine OVH, DNS Cloudflare, DNSSEC actif, `www` redirigé vers la racine).
+- **Auth** : Google OAuth natif Supabase, app Google publiée en production.
+- **Protection** : crawlers d'IA abusifs bloqués (Meta-ExternalAgent faisait 150 000 requêtes/jour), règle WAF contre les scanners de vulnérabilités.
+- **PWA** : logo, favicon, icônes d'app installables et manifest.
+- **Garde-fou** : le build échoue si les `VITE_*` publiques manquent (incident : déploiement sans `.env` → site cassé côté navigateur).
+- **Non repris** : les données de l'ancien projet Lovable Cloud (comptes et historique) — projet inaccessible, départ sur une base propre.
+- **Reste à faire** : feedback vers Notion (`NOTION_API_KEY`), mentions légales (éditeur, SIREN), 3 tests en échec dans `src/lib/schedule.test.ts`.
+
 ### Fiabilisation de l'import d'historique (formats réels + statut déduit) *(en attente de commit/push)*
 
 Couvre les items **#2** et **#3** ci-dessous (marqués ✅).
