@@ -71,8 +71,11 @@ bun run deploy        # bun run build && wrangler deploy
 ### Déployer les edge functions
 
 ```bash
-bunx supabase functions deploy <noms> --project-ref wrzexhpjsmddsbimvqaw
+bunx supabase functions deploy --project-ref wrzexhpjsmddsbimvqaw          # toutes les fonctions
+bunx supabase functions deploy <noms> --project-ref wrzexhpjsmddsbimvqaw   # seulement certaines
 ```
+
+`verify_jwt` est lu par fonction dans `supabase/config.toml`.
 
 Les fonctions lisent la clé secrète via `SUPABASE_SECRET_KEYS` (injecté par Supabase) ou
 `SB_SECRET_KEY` (voir `supabase/functions/_shared/admin.ts`).
