@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Logo — planche de déclinaisons</title>
+<style>
+  body{margin:0;font:14px Inter,system-ui,sans-serif;background:#0B0E14;color:#F2EDE4}
+  h1{font:700 18px system-ui;margin:24px}
+  h2{font:500 10px "IBM Plex Mono",monospace;letter-spacing:.22em;text-transform:uppercase;color:#8B92A3;margin:24px 24px 8px}
+  .row{display:flex;flex-wrap:wrap;gap:0}
+  .pane{padding:20px 24px;flex:1 1 50%;min-width:340px;box-sizing:border-box}
+  .dark{background:#0B0E14}.light{background:#F2EDE4;color:#0B0E14}
+  .items{display:flex;flex-wrap:wrap;align-items:flex-end;gap:24px}
+  figure{margin:0}figcaption{font:10px "IBM Plex Mono",monospace;color:#8B92A3;margin-top:6px}
+  img{display:block}
+  .mono{color:#F2EDE4}.light .mono{color:#0B0E14}
+  .mono i{display:block;background:currentColor;-webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat}
+  .tag{border-top:1px solid rgba(255,255,255,.08);margin:0 24px}
+</style>
+</head>
+<body>
+<h1>Logo — planche (wordmark provisoire)</h1>
+<div id="root"></div>
+<script>
+const sq=[16,32,64,180,512], wide=[120,240,480];
+const sets=[
+ {t:"symbol.svg",s:sq,p:"symbol.svg"},
+ {t:"favicon.svg (16 / 32 critiques)",s:sq,p:"favicon.svg"},
+ {t:"app-icon.svg (carré plein, masque OS simulé à droite en 180/512)",s:sq,p:"app-icon.svg",round:true},
+ {t:"symbol-mono.svg (currentColor via mask)",s:sq,mono:"symbol-mono.svg"},
+ {t:"lockup-horizontal",s:wide,d:"lockup-horizontal.svg",l:"lockup-horizontal-light.svg",w:true},
+ {t:"lockup-stacked",s:wide,d:"lockup-stacked.svg",l:"lockup-stacked-light.svg",w:true},
+ {t:"wordmark (provisoire)",s:wide,d:"wordmark.svg",l:"wordmark-light.svg",w:true}
+];
+const root=document.getElementById('root');
+for(const x of sets){
+  let h='<h2>'+x.t+'</h2><div class="row">';
+  for(const th of ['dark','light']){
+    const src=x.w?(th==='dark'?x.d:x.l):(x.p||x.mono);
+    h+='<div class="pane '+th+'"><div class="items">';
+    for(const n of x.s){
+      const dim=x.w?'width="'+n+'"':'width="'+n+'" height="'+n+'"';
+      const sty=x.round&&n>=180?' style="border-radius:22.5%"':'';
+      if(x.mono) h+='<figure class="mono"><i style="--m:url('+src+');width:'+n+'px;height:'+n+'px"></i><figcaption>'+n+'</figcaption></figure>';
+      else h+='<figure><img src="'+src+'" '+dim+sty+' alt=""><figcaption>'+n+(x.w?' px de large':'')+'</figcaption></figure>';
+    }
+    h+='</div></div>';
+  }
+  root.insertAdjacentHTML('beforeend',h+'</div><div class="tag"></div>');
+}
+</script>
+</body>
+</html>

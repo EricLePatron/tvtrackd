@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Icône d'application">
+  <!-- Plein cadre, 100 % opaque (iOS refuse la transparence) : l'OS applique son propre masque.
+       La charnière est remplie en #0B0E14 (bg-void) au lieu d'être transparente.
+       Contenu à l'échelle 0,88 : il reste dans le cercle maskable de diamètre 80 % (rayon 25,6 u).
+       Charnière centrée sur le play : y = 32 + (29 - 32) * 0,88 = 29,36 ; rect 28,16 -> 30,56. -->
+  <rect width="64" height="64" fill="#1E2530"/>
+  <g transform="translate(32 32) scale(0.88) translate(-32 -32)">
+    <path d="M22 13V45L49 29Z" fill="#FF8A3D"/>
+    <rect x="14" y="50" width="36" height="3" rx="1.5" fill="#4DD9C4"/>
+  </g>
+  <rect x="0" y="28.16" width="64" height="2.4" fill="#0B0E14"/>
+</svg>

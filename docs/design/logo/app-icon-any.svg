@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Icône d'application (any)">
+  <!-- Variante `purpose: any` des icônes du manifest : même contenu que app-icon.svg
+       (échelle 0,88, charnière 2,4 u peinte en #0B0E14) sur une tuile arrondie rx 14
+       aux coins TRANSPARENTS (PNG RGBA). La charnière est clippée à la tuile. -->
+  <defs>
+    <clipPath id="tile"><rect width="64" height="64" rx="14"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="64" height="64" fill="#1E2530"/>
+    <g transform="translate(32 32) scale(0.88) translate(-32 -32)">
+      <path d="M22 13V45L49 29Z" fill="#FF8A3D"/>
+      <rect x="14" y="50" width="36" height="3" rx="1.5" fill="#4DD9C4"/>
+    </g>
+    <rect x="0" y="28.16" width="64" height="2.4" fill="#0B0E14"/>
+  </g>
+</svg>
