@@ -58,6 +58,14 @@ bun run deploy        # bun run build && wrangler deploy
 ```
 
 `bunx wrangler login` une première fois. Les `VITE_*` sont injectées au build depuis `.env`.
+
+- **Un `.env` est requis pour builder** : `cp .env.example .env` suffit pour déployer (les valeurs
+  publiques sont préremplies ; les secrets du Worker vivent dans `wrangler secret`, `vars` dans
+  `wrangler.jsonc`). Sans `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` ou `VITE_SITE_URL`,
+  `vite build` (donc `bun run deploy`) échoue avec un message explicite ; `bun dev` n'affiche qu'un
+  avertissement.
+- **Après un `git pull`, lancer `bun install` avant de déployer.**
+
 `bun run preview` exécute le build dans workerd en local (secrets via `.dev.vars`, gitignoré).
 
 ### Déployer les edge functions
@@ -101,6 +109,13 @@ Cloudflare → AI Crawl Control : passer le crawler en « Block ». Déjà bloqu
 (casse les aperçus de liens).
 
 ## Points de vigilance
+
+- **Build sans `.env` = site cassé en prod.** Sans les `VITE_*`, le SSR répond 200 mais le client
+  plante (« This page didn't load »). Le build est désormais gardé (`vite.config.ts`).
+- **Ne pas placer le dépôt dans un dossier synchronisé par iCloud** (Bureau / Documents avec
+  « Optimiser le stockage ») : iCloud décharge les gros binaires de `node_modules` (ex.
+  `@rolldown/binding-darwin-x64`) et l'on obtient « Cannot find native binding ». Utiliser par
+  exemple `~/dev/tvtrackd`.
 
 - **Worker gratuit : 100 000 requêtes/jour.** Surveiller le trafic bot ; au-delà, le service est
   dégradé. Un passage au plan payant est la solution de repli.
