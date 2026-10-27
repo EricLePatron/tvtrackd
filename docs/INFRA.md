@@ -77,6 +77,13 @@ bunx supabase functions deploy <noms> --project-ref wrzexhpjsmddsbimvqaw
 Les fonctions lisent la clé secrète via `SUPABASE_SECRET_KEYS` (injecté par Supabase) ou
 `SB_SECRET_KEY` (voir `supabase/functions/_shared/admin.ts`).
 
+Authentification de la CLI : `bunx supabase login` (ouvre le navigateur) crée un access token
+personnel `cli_<user>@<machine>_…`, stocké sur le Mac. C'est le seul jeton actif utilisé pour
+déployer ; il a un accès complet au compte (badge LEGACY) et n'expire pas — à remplacer à terme
+par un jeton limité au projet (Account → Access Tokens → Generate new token, scope projet). Les
+anciens jetons exposés dans des captures (`sbp_fc5f7c08…`) ont été supprimés. Si la CLI répond
+par une erreur d'authentification, relancer `bunx supabase login`.
+
 ### Poser ou faire tourner un secret
 
 - **Worker** : `bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY` (valeur `sb_secret_…`),
