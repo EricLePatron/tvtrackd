@@ -2,6 +2,11 @@
 
 Périmètre : `src/lib/share-card.ts` (rendu canvas) et `src/components/share-watch-dialog.tsx` (workflow). Spec uniquement, implémentation = `tvtrackd-developer`.
 
+> **Décisions produit (2026-10-27)** — priment sur le reste de ce document :
+> - **Épisode** : la carte utilise l'**image de l'épisode** (still TMDb), pas l'affiche de la série.
+> - **Série entière** : **abandonné**. Pas de carte « série », pas de bouton « Partager ma progression », pas de toast « Série terminée · Partager ».
+> - Cas retenus : **épisode** et **ma semaine**. Parcours de référence : artefact « Parcours de partage ».
+
 Ancrage (anti-ia-slop) : la carte sert la **fierté** (compteur de progression) et la **mémoire** (ce que j'ai vraiment regardé), dans le ton « vidéo-club nocturne » sobre. Chaque carte est une pièce de preuve sociale du produit : elle doit se lire en miniature, sans bannière publicitaire.
 
 ---

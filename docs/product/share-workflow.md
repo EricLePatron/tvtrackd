@@ -3,6 +3,11 @@
 Statut : proposition (2026-10-27). Aucun code. Critère de priorisation : impact sur segment / effort / risque (RICE allégé).
 Segments : social/casual, binger, cinéphile-critique, sensible aux spoilers.
 
+> **Décisions produit (2026-10-27)** — priment sur le reste de ce document :
+> - **Épisode** : la carte utilise l'**image de l'épisode** (still TMDb), pas l'affiche de la série.
+> - **Série entière** : **abandonné**. Pas de carte « série », pas de bouton « Partager ma progression », pas de toast « Série terminée · Partager ».
+> - Cas retenus : **épisode** et **ma semaine**. Parcours de référence : artefact « Parcours de partage ».
+
 ## 1. État actuel (constaté dans le code + 4 captures iPhone)
 
 Points d'entrée (tous opt-in, aucune ouverture automatique) :
