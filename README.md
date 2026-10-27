@@ -166,6 +166,8 @@ cp .env.example .env      # public Supabase values are prefilled
 bun run dev               # dev server (SSR) on http://localhost:5173
 ```
 
+A `.env` is required to build: `bun run build` / `bun run deploy` fail fast with a clear message if `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SITE_URL` is missing (`bun run dev` only warns). Keep the repo out of iCloud-synced folders (Desktop/Documents): iCloud offloads native binaries in `node_modules` ("Cannot find native binding").
+
 ```bash
 bun run test              # Vitest
 bun run lint              # ESLint
@@ -187,7 +189,8 @@ bunx wrangler secret put NOTION_API_KEY      # later, when feedback goes live
 bunx supabase functions deploy <names> --project-ref wrzexhpjsmddsbimvqaw   # edge functions
 ```
 
-- `VITE_*` variables are injected at build time from `.env` (public). Public `vars` live in `wrangler.jsonc`; secrets only via `wrangler secret put`.
+- Run `bun install` after every `git pull`, before deploying.
+- `.env` is required at build time (`cp .env.example .env` is enough; Worker secrets live in `wrangler secret`). `VITE_*` variables are injected at build time from `.env` (public). Public `vars` live in `wrangler.jsonc`; secrets only via `wrangler secret put`.
 - Custom domain: the DNS zone is on Cloudflare (nameservers set at OVH, the registrar), then Worker → Settings → Domains & Routes → Custom domain. Set the domain in `VITE_SITE_URL` / `vars.SITE_URL`.
 - Allow every new URL in Supabase (Auth → URL Configuration: Site URL + Redirect URLs) and Google Cloud (OAuth client → Authorized JavaScript origins).
 - `bun run preview` runs the build in workerd locally (secrets via `.dev.vars`, gitignored).

@@ -31,6 +31,17 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
 function createSupabaseClient() {
   // Use import.meta.env for client-side (Vite build-time replacement)
   // Fall back to process.env for SSR (server-side rendering)
+  if (
+    typeof window !== 'undefined' &&
+    (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY)
+  ) {
+    // process.env n'existe pas dans le navigateur : message explicite plutôt qu'un crash obscur.
+    const message =
+      'Supabase config missing from the client bundle (VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY). The app was built without a .env file: copy .env.example to .env and rebuild.';
+    console.error(`[Supabase] ${message}`);
+    throw new Error(message);
+  }
+
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
