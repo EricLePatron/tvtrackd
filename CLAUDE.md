@@ -2,14 +2,6 @@
 
 Contexte projet pour Claude Code. Ce fichier doit être lu en entier avant toute intervention sur le repo.
 
-## Note pour Lovable
-
-Ce fichier est aussi lu par Lovable, mais **Lovable doit se limiter au contexte produit, au schéma Supabase et à la direction design** décrits ci-dessous. En particulier :
-
-- **Lovable ne doit PAS prendre en compte les règles d'agents** — l'orchestration en sous-agents (`.claude/agents/` : `tvtrackd-developer`, `tvtrackd-qa-reviewer`, `entertainment-*`, `marketing-communication-expert`, etc.), le découpage plan → validation → implémentation, et toute règle du type « seul tel agent peut écrire du code » sont **spécifiques à Claude Code** et ne s'appliquent pas à Lovable.
-- **Lovable ne doit pas coder via ces agents ni tenter de les invoquer** — Lovable produit son code directement, comme d'habitude, sans passer par le workflow d'agents décrit pour Claude Code.
-- Les mentions « Claude Code » (sections « Ce que Claude Code NE doit PAS faire » et « Principes de développement pour Claude Code ») sont des consignes d'orchestration Claude Code, pas des instructions destinées à Lovable.
-
 ## Pourquoi ce projet existe
 
 TV Time (25M+ utilisateurs revendiqués) ferme le 15 juillet 2026 — l'éditeur (Whip Media, racheté par Blue Torch Capital en 2025) pivote vers l'IA et abandonne le produit faute de rentabilité. C'est la fermeture soudaine d'un des plus gros trackers de séries au monde, avec seulement ~2 semaines de préavis aux utilisateurs.
@@ -34,13 +26,19 @@ L'alternative française naturelle, **Betaseries**, a la marque et la communaut�
 
 ## Stack technique
 
-- **Lovable** : a livré le MVP initial (voir section Découpage plus bas) — squelette, auth, écrans, intégrations API de base
-- **Supabase** : backend (Postgres, Auth, Edge Functions, Storage, Cron)
+- **Lovable** : a livré le MVP initial (voir section Découpage plus bas) — squelette, auth, écrans, intégrations API de base. **Plus utilisé depuis octobre 2026** : le projet est entièrement indépendant (code, backend, hébergement)
+- **Supabase** : backend (Postgres, Auth, Edge Functions, Storage, Cron) — projet possédé en propre (`wrzexhpjsmddsbimvqaw`)
+- **Cloudflare** : hébergement de l'app (Worker `tvtrackd`, SSR TanStack Start, `bun run deploy`), DNS du domaine, protection contre les bots
+- **OVH** : registrar du domaine `tvtrackd.com` (et emails éventuels du domaine)
 - **TMDb API** : source de métadonnées (recherche, fiches, images, calendrier de sorties). Choix fait après comparaison avec TheTVDB — TVDB a une meilleure précision horaire mais nécessite une licence commerciale payante (négociée ou 12$/an/utilisateur), non viable pour un MVP gratuit. TMDb reste gratuit et couvre films + séries + images en un seul endroit.
-- **Claude Code** : prend le relais après le MVP Lovable pour toute l'itération — logique métier fine, moteur de reco, notifications, polish, tests, corrections
+- **Claude Code** : prend le relais après le MVP initial pour toute l'itération — logique métier fine, moteur de reco, notifications, polish, tests, corrections
+
+Architecture d'hébergement, procédures de déploiement, secrets et points de vigilance (quotas, bots, DNSSEC) : voir **`docs/INFRA.md`**.
 
 ### Ce que Claude Code NE doit PAS faire
-- Retoucher Lovable pour du développement courant — Lovable n'est rouvert que pour une refonte visuelle large, décidée explicitement
+- Réintroduire une dépendance à Lovable (paquets `@lovable.dev/*`, Lovable Cloud, connecteurs Lovable)
+- Activer « Deploy to production » dans l'intégration GitHub de Supabase tant que l'historique de `supabase/migrations/` n'est pas aligné avec la base de production (créée depuis `docs/migration/schema-consolidated.sql`)
+- Committer une clé secrète (`sb_secret_…`, token Notion, etc.) ou l'afficher dans une sortie partagée — les secrets vivent dans `.env` local, `wrangler secret` et les secrets Supabase
 - Regénérer un schéma Supabase depuis zéro — le schéma existant (voir plus bas) doit être respecté et étendu, pas réinventé
 - Introduire TheTVDB sans validation explicite du coût de licence — TMDb reste la source unique tant que ce n'est pas tranché
 
@@ -57,7 +55,7 @@ Point de vigilance hérité de l'analyse concurrentielle : ne jamais coupler `st
 
 ## Découpage des features
 
-### Livré par Lovable (MVP)
+### Livré (MVP initial, généré avec Lovable)
 - Auth Supabase (email/password)
 - Recherche TMDb (`search-media` edge function)
 - Fiche série/film avec cache local (`get-show-details`)
@@ -112,7 +110,7 @@ Les trois esthétiques par défaut de génération IA à ne jamais reproduire sa
 
 ## Nommage / branding
 
-Nom de domaine en cours d'arbitrage — `.fr` privilégié comme domaine principal (peu de `.com` courts disponibles sur le champ lexical "TV", et le positionnement marché est volontairement francophone). Piste actuellement évaluée : **TVTrackd** — vérification de risque de marque en cours (proximité de construction avec "Trakt", à valider via TMview/INPI avant achat définitif du domaine). Ne pas committer le nom en dur dans le code/assets tant que ce point n'est pas tranché — utiliser une variable de configuration pour le nom de l'app.
+Domaine en production : **`tvtrackd.com`** (acheté chez OVH, servi par Cloudflare — voir `docs/INFRA.md`). Un `.fr` reste envisagé pour le positionnement francophone. La vérification de risque de marque **TVTrackd** (proximité de construction avec "Trakt", via TMview/INPI) n'est pas tranchée : ne pas committer le nom en dur dans le code/assets — utiliser la configuration (`APP_NAME`, `SITE_URL` dans `src/lib/app-config.ts`) pour le nom et le domaine de l'app.
 
 ## Principes de développement pour Claude Code
 

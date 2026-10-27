@@ -91,6 +91,7 @@ _Role definitions and writing policies live in [`.claude/agents/`](./.claude/age
 | Front | **React 19 + TanStack Start** (SSR), TanStack Router / Query, Tailwind v4, Radix UI | SSR for show/movie-page SEO, typed routing, built-in server cache |
 | Back | **Supabase** — Postgres, Auth, Edge Functions (Deno), Cron, Storage | Full backend, strict RLS on every user table |
 | Data | **TMDb API** | Movies + shows + images, free, from a single source; a shared DB-side cache with a 24-48h TTL avoids redundant API calls |
+| Hosting | **Cloudflare Workers** (SSR) + Cloudflare DNS; domain registered at OVH | Free tier, edge SSR, see [`docs/INFRA.md`](./docs/INFRA.md) |
 | Quality | Strict TypeScript, ESLint, Prettier, **Vitest** | — |
 
 **Documented choice:** TMDb over TheTVDB (better airtime precision, but a paid commercial license — not viable for a free MVP). Revisited only if airtime precision becomes a real, user-reported pain point.
@@ -139,7 +140,9 @@ src/
 │  └─ _authenticated/    library, import, profile, admin
 ├─ components/           show · home · import · profile · onboarding · ui (design system)
 ├─ lib/                  app-config, import-parsers, share-card, admin metrics…
-└─ integrations/supabase typed client
+└─ integrations/supabase typed client (hand-maintained)
+
+wrangler.jsonc           Cloudflare Worker config (name, entry, public vars)
 
 supabase/
 ├─ functions/            search-media · get-show-details · import-history · export-data
@@ -147,6 +150,8 @@ supabase/
 └─ migrations/           versioned schema (shows, seasons, episodes, user_shows, watch_status)
 
 docs/                    product/ · design/ · seo/     — discovery dossiers
+├─ INFRA.md              production infrastructure reference
+└─ migration/            historical (data migration never executed)
 .claude/agents/          the AI agent team             — see above
 ```
 
@@ -156,8 +161,9 @@ docs/                    product/ · design/ · seo/     — discovery dossiers
 
 ```bash
 bun install
-# Fill a .env file with your Supabase & TMDb keys
-bun run dev               # dev server (SSR)
+cp .env.example .env      # public Supabase values are prefilled
+# Fill in the secrets in .env: SUPABASE_SERVICE_ROLE_KEY (sb_secret_…), NOTION_API_KEY (optional)
+bun run dev               # dev server (SSR) on http://localhost:5173
 ```
 
 ```bash
@@ -168,29 +174,23 @@ bun run build             # production build (SSR)
 
 ---
 
-## Deploy (Cloudflare Workers, `*.workers.dev`)
+## Deploy (Cloudflare Workers, custom domain `tvtrackd.com`)
 
-Config : `wrangler.jsonc` (Worker `tvtrackd`, entrée `src/server.ts`, `nodejs_compat`).
+Full reference: [`docs/INFRA.md`](./docs/INFRA.md). Config: `wrangler.jsonc` (Worker `tvtrackd`, entry `src/server.ts`, `nodejs_compat`).
 
 ```bash
 bun install
-bunx wrangler login                          # une fois, ouvre le navigateur
+bunx wrangler login                          # once, opens the browser
 bun run deploy                               # build + wrangler deploy
 bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-bunx wrangler secret put NOTION_API_KEY
+bunx wrangler secret put NOTION_API_KEY      # later, when feedback goes live
+bunx supabase functions deploy <names> --project-ref wrzexhpjsmddsbimvqaw   # edge functions
 ```
 
-- `VITE_*` sont injectées au build depuis `.env` (publiques). `vars` publiques dans `wrangler.jsonc` ;
-  secrets uniquement via `wrangler secret put`.
-- Après le 1er déploiement : mettre l'URL `https://tvtrackd.<compte>.workers.dev` dans `VITE_SITE_URL`
-  (`.env`) et `vars.SITE_URL` (`wrangler.jsonc`), puis `bun run deploy` à nouveau.
-- À autoriser : Supabase (Auth → URL Configuration : Site URL + Redirect URLs `https://…workers.dev/**`)
-  et Google Cloud (OAuth client → Authorized JavaScript origins : l'URL workers.dev).
-- Domaine personnalisé (`tvtrackd.com`) : zone DNS gérée par Cloudflare (nameservers changés chez OVH,
-  DNSSEC désactivé côté OVH avant le changement), puis Worker → Settings → Domains & Routes → Custom
-  domain. Mettre le domaine dans `VITE_SITE_URL` / `vars.SITE_URL` et l'autoriser dans Supabase et
-  Google Cloud comme ci-dessus.
-- `bun run preview` exécute le build dans workerd en local (secrets via `.dev.vars`, gitignoré).
+- `VITE_*` variables are injected at build time from `.env` (public). Public `vars` live in `wrangler.jsonc`; secrets only via `wrangler secret put`.
+- Custom domain: the DNS zone is on Cloudflare (nameservers set at OVH, the registrar), then Worker → Settings → Domains & Routes → Custom domain. Set the domain in `VITE_SITE_URL` / `vars.SITE_URL`.
+- Allow every new URL in Supabase (Auth → URL Configuration: Site URL + Redirect URLs) and Google Cloud (OAuth client → Authorized JavaScript origins).
+- `bun run preview` runs the build in workerd locally (secrets via `.dev.vars`, gitignored).
 
 ---
 
