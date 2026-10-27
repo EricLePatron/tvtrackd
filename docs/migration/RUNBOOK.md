@@ -1,7 +1,14 @@
 # Runbook — migration vers un projet Supabase indépendant
 
+> **Statut : historique, non exécuté.**
+> La migration de données décrite ici n'a **pas eu lieu** : l'ancien projet Lovable Cloud
+> est inaccessible et la clé source n'est pas disponible. Le projet Supabase actuel est
+> reparti propre, avec le schéma de `schema-consolidated.sql`. L'architecture en vigueur est
+> décrite dans [`docs/INFRA.md`](../INFRA.md). Les affirmations ci-dessous sur les edge
+> functions sont dépassées : elles utilisent désormais `_shared/admin.ts` et la clé `sb_secret`.
+
 Procédure d'exécution du plan de migration validé le 2026-08-20
-(`.lovable/plan/migration-vers-un-projet-supabase-indépendant-2026-08-20.md`).
+(le fichier `.lovable/plan/…` a été supprimé, le dossier n'existe plus).
 
 Objectif : basculer le backend de Lovable Cloud vers un projet Supabase possédé
 en propre, sans perte de données ni régression fonctionnelle.

@@ -9,30 +9,33 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as PublicRouteImport } from './routes/_public'
-import { Route as LegalRouteRouteImport } from './routes/legal/route'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
-import { Route as PublicIndexRouteImport } from './routes/_public/index'
-import { Route as LegalMentionsLegalesRouteImport } from './routes/legal/mentions-legales'
-import { Route as LegalCookiesRouteImport } from './routes/legal/cookies'
-import { Route as LegalConfidentialiteRouteImport } from './routes/legal/confidentialite'
-import { Route as LegalCguRouteImport } from './routes/legal/cgu'
-import { Route as PublicSearchRouteImport } from './routes/_public/search'
-import { Route as PublicCalendarRouteImport } from './routes/_public/calendar'
-import { Route as PublicAlternativeTvTimeRouteImport } from './routes/_public/alternative-tv-time'
-import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
-import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
-import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
+import { Route as PublicRouteImport } from './routes/_public'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as LegalRouteRouteImport } from './routes/legal/route'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
-import { Route as PublicPersonPersonIdRouteImport } from './routes/_public/person.$personId'
+import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
+import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as PublicIndexRouteImport } from './routes/_public/index'
+import { Route as PublicAlternativeTvTimeRouteImport } from './routes/_public/alternative-tv-time'
+import { Route as PublicCalendarRouteImport } from './routes/_public/calendar'
+import { Route as PublicSearchRouteImport } from './routes/_public/search'
+import { Route as LegalCguRouteImport } from './routes/legal/cgu'
+import { Route as LegalConfidentialiteRouteImport } from './routes/legal/confidentialite'
+import { Route as LegalCookiesRouteImport } from './routes/legal/cookies'
+import { Route as LegalMentionsLegalesRouteImport } from './routes/legal/mentions-legales'
 import { Route as AuthenticatedImportRunRunIdRouteImport } from './routes/_authenticated/import-run.$runId'
+import { Route as PublicPersonPersonIdRouteImport } from './routes/_public/person.$personId'
 import { Route as PublicShowMediaTypeTmdbIdRouteImport } from './routes/_public/show.$mediaType.$tmdbId'
 
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PublicRoute = PublicRouteImport.update({
+  id: '/_public',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -40,67 +43,19 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PublicRoute = PublicRouteImport.update({
-  id: '/_public',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LegalRouteRoute = LegalRouteRouteImport.update({
   id: '/legal',
   path: '/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
-  id: '/_authenticated',
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PublicIndexRoute = PublicIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => PublicRoute,
-} as any)
-const LegalMentionsLegalesRoute = LegalMentionsLegalesRouteImport.update({
-  id: '/mentions-legales',
-  path: '/mentions-legales',
-  getParentRoute: () => LegalRouteRoute,
-} as any)
-const LegalCookiesRoute = LegalCookiesRouteImport.update({
-  id: '/cookies',
-  path: '/cookies',
-  getParentRoute: () => LegalRouteRoute,
-} as any)
-const LegalConfidentialiteRoute = LegalConfidentialiteRouteImport.update({
-  id: '/confidentialite',
-  path: '/confidentialite',
-  getParentRoute: () => LegalRouteRoute,
-} as any)
-const LegalCguRoute = LegalCguRouteImport.update({
-  id: '/cgu',
-  path: '/cgu',
-  getParentRoute: () => LegalRouteRoute,
-} as any)
-const PublicSearchRoute = PublicSearchRouteImport.update({
-  id: '/search',
-  path: '/search',
-  getParentRoute: () => PublicRoute,
-} as any)
-const PublicCalendarRoute = PublicCalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
-  getParentRoute: () => PublicRoute,
-} as any)
-const PublicAlternativeTvTimeRoute = PublicAlternativeTvTimeRouteImport.update({
-  id: '/alternative-tv-time',
-  path: '/alternative-tv-time',
-  getParentRoute: () => PublicRoute,
-} as any)
-const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
-  id: '/library',
-  path: '/library',
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedImportRoute = AuthenticatedImportRouteImport.update({
@@ -108,15 +63,55 @@ const AuthenticatedImportRoute = AuthenticatedImportRouteImport.update({
   path: '/import',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const PublicPersonPersonIdRoute = PublicPersonPersonIdRouteImport.update({
-  id: '/person/$personId',
-  path: '/person/$personId',
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const PublicIndexRoute = PublicIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => PublicRoute,
+} as any)
+const PublicAlternativeTvTimeRoute = PublicAlternativeTvTimeRouteImport.update({
+  id: '/alternative-tv-time',
+  path: '/alternative-tv-time',
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicCalendarRoute = PublicCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicSearchRoute = PublicSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => PublicRoute,
+} as any)
+const LegalCguRoute = LegalCguRouteImport.update({
+  id: '/cgu',
+  path: '/cgu',
+  getParentRoute: () => LegalRouteRoute,
+} as any)
+const LegalConfidentialiteRoute = LegalConfidentialiteRouteImport.update({
+  id: '/confidentialite',
+  path: '/confidentialite',
+  getParentRoute: () => LegalRouteRoute,
+} as any)
+const LegalCookiesRoute = LegalCookiesRouteImport.update({
+  id: '/cookies',
+  path: '/cookies',
+  getParentRoute: () => LegalRouteRoute,
+} as any)
+const LegalMentionsLegalesRoute = LegalMentionsLegalesRouteImport.update({
+  id: '/mentions-legales',
+  path: '/mentions-legales',
+  getParentRoute: () => LegalRouteRoute,
 } as any)
 const AuthenticatedImportRunRunIdRoute =
   AuthenticatedImportRunRunIdRouteImport.update({
@@ -124,6 +119,11 @@ const AuthenticatedImportRunRunIdRoute =
     path: '/import-run/$runId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const PublicPersonPersonIdRoute = PublicPersonPersonIdRouteImport.update({
+  id: '/person/$personId',
+  path: '/person/$personId',
+  getParentRoute: () => PublicRoute,
+} as any)
 const PublicShowMediaTypeTmdbIdRoute =
   PublicShowMediaTypeTmdbIdRouteImport.update({
     id: '/show/$mediaType/$tmdbId',
@@ -269,18 +269,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_public': {
@@ -290,6 +283,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/legal': {
       id: '/legal'
       path: '/legal'
@@ -297,81 +297,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LegalRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated': {
-      id: '/_authenticated'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_public/': {
-      id: '/_public/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof PublicIndexRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    '/legal/mentions-legales': {
-      id: '/legal/mentions-legales'
-      path: '/mentions-legales'
-      fullPath: '/legal/mentions-legales'
-      preLoaderRoute: typeof LegalMentionsLegalesRouteImport
-      parentRoute: typeof LegalRouteRoute
-    }
-    '/legal/cookies': {
-      id: '/legal/cookies'
-      path: '/cookies'
-      fullPath: '/legal/cookies'
-      preLoaderRoute: typeof LegalCookiesRouteImport
-      parentRoute: typeof LegalRouteRoute
-    }
-    '/legal/confidentialite': {
-      id: '/legal/confidentialite'
-      path: '/confidentialite'
-      fullPath: '/legal/confidentialite'
-      preLoaderRoute: typeof LegalConfidentialiteRouteImport
-      parentRoute: typeof LegalRouteRoute
-    }
-    '/legal/cgu': {
-      id: '/legal/cgu'
-      path: '/cgu'
-      fullPath: '/legal/cgu'
-      preLoaderRoute: typeof LegalCguRouteImport
-      parentRoute: typeof LegalRouteRoute
-    }
-    '/_public/search': {
-      id: '/_public/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof PublicSearchRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    '/_public/calendar': {
-      id: '/_public/calendar'
-      path: '/calendar'
-      fullPath: '/calendar'
-      preLoaderRoute: typeof PublicCalendarRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    '/_public/alternative-tv-time': {
-      id: '/_public/alternative-tv-time'
-      path: '/alternative-tv-time'
-      fullPath: '/alternative-tv-time'
-      preLoaderRoute: typeof PublicAlternativeTvTimeRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    '/_authenticated/profile': {
-      id: '/_authenticated/profile'
-      path: '/profile'
-      fullPath: '/profile'
-      preLoaderRoute: typeof AuthenticatedProfileRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/library': {
-      id: '/_authenticated/library'
-      path: '/library'
-      fullPath: '/library'
-      preLoaderRoute: typeof AuthenticatedLibraryRouteImport
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/import': {
@@ -381,11 +318,81 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedImportRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin': {
-      id: '/_authenticated/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+    '/_authenticated/library': {
+      id: '/_authenticated/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof AuthenticatedLibraryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_public/': {
+      id: '/_public/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof PublicIndexRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/_public/alternative-tv-time': {
+      id: '/_public/alternative-tv-time'
+      path: '/alternative-tv-time'
+      fullPath: '/alternative-tv-time'
+      preLoaderRoute: typeof PublicAlternativeTvTimeRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/_public/calendar': {
+      id: '/_public/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof PublicCalendarRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/_public/search': {
+      id: '/_public/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof PublicSearchRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    '/legal/cgu': {
+      id: '/legal/cgu'
+      path: '/cgu'
+      fullPath: '/legal/cgu'
+      preLoaderRoute: typeof LegalCguRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/legal/confidentialite': {
+      id: '/legal/confidentialite'
+      path: '/confidentialite'
+      fullPath: '/legal/confidentialite'
+      preLoaderRoute: typeof LegalConfidentialiteRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/legal/cookies': {
+      id: '/legal/cookies'
+      path: '/cookies'
+      fullPath: '/legal/cookies'
+      preLoaderRoute: typeof LegalCookiesRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/legal/mentions-legales': {
+      id: '/legal/mentions-legales'
+      path: '/mentions-legales'
+      fullPath: '/legal/mentions-legales'
+      preLoaderRoute: typeof LegalMentionsLegalesRouteImport
+      parentRoute: typeof LegalRouteRoute
+    }
+    '/_authenticated/import-run/$runId': {
+      id: '/_authenticated/import-run/$runId'
+      path: '/import-run/$runId'
+      fullPath: '/import-run/$runId'
+      preLoaderRoute: typeof AuthenticatedImportRunRunIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_public/person/$personId': {
@@ -394,13 +401,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/person/$personId'
       preLoaderRoute: typeof PublicPersonPersonIdRouteImport
       parentRoute: typeof PublicRoute
-    }
-    '/_authenticated/import-run/$runId': {
-      id: '/_authenticated/import-run/$runId'
-      path: '/import-run/$runId'
-      fullPath: '/import-run/$runId'
-      preLoaderRoute: typeof AuthenticatedImportRunRunIdRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_public/show/$mediaType/$tmdbId': {
       id: '/_public/show/$mediaType/$tmdbId'

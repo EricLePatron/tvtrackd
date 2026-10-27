@@ -34,8 +34,8 @@ function MentionsLegales() {
 
         <h2 className="mt-6 mb-2 text-lg font-semibold">2. Hébergeur</h2>
         <p>
-          Le site est hébergé par <strong>Lovable</strong> (Lovable AB), sur l&apos;infrastructure
-          de <strong>Cloudflare, Inc.</strong> — 101 Townsend Street, San Francisco, CA 94107, USA.
+          Le site est hébergé par <strong>Cloudflare, Inc.</strong> (Cloudflare Workers) — 101
+          Townsend Street, San Francisco, CA 94107, USA.
         </p>
 
         <h2 className="mt-6 mb-2 text-lg font-semibold">3. Propriété intellectuelle</h2>

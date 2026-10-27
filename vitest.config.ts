@@ -1,9 +1,6 @@
-// Deliberately separate from vite.config.ts: that file is wrapped by
-// @lovable.dev/vite-tanstack-config (see the warning comment at its top)
-// which does not expose a `test` option, and this project has no existing
-// test setup to fold this into. Kept minimal on purpose (cf. CLAUDE.md
-// workflow — scope limited to what was validated in the plan): only the
-// pure functions in src/lib are covered, no DOM/React test environment.
+// Volontairement séparé de vite.config.ts (plugins TanStack Start/Cloudflare
+// inutiles pour des tests unitaires). Config minimale : seules les fonctions
+// pures de src/lib sont couvertes, sans environnement DOM/React.
 import { defineConfig } from "vitest/config";
 import path from "node:path";
 
@@ -18,4 +15,3 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
   },
 });
-
