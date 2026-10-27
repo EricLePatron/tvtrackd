@@ -15,7 +15,7 @@ OVH (registrar : nom de domaine, renouvellement annuel ; MX email mx1/2/3.mail.o
    ▼
 Cloudflare
    ├─ DNS (zone tvtrackd.com, DNSSEC)
-   ├─ Sécurité (AI Crawl Control, Redirect Rule www → racine)
+   ├─ Sécurité (AI Crawl Control, règle WAF « Bloquer scanners », Redirect Rule www → racine)
    └─ Worker `tvtrackd` (TanStack Start SSR, plan gratuit)
           │  clé publishable (navigateur) / clé sb_secret (serveur)
           ▼
@@ -36,7 +36,7 @@ Connexion Google : navigateur ─► Google OAuth ─► https://wrzexhpjsmddsbi
 | Cloudflare Worker `tvtrackd` | App SSR. Custom domain `tvtrackd.com`. `tvtrackd.ericlepatron.workers.dev` reste actif pour les tests                                                                | Worker → Domains ; `wrangler.jsonc` (vars publiques) ; secrets via `wrangler secret put`                             | Plan gratuit, 100 000 requêtes/jour |
 | Cloudflare Rules / Bots      | Redirect Rule `www` → racine (301, query string conservée). `Meta-ExternalAgent` et `Bytespider` bloqués. Bot Fight Mode volontairement désactivé (aperçus de liens) | Dashboard → Rules ; AI Crawl Control                                                                                 | Gratuit                             |
 | Supabase                     | Postgres, Auth, Edge Functions, Storage                                                                                                                              | Dashboard projet `wrzexhpjsmddsbimvqaw` ; `supabase/` dans le repo                                                   | Plan gratuit                        |
-| Google Cloud                 | Client OAuth Web pour la connexion Google                                                                                                                            | Console → APIs & Services → Credentials / écran de consentement (scopes de base, publication en production en cours) | Gratuit                             |
+| Google Cloud                 | Client OAuth Web pour la connexion Google                                                                                                                            | Console → APIs & Services → Credentials / écran de consentement (scopes de base, app publiée « En production »)      | Gratuit                             |
 | TMDb                         | Source des métadonnées                                                                                                                                               | Clé API côté edge functions                                                                                          | Gratuit                             |
 | Notion                       | Feedback utilisateur (`api.notion.com`)                                                                                                                              | `NOTION_API_KEY` **pas encore configuré**, volontairement remis à plus tard                                          | Gratuit                             |
 | GitHub                       | Code source. L'app lovable.dev n'a plus accès au repo                                                                                                                | Repo                                                                                                                 | Gratuit                             |
@@ -85,9 +85,9 @@ Les fonctions lisent la clé secrète via `SUPABASE_SECRET_KEYS` (injecté par S
   dans le Worker, redéployer les fonctions si elles utilisent `SB_SECRET_KEY`
   (`bunx supabase secrets set SB_SECRET_KEY=… --project-ref wrzexhpjsmddsbimvqaw`), vérifier, puis
   révoquer l'ancienne.
-- Les clés legacy JWT (anon / service_role) sont désactivées. Le legacy JWT secret est en cours de
-  révocation, après rotation vers une clé de signature ECC P-256 (cause : fuite de l'ancienne clé
-  service_role dans une capture d'écran).
+- Les clés legacy JWT (anon / service_role) sont désactivées et le legacy JWT secret est révoqué,
+  après rotation vers une clé de signature ECC P-256 (cause : fuite de l'ancienne clé service_role
+  dans une capture d'écran). Les edge functions n'ont plus de repli legacy.
 - Ne jamais committer de secret ; `.env` et `.dev.vars` sont gitignorés.
 
 ### Changer de domaine ou ajouter une URL
@@ -107,6 +107,18 @@ Les fonctions lisent la clé secrète via `SUPABASE_SECRET_KEYS` (injecté par S
 Cloudflare → AI Crawl Control : passer le crawler en « Block ». Déjà bloqués : `Meta-ExternalAgent`
 (150 000 requêtes/jour, a déclenché l'alerte de quota) et `Bytespider`. Ne pas activer Bot Fight Mode
 (casse les aperçus de liens).
+
+Scanners de vulnérabilités (requêtes vers `/.env`, `/.git`, `/wp-login.php`…) : règle WAF gratuite
+« Bloquer scanners » (domaine `tvtrackd.com` → Security → WAF / Security rules → Custom rules,
+action **Block**) :
+
+```
+(starts_with(http.request.uri.path, "/.") and not starts_with(http.request.uri.path, "/.well-known/")) or (http.request.uri.path contains ".php") or starts_with(http.request.uri.path, "/wp-")
+```
+
+Aucune route de l'app ne correspond (pas de chemin commençant par `/.`, pas de PHP, pas de
+WordPress) : sans effet sur le SEO ni sur le trafic réel. Les requêtes bloquées ne consomment pas
+le quota du Worker. Ne pas créer cette règle au niveau du compte (WAF « Account-level », payant).
 
 ## Points de vigilance
 
