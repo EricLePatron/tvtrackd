@@ -6,7 +6,8 @@ Segments : social/casual, binger, cinéphile-critique, sensible aux spoilers.
 > **Décisions produit (2026-10-27)** — priment sur le reste de ce document :
 > - **Épisode** : la carte utilise l'**image de l'épisode** (still TMDb), pas l'affiche de la série.
 > - **Série entière** : **abandonné**. Pas de carte « série », pas de bouton « Partager ma progression », pas de toast « Série terminée · Partager ».
-> - Cas retenus : **épisode** et **ma semaine**. Parcours de référence : artefact « Parcours de partage ».
+> - **Fin de saison** : conservé et refait. Entrées : notification « Saison bouclée · Partager » au dernier épisode marqué, et icône de partage permanente à côté du compteur de la saison sur la fiche. Carte : affiche de la saison (2:3 entière), compteur `08/08` + `S02 · BOUCLÉE`, période de visionnage, temps ≈. Corrige le chevauchement du bandeau de la carte saison actuelle.
+> - Cas retenus : **épisode**, **fin de saison** et **ma semaine**. Parcours de référence : artefact « Parcours de partage ».
 
 ## 1. État actuel (constaté dans le code + 4 captures iPhone)
 
