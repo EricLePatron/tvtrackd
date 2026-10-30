@@ -3,7 +3,8 @@
 Périmètre : `src/lib/share-card.ts` (rendu canvas) et `src/components/share-watch-dialog.tsx` (workflow). Spec uniquement, implémentation = `tvtrackd-developer`.
 
 > **Décisions produit (2026-10-27)** — priment sur le reste de ce document :
-> - **Épisode** : la carte utilise l'**image de l'épisode** (still TMDb), pas l'affiche de la série.
+> - **Épisode** : carte épurée, 5 éléments seulement : eyebrow `ÉPISODE VU`, **image de l'épisode** (still TMDb 16:9), code `S02 E05` (Plex Mono, ambre), titre de la série (Archivo) + titre de l'épisode (Inter, muted), nom de l'app en pied (`APP_NAME`). Pas de compteur de progression, de barre, de date ni de domaine sur cette carte.
+> - **Lien** : Instagram ne permet pas de story cliquable automatiquement depuis le web. Le lien est copié au tap sur « Partager » (sticker Lien optionnel) et joint au `navigator.share` pour WhatsApp, Messages et X.
 > - **Série entière** : **abandonné**. Pas de carte « série », pas de bouton « Partager ma progression », pas de toast « Série terminée · Partager ».
 > - **Fin de saison** : conservé et refait. Entrées : notification « Saison bouclée · Partager » au dernier épisode marqué, et icône de partage permanente à côté du compteur de la saison sur la fiche. Carte : affiche de la saison (2:3 entière), compteur `08/08` + `S02 · BOUCLÉE`, période de visionnage, temps ≈. Corrige le chevauchement du bandeau de la carte saison actuelle.
 > - Cas retenus : **épisode**, **fin de saison** et **ma semaine**. Parcours de référence : artefact « Parcours de partage ».
