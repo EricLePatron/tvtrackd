@@ -276,6 +276,8 @@ function ShowDetail() {
   // plutôt que laissé non contrôlé pour pouvoir forcer l'ouverture d'une
   // saison depuis "À voir maintenant" / "Revoir depuis le début".
   const [openSeasons, setOpenSeasons] = useState<string[]>([]);
+  // Partage de fin de saison déclenché depuis le toast (jamais de modale auto).
+  const [shareSeason, setShareSeason] = useState<number | null>(null);
 
   // Préchargé côté serveur par le `loader` de la route (cf. P0-1 SEO) : même
   // clé de query, même fetch (`fetchShowDetails`) que ce que faisait cet
@@ -444,6 +446,25 @@ function ShowDetail() {
       if (ctx?.prev) qc.setQueryData(watchedKey, ctx.prev);
       toast.error("Impossible de mettre à jour l'épisode");
     },
+    onSuccess: (_data, { episodeId, isWatched }, ctx) => {
+      // Dernier épisode d'une saison marqué vu : toast avec action « Partager »
+      // (opt-in, aucune modale automatique).
+      if (isWatched) return;
+      const episode = data?.episodes.find((e) => e.id === episodeId);
+      if (!episode) return;
+      const seasonEps = data!.episodes.filter((e) => e.season_number === episode.season_number);
+      const done =
+        seasonEps.length > 0 &&
+        seasonEps.every((e) => e.id === episodeId || (ctx?.prev?.[e.id]?.count ?? 0) > 0);
+      if (!done) return;
+      toast.success(
+        `S${pad(episode.season_number)} · E${pad(episode.episode_number)} vu · saison bouclée`,
+        {
+          duration: 8000,
+          action: { label: "Partager", onClick: () => setShareSeason(episode.season_number) },
+        },
+      );
+    },
     onSettled: (_data, _err, { episodeId }, ctx) => {
       qc.invalidateQueries({ queryKey: watchedKey });
       setLockedEpisodes((prev) => {
@@ -576,6 +597,20 @@ function ShowDetail() {
   const year = show.first_air_date ? show.first_air_date.slice(0, 4) : "—";
   const seasons = data.seasons;
   const episodes = data.episodes;
+
+  // Props de partage « saison bouclée » (icône de la fiche + action du toast).
+  // Pas de visuel de saison en base : repli sur l'affiche de la série.
+  const seasonShareProps = (seasonNumber: number) => ({
+    card: {
+      kind: "season" as const,
+      seriesTitle: show.title,
+      season: seasonNumber,
+      posterUrl: show.poster_path,
+    },
+    previewAlt: `${show.title}, saison ${seasonNumber} bouclée`,
+    shareUrl: showShareUrl(mediaType, tmdbId),
+    caption: `J'ai bouclé la saison ${seasonNumber} de ${show.title}`,
+  });
 
   const statusLabel = show.status
     ? (mediaType === "tv" ? TV_TMDB_STATUS_LABELS : MOVIE_TMDB_STATUS_LABELS)[show.status]
@@ -876,12 +911,24 @@ function ShowDetail() {
                     </span>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <VhsCounter
-                      seasonNumber={s.season_number}
-                      lastEpisode={last}
-                      watched={watchedCount}
-                      total={eps.length}
-                    />
+                    <div className="relative">
+                      <VhsCounter
+                        seasonNumber={s.season_number}
+                        lastEpisode={last}
+                        watched={watchedCount}
+                        total={eps.length}
+                      />
+                      {/* Partage de fin de saison : seulement quand tous les
+                          épisodes sont vus — sinon il n'y a rien à annoncer. */}
+                      {isSeasonDone && (
+                        <ShareWatchDialog
+                          triggerVariant="icon"
+                          triggerLabel={`Partager la saison ${s.season_number}`}
+                          triggerClassName="absolute right-2 top-2"
+                          {...seasonShareProps(s.season_number)}
+                        />
+                      )}
+                    </div>
                     <SeasonToggle
                       seasonNumber={s.season_number}
                       state={seasonState}
@@ -889,22 +936,6 @@ function ShowDetail() {
                       onMark={markSeasonWatched}
                       onUnmark={unmarkSeasonWatched}
                     />
-                    {/* Partage social : proposé uniquement quand la saison est
-                        effectivement vue en entier — sinon il n'y a rien à
-                        annoncer. */}
-                    {seasonState === true && (
-                      <ShareWatchDialog
-                        triggerVariant="button"
-                        triggerLabel="Partager cette saison"
-                        title={show.title}
-                        counter={`Saison ${pad(s.season_number)}`}
-                        subtitle={`${watchedCount} épisode${watchedCount > 1 ? "s" : ""} vu${watchedCount > 1 ? "s" : ""}`}
-                        posterUrl={show.poster_path}
-                        badge="Saison terminée"
-                        shareUrl={showShareUrl(mediaType, tmdbId)}
-                        caption={`J'ai terminé la saison ${s.season_number} de ${show.title} 📺`}
-                      />
-                    )}
                     <ul className="mt-3.5 flex flex-col">
                       {eps.map((e) => {
                         const count = watched?.[e.id]?.count ?? 0;
@@ -940,13 +971,18 @@ function ShowDetail() {
                             share={
                               isWatched ? (
                                 <ShareWatchDialog
-                                  title={show.title}
-                                  counter={`S${pad(e.season_number)}E${pad(e.episode_number)}`}
-                                  subtitle={e.title}
-                                  posterUrl={e.still_path ?? show.poster_path}
-                                  badge="Épisode vu"
+                                  card={{
+                                    kind: "episode",
+                                    seriesTitle: show.title,
+                                    episodeTitle: e.title,
+                                    season: e.season_number,
+                                    episode: e.episode_number,
+                                    imageUrl: e.still_path,
+                                    fallbackImageUrl: show.backdrop_path ?? show.poster_path,
+                                  }}
+                                  previewAlt={`${show.title}, saison ${e.season_number}, épisode ${e.episode_number}`}
                                   shareUrl={showShareUrl(mediaType, tmdbId)}
-                                  caption={`Je viens de voir ${show.title} S${pad(e.season_number)}E${pad(e.episode_number)} 📺`}
+                                  caption={`Je viens de voir ${show.title} S${pad(e.season_number)}E${pad(e.episode_number)}`}
                                 />
                               ) : null
                             }
@@ -963,6 +999,14 @@ function ShowDetail() {
         );
       })()}
 
+      {shareSeason !== null && (
+        <ShareWatchDialog
+          triggerVariant="none"
+          open
+          onOpenChange={(o) => !o && setShareSeason(null)}
+          {...seasonShareProps(shareSeason)}
+        />
+      )}
 
       <div className="mx-5 pb-24">
         {/* `initialData` seulement si le loader a effectivement trouvé quelque
