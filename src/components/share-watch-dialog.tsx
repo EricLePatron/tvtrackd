@@ -56,7 +56,8 @@ function downloadBlob(blob: Blob, filename: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Révocation différée : certains navigateurs lisent le blob après le clic.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function isIOS() {
@@ -85,6 +86,8 @@ function ShareBody({
   const [preview, setPreview] = useState<string | null>(null);
   const [pending, setPending] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const blobRef = useRef<Blob | null>(null);
   const previewRef = useRef<string | null>(null);
 
@@ -103,6 +106,7 @@ function ShareBody({
   useEffect(() => {
     let cancelled = false;
     setPending(true);
+    setFailed(false);
     blobRef.current = null;
     buildShareCard(JSON.parse(cardKey) as ShareCardInput, { format })
       .then((blob) => {
@@ -113,7 +117,12 @@ function ShareBody({
         setPreview(previewRef.current);
       })
       .catch(() => {
-        if (!cancelled) toast.error("Impossible de générer l'image de partage");
+        if (cancelled) return;
+        // Plus d'ancien aperçu : sinon « Partager » semblerait actif sans blob.
+        blobRef.current = null;
+        setPreview(null);
+        setFailed(true);
+        toast.error("Impossible de générer l'image de partage");
       })
       .finally(() => {
         if (!cancelled) setPending(false);
@@ -121,7 +130,7 @@ function ShareBody({
     return () => {
       cancelled = true;
     };
-  }, [cardKey, format]);
+  }, [cardKey, format, attempt]);
 
   useEffect(() => {
     return () => {
@@ -139,7 +148,7 @@ function ShareBody({
   };
 
   const filename = `${APP_NAME}-${fileSlug(card)}-${format}.jpg`;
-  const ready = !!preview && !pending;
+  const ready = !!preview && !pending && !failed;
   const spec = SHARE_FORMATS[format];
 
   const makeFile = () =>
@@ -158,32 +167,45 @@ function ShareBody({
   const share = async () => {
     const blob = blobRef.current;
     const file = makeFile();
-    if (!blob || !file) return;
+    if (!blob || !file) {
+      toast.error("Image indisponible, réessayez");
+      return;
+    }
 
     // Le lien est copié AVANT le partage natif : l'activation utilisateur est
     // encore valide (iOS la consomme dès le `await navigator.share`).
-    const linkPromise = navigator.clipboard?.writeText(withUtm(shareUrl, "instagram"));
-    linkPromise
-      ?.then(() => toast.success("Lien copié, à coller en sticker"))
-      .catch(() => undefined);
+    const linkCopied = Promise.resolve(
+      navigator.clipboard?.writeText(withUtm(shareUrl, "instagram")),
+    ).then(
+      () => true,
+      () => false,
+    );
 
     if (canShareFiles(file)) {
       try {
         await navigator.share({ files: [file], text: caption, url: withUtm(shareUrl, "share") });
+        if (await linkCopied) toast.success("Lien copié, à coller en sticker");
         return;
       } catch (err) {
         if ((err as Error)?.name === "AbortError") return;
       }
     }
-    // Repli desktop / navigateurs sans partage de fichier.
+    // Repli desktop / navigateurs sans partage de fichier : un seul toast.
     downloadBlob(blob, filename);
-    toast.success("Image enregistrée — à publier depuis votre téléphone");
+    toast.success(
+      (await linkCopied)
+        ? "Image enregistrée et lien copié"
+        : "Image enregistrée, à publier depuis votre téléphone",
+    );
   };
 
   const save = async () => {
     const blob = blobRef.current;
     const file = makeFile();
-    if (!blob || !file) return;
+    if (!blob || !file) {
+      toast.error("Image indisponible, réessayez");
+      return;
+    }
     // iOS Safari ouvre un aperçu avec <a download> : on passe par la feuille
     // de partage (« Enregistrer l'image »).
     if (isIOS() && canShareFiles(file)) {
@@ -246,7 +268,23 @@ function ShareBody({
         className="relative mx-auto h-[min(52vh,520px)] max-w-full overflow-hidden rounded-md bg-surface-elevated"
         style={{ aspectRatio: `${spec.width} / ${spec.height}` }}
       >
-        {!ready && <div className="absolute inset-0 animate-pulse bg-surface-elevated" />}
+        {!ready && !failed && (
+          <div className="absolute inset-0 animate-pulse bg-surface-elevated" />
+        )}
+        {failed && (
+          <div className="absolute inset-0 grid place-items-center p-4 text-center">
+            <div>
+              <p className="text-sm text-muted-foreground">Génération de l'image impossible.</p>
+              <button
+                type="button"
+                onClick={() => setAttempt((n) => n + 1)}
+                className="mt-3 h-10 rounded-md border border-white/[0.07] px-4 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Réessayer
+              </button>
+            </div>
+          </div>
+        )}
         {preview && (
           <img
             src={preview}
@@ -353,7 +391,7 @@ export function ShareWatchDialog({
               <DrawerTitle>Partager</DrawerTitle>
               <DrawerDescription className="sr-only">{body.caption}</DrawerDescription>
             </DrawerHeader>
-            {open && <ShareBody {...body} />}
+            <ShareBody {...body} />
           </DrawerContent>
         </Drawer>
       ) : (
@@ -363,7 +401,7 @@ export function ShareWatchDialog({
               <DialogTitle>Partager</DialogTitle>
               <DialogDescription className="sr-only">{body.caption}</DialogDescription>
             </DialogHeader>
-            {open && <ShareBody {...body} />}
+            <ShareBody {...body} />
           </DialogContent>
         </Dialog>
       )}
