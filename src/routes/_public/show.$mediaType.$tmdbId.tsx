@@ -277,7 +277,10 @@ function ShowDetail() {
   // saison depuis "À voir maintenant" / "Revoir depuis le début".
   const [openSeasons, setOpenSeasons] = useState<string[]>([]);
   // Partage de fin de saison déclenché depuis le toast (jamais de modale auto).
+  // `shareSeason` garde la dernière saison tant que le drawer joue son
+  // animation de fermeture ; `shareOpen` pilote l'ouverture.
   const [shareSeason, setShareSeason] = useState<number | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Préchargé côté serveur par le `loader` de la route (cf. P0-1 SEO) : même
   // clé de query, même fetch (`fetchShowDetails`) que ce que faisait cet
@@ -421,6 +424,8 @@ function ShowDetail() {
             episode_id: episodeId,
             watch_count: 1,
             watched_at: new Date().toISOString(),
+            // Marquage manuel : la date est réelle (remet à plat un import approximatif).
+            watched_at_approximate: false,
           },
           { onConflict: "user_id,episode_id" },
         );
@@ -461,7 +466,13 @@ function ShowDetail() {
         `S${pad(episode.season_number)} · E${pad(episode.episode_number)} vu · saison bouclée`,
         {
           duration: 8000,
-          action: { label: "Partager", onClick: () => setShareSeason(episode.season_number) },
+          action: {
+            label: "Partager",
+            onClick: () => {
+              setShareSeason(episode.season_number);
+              setShareOpen(true);
+            },
+          },
         },
       );
     },
@@ -495,6 +506,8 @@ function ShowDetail() {
           episode_id: episodeId,
           watch_count: 1,
           watched_at: new Date().toISOString(),
+          // Marquage manuel : la date est réelle (remet à plat un import approximatif).
+          watched_at_approximate: false,
         }));
         const { error } = await supabase
           .from("watch_status")
@@ -911,20 +924,22 @@ function ShowDetail() {
                     </span>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="relative">
-                      <VhsCounter
-                        seasonNumber={s.season_number}
-                        lastEpisode={last}
-                        watched={watchedCount}
-                        total={eps.length}
-                      />
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <VhsCounter
+                          seasonNumber={s.season_number}
+                          lastEpisode={last}
+                          watched={watchedCount}
+                          total={eps.length}
+                        />
+                      </div>
                       {/* Partage de fin de saison : seulement quand tous les
-                          épisodes sont vus — sinon il n'y a rien à annoncer. */}
+                          épisodes sont vus. Icône à côté du module compteur
+                          (jamais par-dessus) pour ne pas masquer les chiffres. */}
                       {isSeasonDone && (
                         <ShareWatchDialog
                           triggerVariant="icon"
                           triggerLabel={`Partager la saison ${s.season_number}`}
-                          triggerClassName="absolute right-2 top-2"
                           {...seasonShareProps(s.season_number)}
                         />
                       )}
@@ -1002,8 +1017,8 @@ function ShowDetail() {
       {shareSeason !== null && (
         <ShareWatchDialog
           triggerVariant="none"
-          open
-          onOpenChange={(o) => !o && setShareSeason(null)}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
           {...seasonShareProps(shareSeason)}
         />
       )}
