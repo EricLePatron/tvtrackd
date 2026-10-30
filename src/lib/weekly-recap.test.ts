@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  computeWeeklyRecap,
-  startOfWeek,
-  weekRangeLabel,
-  type RecapRow,
-} from "./weekly-recap";
+import { computeWeeklyRecap, startOfWeek, weekRangeLabel, type RecapRow } from "./weekly-recap";
 
 // Mercredi 28 octobre 2026, 15:00 (heure locale du runner).
 const NOW = new Date(2026, 9, 28, 15, 0, 0);

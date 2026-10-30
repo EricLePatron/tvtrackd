@@ -63,13 +63,14 @@ const MONTHS = [
 /** « 20 → 26 OCT. » ou « 28 OCT. → 3 NOV. » quand la semaine chevauche deux mois. */
 export function weekRangeLabel(start: Date, end: Date): string {
   const sameMonth = start.getMonth() === end.getMonth();
-  const from = sameMonth
-    ? `${start.getDate()}`
-    : `${start.getDate()} ${MONTHS[start.getMonth()]}`;
+  const from = sameMonth ? `${start.getDate()}` : `${start.getDate()} ${MONTHS[start.getMonth()]}`;
   return `${from} → ${end.getDate()} ${MONTHS[end.getMonth()]}`;
 }
 
-export function computeWeeklyRecap(rows: ReadonlyArray<RecapRow>, now: Date = new Date()): WeeklyRecap {
+export function computeWeeklyRecap(
+  rows: ReadonlyArray<RecapRow>,
+  now: Date = new Date(),
+): WeeklyRecap {
   const start = startOfWeek(now);
   const nextMonday = addDays(start, 7);
   const end = addDays(start, 6);

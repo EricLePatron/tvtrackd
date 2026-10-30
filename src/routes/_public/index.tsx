@@ -9,6 +9,7 @@ import { useInViewOnce } from "@/hooks/use-in-view-once";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { WeeklyRecapBlock } from "@/components/home/weekly-recap-block";
 import {
   addDaysToDateString,
   bucketUpcoming,
@@ -1053,6 +1054,9 @@ function HomeContent({ data }: { data: HomeData }) {
           <UpcomingRails buckets={buckets} today={data.today} />
         )}
       </div>
+
+      {/* Ma semaine — bloc discret sous le Programme (dès 3 épisodes vus). */}
+      <WeeklyRecapBlock />
 
       {/* "À commencer" — déplacé hors de la Zone A ("à voir maintenant"),
           en premier rail de la zone recommandations, juste après "Programme
