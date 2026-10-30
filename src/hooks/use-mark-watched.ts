@@ -347,6 +347,8 @@ export function useMarkWatched() {
           episode_id: episodeId,
           watch_count: 1,
           watched_at: new Date().toISOString(),
+          // Marquage manuel : la date est réelle (remet à plat un import approximatif).
+          watched_at_approximate: false,
         },
         { onConflict: "user_id,episode_id" },
       );
