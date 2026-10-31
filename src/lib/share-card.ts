@@ -1,15 +1,30 @@
 /**
- * Génération client-side de la "carte de partage" pour un épisode vu ou une
- * saison vue, au format story (1080×1920, Instagram / X).
+ * Génération client-side des cartes de partage (canvas) : épisode vu, saison
+ * bouclée, « ma semaine ». Formats Story 1080×1920 et Publication 1080×1350.
  *
- * Rendu 100 % canvas — pas de dépendance html2canvas : la carte est simple
- * (fond `--bg-void`, visuel de l'épisode, compteur Plex Mono, bloc de marque)
- * et le canvas évite tout risque de rendu approximatif des polices/filtres
- * CSS. Le visuel est récupéré via `fetch` + blob plutôt qu'en posant
- * `crossOrigin` sur une balise Image : ça évite l'échec silencieux quand le
- * navigateur a déjà l'image en cache sans en-tête CORS. En cas d'échec on
- * retombe sur une carte sans visuel.
+ * Cartes épurées : fond `--bg-void` plat, aucun dégradé, aucun filtre canvas
+ * (`ctx.filter` n'existe pas sur Safari/iOS). Toutes les positions viennent du
+ * module pur `share-layout.ts` (testé) ; ce fichier ne fait que dessiner.
+ *
+ * Les visuels sont récupérés via `fetch` + blob (jamais « tainted ») avec un
+ * repli sur une balise Image CORS anonyme ; en cas d'échec la carte est rendue
+ * sans visuel (aplat `--bg-surface-raised`).
  */
+
+import { APP_NAME } from "@/lib/app-config";
+import {
+  SHARE_FORMATS,
+  SHARE_CONTENT_W,
+  boxById,
+  layoutEpisode,
+  layoutSeason,
+  layoutWeek,
+  posterRects,
+  type LayoutBox,
+  type ShareFormat,
+} from "@/lib/share-layout";
+
+export type { ShareFormat } from "@/lib/share-layout";
 
 const BG = "#0B0E14";
 const SURFACE = "#1E2530";
@@ -18,27 +33,71 @@ const CYAN = "#4DD9C4";
 const TEXT = "#F2EDE4";
 const MUTED = "#8B92A3";
 
-export type ShareFormat = "story";
+const DISPLAY = "Archivo, Inter, system-ui, sans-serif";
+const MONO = "'IBM Plex Mono', ui-monospace, monospace";
+const BODY = "Inter, system-ui, sans-serif";
 
-export type ShareCardInput = {
-  /** Titre de la série / du film. */
-  title: string;
-  /** Ligne compteur, ex. "S02E06" ou "SAISON 02". */
-  counter: string;
-  /** Sous-titre : titre d'épisode, ou "12 épisodes". */
-  subtitle?: string | null;
-  /** URL absolue du visuel principal (still d'épisode ou affiche TMDb). */
-  posterUrl?: string | null;
-  /** Libellé d'état, ex. "ÉPISODE VU" / "SAISON TERMINÉE". */
-  badge: string;
-  /** Format de sortie (story uniquement). */
-  format?: ShareFormat;
-};
+export type ShareCardInput =
+  | {
+      kind: "episode";
+      /** Titre de la série. */
+      seriesTitle: string;
+      /** Titre de l'épisode (facultatif). */
+      episodeTitle?: string | null;
+      season: number;
+      episode: number;
+      /** Still de l'épisode (TMDb, 16:9). */
+      imageUrl?: string | null;
+      /** Repli si pas de still : backdrop de la série. */
+      fallbackImageUrl?: string | null;
+    }
+  | {
+      kind: "season";
+      seriesTitle: string;
+      season: number;
+      /** Affiche de la saison, repli affiche de la série. */
+      posterUrl?: string | null;
+    }
+  | {
+      kind: "week";
+      /** Ex. « 20 → 26 OCT. » */
+      rangeLabel: string;
+      /** Épisodes vus sur la semaine. */
+      episodes: number;
+      /** Affiches des séries les plus vues (4 max utilisées). */
+      posterUrls: string[];
+    };
+
+export type ShareCardOptions = { format?: ShareFormat };
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * Les polices web doivent être réellement chargées avant le rendu canvas :
+ * `document.fonts.ready` ne charge pas une graisse jamais utilisée à l'écran.
+ */
+export async function ensureShareFonts(): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  const sample = "ÉÈÀÇ·→0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.";
+  try {
+    await Promise.all([
+      document.fonts.load("700 84px Archivo", sample),
+      document.fonts.load("700 34px Archivo", sample),
+      document.fonts.load("500 26px 'IBM Plex Mono'", sample),
+      document.fonts.load("600 64px 'IBM Plex Mono'", sample),
+      document.fonts.load("600 240px 'IBM Plex Mono'", sample),
+      document.fonts.load("400 44px Inter", sample),
+    ]);
+    await document.fonts.ready;
+  } catch {
+    /* best effort : repli sur la police système */
+  }
+}
 
 async function loadImage(url: string): Promise<HTMLImageElement | null> {
   // 1) chemin privilégié : fetch CORS -> blob -> object URL (jamais "tainted")
   try {
-    const res = await fetch(url, { mode: "cors", cache: "reload" });
+    const res = await fetch(url, { mode: "cors" });
     if (res.ok) {
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
@@ -64,23 +123,13 @@ async function loadImage(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-function drawCover(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-) {
-  const ratio = Math.max(w / img.width, h / img.height);
-  const dw = img.width * ratio;
-  const dh = img.height * ratio;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-  ctx.restore();
+async function loadFirst(urls: Array<string | null | undefined>) {
+  for (const u of urls) {
+    if (!u) continue;
+    const img = await loadImage(u);
+    if (img) return img;
+  }
+  return null;
 }
 
 function roundRect(
@@ -100,21 +149,41 @@ function roundRect(
   ctx.closePath();
 }
 
-function fitFont(
+/** Image remplissant la boîte (rognage centré), coins arrondis, filet. */
+function drawVisual(
   ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  size: number,
-  min: number,
+  img: HTMLImageElement | null,
+  box: LayoutBox,
+  radius: number,
 ) {
-  let s = size;
-  while (s > min) {
-    ctx.font = `700 ${s}px Archivo, Inter, system-ui, sans-serif`;
-    if (ctx.measureText(text).width <= maxWidth) break;
-    s -= 3;
+  ctx.save();
+  roundRect(ctx, box.x, box.y, box.w, box.h, radius);
+  ctx.clip();
+  ctx.fillStyle = SURFACE;
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  if (img) {
+    const ratio = Math.max(box.w / img.width, box.h / img.height);
+    const dw = img.width * ratio;
+    const dh = img.height * ratio;
+    ctx.drawImage(img, box.x + (box.w - dw) / 2, box.y + (box.h - dh) / 2, dw, dh);
   }
-  ctx.font = `700 ${s}px Archivo, Inter, system-ui, sans-serif`;
-  return s;
+  ctx.restore();
+  ctx.strokeStyle = "rgba(242,237,228,0.10)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, box.x, box.y, box.w, box.h, radius);
+  ctx.stroke();
+}
+
+function fitDisplay(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  let size = 84;
+  const min = 48;
+  while (size > min) {
+    ctx.font = `700 ${size}px ${DISPLAY}`;
+    if (ctx.measureText(text).width <= maxWidth) break;
+    size -= 3;
+  }
+  ctx.font = `700 ${size}px ${DISPLAY}`;
+  return size;
 }
 
 function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
@@ -139,162 +208,149 @@ function drawTracked(
   return cx - spacing - x;
 }
 
-function measureTracked(ctx: CanvasRenderingContext2D, text: string, spacing: number) {
-  let w = 0;
-  for (const ch of text) w += ctx.measureText(ch).width + spacing;
-  return Math.max(0, w - spacing);
+/** Mesure le titre (taille ajustée) avant le layout, qui ne dépend que de la taille. */
+function measureTitle(ctx: CanvasRenderingContext2D, title: string) {
+  const size = fitDisplay(ctx, title, SHARE_CONTENT_W);
+  return { size, text: ellipsize(ctx, title, SHARE_CONTENT_W) };
 }
 
-export async function buildShareCard(input: ShareCardInput): Promise<Blob> {
-  // Les polices web doivent être prêtes avant le rendu canvas, sinon le
-  // navigateur retombe silencieusement sur une police système.
-  if (typeof document !== "undefined" && document.fonts) {
-    try {
-      await document.fonts.ready;
-    } catch {
-      /* best effort */
-    }
-  }
+function drawEyebrow(ctx: CanvasRenderingContext2D, box: LayoutBox, text: string, color: string) {
+  ctx.textBaseline = "alphabetic";
+  ctx.font = `500 26px ${MONO}`;
+  ctx.fillStyle = color;
+  drawTracked(ctx, text.toUpperCase(), box.x, box.y + 26, 26 * 0.22);
+}
 
-  const W = 1080;
-  const H = 1920;
-  const PAD = 80;
-  const maxW = W - PAD * 2;
+function drawFooter(ctx: CanvasRenderingContext2D, box: LayoutBox) {
+  ctx.fillStyle = AMBER;
+  roundRect(ctx, box.x, box.y + 9, 10, 40, 5);
+  ctx.fill();
+  ctx.textBaseline = "alphabetic";
+  ctx.font = `700 34px ${DISPLAY}`;
+  ctx.fillStyle = TEXT;
+  drawTracked(ctx, APP_NAME.toUpperCase(), box.x + 34, box.y + 40, 34 * 0.12);
+}
 
-  // Zones réservées par l'UI Instagram (avatar/nom en haut, barre
-  // « Dites quelque chose » + actions en bas) : tout le contenu utile de la
-  // carte vit entre ces deux bornes.
-  const SAFE_TOP = 300;
-  const SAFE_BOTTOM = H - 430;
+function drawText(
+  ctx: CanvasRenderingContext2D,
+  box: LayoutBox,
+  text: string,
+  font: string,
+  color: string,
+  size: number,
+) {
+  ctx.textBaseline = "alphabetic";
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.fillText(ellipsize(ctx, text, box.w), box.x, box.y + Math.round(size * 0.9));
+}
+
+export async function buildShareCard(
+  input: ShareCardInput,
+  options: ShareCardOptions = {},
+): Promise<Blob> {
+  const format: ShareFormat = options.format ?? "story";
+  const spec = SHARE_FORMATS[format];
+
+  await ensureShareFonts();
 
   const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = spec.width;
+  canvas.height = spec.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas indisponible");
 
+  // Fond plat, opaque (export JPEG).
   ctx.fillStyle = BG;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, spec.width, spec.height);
 
-  const media = input.posterUrl ? await loadImage(input.posterUrl) : null;
+  if (input.kind === "episode") {
+    const media = await loadFirst([input.imageUrl, input.fallbackImageUrl]);
+    const title = measureTitle(ctx, input.seriesTitle);
+    const hasEp = !!input.episodeTitle?.trim();
+    const layout = layoutEpisode(format, { titleSize: title.size, hasEpisodeTitle: hasEp });
+    drawEyebrow(ctx, boxById(layout, "eyebrow")!, "Épisode vu", CYAN);
+    drawVisual(ctx, media, boxById(layout, "media")!, 32);
+    drawText(
+      ctx,
+      boxById(layout, "code")!,
+      `S${pad2(input.season)} E${pad2(input.episode)}`,
+      `600 64px ${MONO}`,
+      AMBER,
+      64,
+    );
+    ctx.font = `700 ${title.size}px ${DISPLAY}`;
+    drawText(
+      ctx,
+      boxById(layout, "title")!,
+      title.text,
+      `700 ${title.size}px ${DISPLAY}`,
+      TEXT,
+      title.size,
+    );
+    if (hasEp) {
+      drawText(
+        ctx,
+        boxById(layout, "subtitle")!,
+        input.episodeTitle!,
+        `400 44px ${BODY}`,
+        MUTED,
+        44,
+      );
+    }
+    drawFooter(ctx, boxById(layout, "footer")!);
+  } else if (input.kind === "season") {
+    const media = await loadFirst([input.posterUrl]);
+    const title = measureTitle(ctx, input.seriesTitle);
+    const layout = layoutSeason(format, { titleSize: title.size });
+    drawEyebrow(ctx, boxById(layout, "eyebrow")!, "Saison bouclée", CYAN);
+    drawVisual(ctx, media, boxById(layout, "media")!, 28);
+    drawText(
+      ctx,
+      boxById(layout, "code")!,
+      `S${pad2(input.season)}`,
+      `600 64px ${MONO}`,
+      AMBER,
+      64,
+    );
+    drawText(
+      ctx,
+      boxById(layout, "title")!,
+      title.text,
+      `700 ${title.size}px ${DISPLAY}`,
+      TEXT,
+      title.size,
+    );
+    drawFooter(ctx, boxById(layout, "footer")!);
+  } else {
+    const urls = input.posterUrls.slice(0, 4);
+    const images = await Promise.all(urls.map((u) => loadImage(u)));
+    const layout = layoutWeek(format, { posterCount: urls.length });
+    drawEyebrow(ctx, boxById(layout, "eyebrow")!, `Ma semaine · ${input.rangeLabel}`, MUTED);
 
-  // ── Toile de fond : le visuel flouté, très sombre, occupe tout l'écran ──
-  if (media) {
-    ctx.save();
-    ctx.filter = "blur(70px) saturate(150%)";
-    ctx.globalAlpha = 0.6;
-    drawCover(ctx, media, -80, -80, W + 160, H + 160);
-    ctx.restore();
-    ctx.fillStyle = "rgba(11,14,20,0.78)";
-    ctx.fillRect(0, 0, W, H);
-  }
+    const num = boxById(layout, "number")!;
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `600 240px ${MONO}`;
+    ctx.fillStyle = CYAN;
+    ctx.fillText(String(input.episodes), num.x, num.y + 178);
 
-  // ── Carte centrale ─────────────────────────────────────────────────────
-  const frameW = maxW;
-  const frameX = PAD;
-  const ratio = media ? media.width / media.height : 16 / 9;
-  const frameH = Math.round(Math.min(Math.max(frameW / ratio, 520), 900));
-
-  // Hauteur du bloc texte pour centrer l'ensemble dans la zone sûre.
-  const badgeH = 60;
-  const titleBlockH = 200;
-  const ctaH = 132;
-  const cardH = 118 /* header marque */ + frameH + 46 + badgeH + 30 + titleBlockH + ctaH;
-  let y = Math.max(SAFE_TOP, Math.round((SAFE_TOP + SAFE_BOTTOM - cardH) / 2));
-
-  // ── En-tête de marque ──────────────────────────────────────────────────
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = AMBER;
-  roundRect(ctx, PAD, y, 14, 46, 5);
-  ctx.fill();
-  ctx.font = "700 44px Archivo, Inter, system-ui, sans-serif";
-  ctx.fillStyle = TEXT;
-  const brandW = drawTracked(ctx, "TVTRACKD", PAD + 34, y + 24, 3);
-  ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
-  ctx.fillStyle = MUTED;
-  ctx.fillText("SUIVI DE SÉRIES", PAD + 34 + brandW + 24, y + 26);
-  y += 118;
-
-  // ── Visuel principal ───────────────────────────────────────────────────
-  ctx.save();
-  roundRect(ctx, frameX, y, frameW, frameH, 30);
-  ctx.clip();
-  ctx.fillStyle = SURFACE;
-  ctx.fillRect(frameX, y, frameW, frameH);
-  if (media) drawCover(ctx, media, frameX, y, frameW, frameH);
-  // Dégradé bas pour asseoir le visuel sur le bloc texte
-  const grad = ctx.createLinearGradient(0, y + frameH - 220, 0, y + frameH);
-  grad.addColorStop(0, "rgba(11,14,20,0)");
-  grad.addColorStop(1, "rgba(11,14,20,0.85)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(frameX, y + frameH - 220, frameW, 220);
-  ctx.restore();
-  ctx.strokeStyle = "rgba(242,237,228,0.12)";
-  ctx.lineWidth = 2;
-  roundRect(ctx, frameX, y, frameW, frameH, 30);
-  ctx.stroke();
-  y += frameH + 46;
-
-  // ── Badge état + compteur ──────────────────────────────────────────────
-  ctx.textBaseline = "middle";
-  ctx.font = "600 28px 'IBM Plex Mono', ui-monospace, monospace";
-  const badge = input.badge.toUpperCase();
-  const badgeW = ctx.measureText(badge).width + 46;
-  ctx.fillStyle = "rgba(77,217,196,0.16)";
-  roundRect(ctx, PAD, y, badgeW, badgeH, 12);
-  ctx.fill();
-  ctx.fillStyle = CYAN;
-  ctx.fillText(badge, PAD + 23, y + badgeH / 2 + 1);
-
-  const counter = input.counter.toUpperCase();
-  ctx.font = "700 42px 'IBM Plex Mono', ui-monospace, monospace";
-  const counterW = ctx.measureText(counter).width + 46;
-  ctx.fillStyle = SURFACE;
-  roundRect(ctx, PAD + badgeW + 16, y, counterW, badgeH, 12);
-  ctx.fill();
-  ctx.fillStyle = AMBER;
-  ctx.fillText(counter, PAD + badgeW + 16 + 23, y + badgeH / 2 + 2);
-  y += badgeH + 30;
-
-  // ── Titre + sous-titre ─────────────────────────────────────────────────
-  ctx.textBaseline = "top";
-  const titleSize = fitFont(ctx, input.title, maxW, 78, 40);
-  ctx.fillStyle = TEXT;
-  ctx.fillText(ellipsize(ctx, input.title, maxW), PAD, y);
-  y += titleSize + 16;
-
-  if (input.subtitle) {
-    ctx.font = "400 34px Inter, system-ui, sans-serif";
+    const label = boxById(layout, "label")!;
+    ctx.font = `500 32px ${MONO}`;
     ctx.fillStyle = MUTED;
-    ctx.fillText(ellipsize(ctx, input.subtitle, maxW), PAD, y);
-    y += 46;
+    drawTracked(ctx, "ÉPISODES VUS", label.x, label.y + 30, 32 * 0.22);
+
+    const posters = boxById(layout, "posters");
+    if (posters) {
+      posterRects(posters, urls.length).forEach((rect, i) => drawVisual(ctx, images[i], rect, 20));
+    }
+    drawFooter(ctx, boxById(layout, "footer")!);
   }
-
-  // ── CTA : la promesse produit, en bas de la carte (dans la zone sûre) ──
-  const ctaY = Math.min(y + 34, SAFE_BOTTOM - 118);
-  ctx.fillStyle = AMBER;
-  roundRect(ctx, PAD, ctaY, maxW, 118, 22);
-  ctx.fill();
-
-  ctx.textBaseline = "middle";
-  ctx.font = "700 46px Archivo, Inter, system-ui, sans-serif";
-  ctx.fillStyle = BG;
-  const ctaBrandW = measureTracked(ctx, "TVTRACKD.COM", 2);
-  ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
-  const ctaSubW = ctx.measureText("SUIVEZ VOS SÉRIES, SANS RIEN OUBLIER").width;
-  const ctaX = PAD + Math.max(36, (maxW - Math.max(ctaBrandW, ctaSubW)) / 2);
-
-  ctx.font = "700 46px Archivo, Inter, system-ui, sans-serif";
-  drawTracked(ctx, "TVTRACKD.COM", ctaX, ctaY + 44, 2);
-  ctx.font = "500 24px 'IBM Plex Mono', ui-monospace, monospace";
-  ctx.fillStyle = "rgba(11,14,20,0.75)";
-  ctx.fillText("SUIVEZ VOS SÉRIES, SANS RIEN OUBLIER", ctaX, ctaY + 84);
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Export de l'image impossible"))),
-      "image/png",
+      "image/jpeg",
+      0.9,
     );
   });
 }
-
